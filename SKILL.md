@@ -1,0 +1,84 @@
+---
+name: source-aligned-change-plan-coverage
+description: Use before openspec propose when the user wants a global, source-doc-aligned OpenSpec change plan with source anchor coverage, change/capability mapping, gap analysis, and iterative refinement until every source span has an explicit coverage status.
+---
+
+# Source-Aligned Change Plan Coverage
+
+Create a globally source-aligned OpenSpec change plan before any individual `openspec-propose` change is created.
+
+This skill turns source documents into a reviewable coverage index first, then uses that index to refine the change plan. The goal is to make later propose artifacts consume a pre-aligned source map instead of rediscovering source documents from a single change name.
+
+## Required Inputs
+
+- Source document roots or exact source document paths.
+- Optional existing change plan to refine.
+
+Do not write outputs under `docs/plans/`. All workflow artifacts belong under `openspec/orchestrate/`.
+
+## Output Layout
+
+Keep only core orchestration artifacts at the root:
+
+```text
+openspec/orchestrate/
+├── change-plan.md
+├── source-doc-manifest.md
+├── source-anchor-index.md
+├── change-source-map.md
+├── capability-source-map.md
+├── reviews/
+│   ├── coverage-review.md
+│   └── change-plan-adjustments.md
+└── reports/
+    ├── phase-1-agent-report.md
+    ├── phase-2-agent-report.md
+    ├── phase-3-agent-report.md
+    └── alignment-final-report.md
+```
+
+Do not create `iterations/`. When Phase 2 and Phase 3 iterate, update the current files in place. Reports may summarize the latest pass, but they should not preserve every intermediate attempt.
+
+## Reference Files
+
+Read these references only when entering the matching phase:
+
+- Phase 1 initial plan: `references/phase-1-initial-change-plan.md`
+- Phase 2 source coverage: `references/phase-2-source-anchor-coverage.md`
+- Phase 3 review and iteration: `references/phase-3-coverage-review-iteration.md`
+
+## Subagent Rule
+
+This workflow is subagent-based. Each phase MUST be performed by a fresh independent subagent:
+
+- Phase 1: initial change plan generation.
+- Phase 2: source anchor coverage mapping.
+- Phase 3: coverage review, scientific synthesis, and iteration decision.
+
+If Phase 2 and Phase 3 iterate, each new Phase 2 or Phase 3 pass also uses a new subagent. Do not reuse prior phase agents.
+
+Before spawning agents, make sure the active user request explicitly authorizes this subagent workflow. If subagents are unavailable or disallowed by the runtime, stop and report a blocker instead of doing the phase in the main agent.
+
+The main agent only orchestrates, checks interface-level outputs, and starts the next phase. It should not silently redo a phase's content work.
+
+## Workflow
+
+1. Create `openspec/orchestrate/`, `openspec/orchestrate/reviews/`, and `openspec/orchestrate/reports/`.
+2. Phase 1: if there is no current `change-plan.md`, spawn a fresh subagent to generate it using the Phase 1 reference.
+3. Phase 2: spawn a fresh subagent to map every source document into source-native anchors and assign each anchor a coverage status, change mapping, capability mapping, or explicit non-coverage classification.
+4. Phase 3: spawn a fresh subagent to analyze Phase 2 outputs and decide:
+   - `complete`: no unclassified source spans remain and the plan is coherent.
+   - `iterate`: update the change plan based on coverage gaps, conflicts, or over/under-slicing, then run Phase 2 again.
+   - `blocked`: source docs, change boundaries, conflicts, or coverage evidence are insufficient.
+5. Continue Phase 2 -> Phase 3 until Phase 3 returns `complete` or `blocked`.
+
+## Main-Agent Gates
+
+After each phase, check only interface facts:
+
+- Required files exist under `openspec/orchestrate/`.
+- Phase reports state the input docs, output files, and blockers.
+- Phase 2 outputs contain source anchors with line ranges or stable anchors, coverage statuses, and change/capability mappings where applicable.
+- Phase 3 outputs contain a decision of `complete`, `iterate`, or `blocked`.
+
+Do not start `openspec-propose` from this workflow until Phase 3 reports `complete`.

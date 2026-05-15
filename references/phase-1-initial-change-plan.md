@@ -1,0 +1,198 @@
+# Phase 1: Initial Source-Aligned Change Plan
+
+Phase 1 creates the initial top-level OpenSpec change plan from the user-specified source documents. It does not create concrete OpenSpec changes, proposals, specs, designs, tasks, acceptance artifacts, or source coverage maps.
+
+Write the plan to:
+
+```text
+openspec/orchestrate/change-plan.md
+```
+
+Write the Phase 1 report to:
+
+```text
+openspec/orchestrate/reports/phase-1-agent-report.md
+```
+
+Do not write generated plans to `docs/plans/`.
+
+## Goal
+
+Plan a set of scientific, verifiable, iterative OpenSpec changes from the user-specified source documents.
+
+Each change should represent a reviewable, implementable, verifiable, archivable system behavior change. Do not mechanically split by technical module, database table, page, component, SDK, queue, or prototype scene.
+
+Use only the documents or directories the user specifies. Do not read or rely on the current `openspec/` directory, existing specs, existing changes, archive history, or custom artifacts unless the user explicitly includes them as input.
+
+## Change-Capability Model
+
+Use this model throughout the plan:
+
+- A change is a vertical business or system loop. It should move the product or system through a concrete, reviewable outcome.
+- A capability is a long-lived behavior boundary. It usually matures across multiple changes.
+- A change may advance multiple capabilities when those increments are required by the same functional loop. The goal is not to maximize capability coverage per change.
+- A capability is usually advanced by multiple changes over time.
+- Do not create a one-to-one roadmap where each change merely implements one capability. If a candidate roadmap trends that way, reslice changes around user/system loops and keep capabilities as cross-cutting behavior boundaries.
+- The anti one-to-one rule prevents capability-driven roadmaps. It does not forbid small focused vertical changes that primarily advance one capability when they are derived from a real user or system loop.
+- Each change implements only the capability increments needed for that change's closed loop. Later changes may strengthen, broaden, or harden the same capability.
+- A change-capability relation has only two allowed values:
+  - `New`: the change first creates that capability/spec boundary.
+  - `Modified`: the change changes requirements or scenarios for an existing capability/spec boundary.
+- Do not model consumed, preserved, reused, or dependency-only capabilities as change-capability relations. Mention them in dependencies or notes only when useful, not in the capability progression matrix.
+- Name capabilities as stable English kebab-case ids, such as `identity-session-continuity` or `async-work-execution-recovery`. Do not use module names, table names, page names, provider names, or localized display names as capability ids.
+
+## Change Complexity Calibration
+
+Do not optimize for either the fewest changes or the most changes. Optimize for reviewable implementation complexity.
+
+A change should deliver one clear, verifiable functional point or system behavior point. It may touch multiple capabilities only when those capability increments are directly necessary for that functional point.
+
+Split a candidate change when it contains multiple functional points that can each be implemented, verified, reviewed, and archived independently while still satisfying the Closed-loop Test.
+
+A smaller change is valid even if it primarily advances one capability, as long as it is derived from a user/system loop rather than mechanically from the capability list.
+
+Do not merge independently verifiable behavior merely to avoid a one-to-one appearance in the capability matrix.
+
+For the first feature change after a foundation change, prefer the thinnest real product or system loop that can be archived without pretending later infrastructure is complete.
+
+### Split Challenge
+
+Before accepting each candidate change, ask:
+
+1. What is the single functional point this change proves?
+2. Does the change include another behavior that could be shipped and verified separately?
+3. Can part of this change be archived earlier without fake stubs or low-level-only proof?
+4. Are multiple entry points, failure modes, or projections being combined only because they share infrastructure?
+5. Is the change introducing infrastructure-heavy concerns before the functional point actually needs their full behavior?
+
+If the answer to 2, 3, 4, or 5 is yes, split the change unless the plan explains why the combined scope is necessary for one coherent closed loop.
+
+## Change Slicing
+
+Prefer changes sliced by verifiable business or system loops.
+
+Every non-foundation change must satisfy the Closed-loop Test:
+
+- Entry: a clear entry point such as page, API, CLI, worker job, webhook, admin operation, or scheduled task.
+- Fact: a clear system fact is created or changed, such as data record, file, event, state, ledger entry, or external receipt.
+- Projection: the result is observable through UI, API response, stream event, notification, download link, log, or audit view.
+- Failure: at least one failure path is explicit, with explainable, recoverable, or blocked state.
+- Verification: executable proof exists, such as unit, contract, integration, E2E, visual smoke, manual checklist, fixture replay, or dry run.
+
+If a candidate change only proves that a low-level component exists, it cannot stand alone unless it qualifies as a foundation exception.
+
+## Foundation Exception
+
+A foundation change is allowed only when all conditions hold:
+
+1. Without it, no later closed-loop change can reasonably start.
+2. It produces a stable reusable engineering boundary.
+3. It has runtime or integration-level proof.
+4. It names the first closed-loop change that will build on it.
+5. The plan does not contain consecutive pure foundation changes.
+
+## Workflow
+
+1. Read the user-specified input documents.
+2. Extract core user or system paths.
+3. Express each path as: entry -> behavior -> system fact -> visible result -> failure recovery.
+4. Identify long-lived behavior capabilities with English kebab-case ids.
+5. Generate candidate vertical changes from user/system loops, not from the capability list.
+6. For each candidate change, identify the direct increment it contributes to each involved capability, and classify that relation as `New` or `Modified`.
+7. Filter, merge, or reslice candidates using the Closed-loop Test, Change Complexity Calibration, the Split Challenge, and the anti one-to-one mapping rule.
+8. Order changes by real behavior dependencies, prioritizing the earliest minimal runnable loop.
+9. Build a capability progression matrix that shows how each change advances each capability.
+10. Mark key scenarios, non-goals, risks, conflicts, and deferred content from the input documents.
+11. Make `Source evidence` as precise as possible with exact source paths, headings, section numbers, decision IDs, route/page/object names, APIs, commands, DTOs, entities, tables, jobs, events, assets, environments, or verification anchors.
+12. If evidence is only a semantic phrase, preserve it but mark it as needing Phase 2 anchor resolution.
+
+## Output
+
+Produce `openspec/orchestrate/change-plan.md` with:
+
+### Inputs
+
+- Documents specified and read
+- Potentially relevant documents not read
+- Assumptions and conflicts
+
+### Slicing Principles
+
+- Change slicing principles used for this plan
+- Rejected slicing approaches and reasons
+- Explicit statement that changes are vertical loops and capabilities are long-lived behavior boundaries
+
+### Capability Map
+
+| Capability | Behavior boundary | First change | Later expansion |
+| --- | --- | --- | --- |
+
+Rules:
+
+- Capability values must be English kebab-case ids in backticks.
+- Behavior boundary explains the durable behavior, not the implementation module.
+- Later expansion should show that the capability can mature across later changes.
+
+### Capability Progression Matrix
+
+Create a matrix after the Capability Map:
+
+| Change | `capability-a` | `capability-b` | `capability-c` |
+| --- | --- | --- | --- |
+| `change-name` | Concrete capability increment delivered by this change |  | Concrete capability increment delivered by this change |
+
+Rules:
+
+- Each row is one change.
+- Each column is one capability from the Capability Map.
+- Each non-empty cell describes the specific functional increment this change contributes to that capability.
+- Leave the cell blank when the change does not create or modify that capability.
+- Do not fill cells with generic reuse, generic test coverage, or "uses existing capability"; only direct capability advancement belongs in the matrix.
+- Do not prefix matrix cells with `New:` or `Modified:`; first appearance of a capability in the ordered roadmap is implicitly `New`, later appearances are implicitly `Modified`.
+- Keep cell text concise enough for review.
+
+### Change Roadmap
+
+For each change:
+
+- Change name:
+- Closed-loop outcome:
+- Source evidence:
+- Capability changes:
+  - New: use capability ids from the Capability Map, or write `None`.
+  - Modified: use capability ids from the Capability Map, or write `None`.
+- In scope:
+- Out of scope:
+- Vertical slice:
+  - Entry:
+  - Fact:
+  - Projection:
+  - Failure:
+  - Verification:
+- Dependencies:
+- Archive readiness:
+
+### Risk Checks
+
+Answer:
+
+1. Are there consecutive low-level changes with no observable behavior?
+2. Does every non-foundation change have a closed loop?
+3. Are any capabilities named by technical module instead of behavior boundary?
+4. Are any key input scenarios unmapped to a change?
+5. Can any change only be verified by "code exists" rather than behavior proof?
+6. Does the plan imply a one-to-one mapping between changes and capabilities?
+7. Does every change-capability relation use only `New` or `Modified`, with blanks where a change does not create or modify a capability?
+8. Does any change combine multiple independently verifiable functional points that could be implemented and archived separately?
+9. Does the first feature change after a foundation change introduce infrastructure-heavy concerns before its functional point needs their full behavior?
+10. Does the plan merge behavior only to avoid a one-to-one appearance in the capability matrix?
+
+## Phase Report
+
+`reports/phase-1-agent-report.md` must briefly list:
+
+- source documents read
+- generated plan path
+- notable assumptions or conflicts
+- source evidence entries that need Phase 2 anchor resolution
+- blockers, or `无`
