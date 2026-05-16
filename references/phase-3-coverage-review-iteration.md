@@ -1,6 +1,10 @@
-# Phase 3: Global Assembly, Coverage Statistics, and Iteration Decision
+# Phase 3: Source Document Coverage and Overlap Review
 
-Phase 3 consumes all independent per-change anchor analyses from Phase 2 and reviews them from a global perspective. It assembles source-document, change, and capability indexes; runs line-span coverage checks; summarizes coverage statistics; identifies source-backed spans that no change covered; and adjusts the plan when coverage evidence shows a real gap or bad slicing.
+Phase 3 consumes all independent per-change anchor analyses from Phase 2 and reviews them by source document. Phase 2 subagents are intentionally independent, so anchor names and line ranges for the same source document may differ across changes. Phase 3 should not treat those naming differences as a problem. Its primary task is to answer, for each source document: after unioning all Phase 2 anchor line ranges for this document, does any meaningful source content remain uncovered by every change and capability?
+
+The secondary task is to list cross-change or cross-capability anchor line-range overlaps for each source document and explain why the overlap exists. This overlap review is for human audit and plan-boundary judgment; it is not the primary coverage gate.
+
+Phase 3 must not run bundled coverage scripts or recreate a deleted checker. It may use line ranges from Phase 2 outputs as the coverage mechanism, but uncovered ranges must be reviewed semantically before they are treated as plan gaps.
 
 ## Inputs
 
@@ -26,7 +30,7 @@ Write current copies only:
 - `openspec/orchestrate/reports/phase-3-agent-report.md`
 - `openspec/orchestrate/reports/alignment-final-report.md` only when the decision is `complete`
 
-If the plan changes, update `openspec/orchestrate/change-plan.md` in place and summarize the change in `reviews/change-plan-adjustments.md`. Do not create `iterations/` or preserve old plan copies.
+Phase 3 proposes adjustments in `reviews/change-plan-adjustments.md`; it does not update `change-plan.md` or Phase 2 per-change/capability anchor files. Targeted updates belong to Phase 4.
 
 ## Source Discovery
 
@@ -50,16 +54,21 @@ Evaluate Phase 2 outputs in this order:
 2. Confirm Phase 2 used a fresh independent subagent for each planned change.
 3. Build `change-capability-anchors/index.md` from the per-change directories.
 4. Read nested capability anchor files and group them by `capability-slug` across all changes.
-5. Build `source-anchors/<source-doc-slug>.md` reverse indexes from per-change source and capability anchors, and from source documents that need explicit non-coverage or unclassified rows.
-6. Build `source-anchors/index.md` and `source-anchor-index.md`.
-7. Build `change-source-map.md` and `capability-source-map.md`.
-8. Run deterministic line-span coverage checks.
-9. Build global statistics across changes, source documents, capabilities, statuses, gaps, and conflicts.
-10. Identify source-backed semantic spans not covered by any change or planned capability increment.
-11. Identify changes with weak, missing, overly broad, or overly narrow source/capability support.
-12. Decide whether the current change plan is coherent, needs iteration, or is blocked.
+5. Extract every Phase 2 anchor row with its source document, original anchor name, line range, source phrase, coverage status, change, capabilities, roles, and rationale. Preserve the original anchor names and ranges from each change.
+6. For each source document, union all Phase 2 anchor line ranges from per-change and per-capability files. The union is the coverage basis for that source document.
+7. Compare the unioned coverage ranges with the source document. Identify source ranges outside every Phase 2 anchor range, then review those ranges semantically:
+   - ignore blank lines, table separators, decorative separators, generated table-of-contents lines, and pure formatting
+   - ignore background prose, repeated summaries, discarded options, and purely explanatory text unless it defines a production behavior, boundary, data fact, verification obligation, deployment requirement, auth/privacy rule, failure path, or preserve constraint
+   - record each remaining meaningful uncovered range as a coverage gap
+8. Build `source-anchors/<source-doc-slug>.md` reverse indexes from the original Phase 2 anchor rows plus any meaningful uncovered source ranges. Do not require Phase 2 anchors from different changes to share the same stable anchor name.
+9. For each source document, detect cross-change and cross-capability overlaps by intersecting Phase 2 anchor line ranges. List overlaps when ranges intersect or one range contains another; preserve all participating original anchor names.
+10. Explain each overlap as one of: valid shared source context, dependency/preserve evidence, same user/system loop split across changes, duplicated scope, conflicting ownership, broad anchor range, or unclear.
+11. Build `source-anchors/index.md` and `source-anchor-index.md`.
+12. Build `change-source-map.md` and `capability-source-map.md`.
+13. Build global statistics across source documents, changes, capabilities, covered ranges, meaningful uncovered ranges, overlap findings, gaps, and conflicts.
+14. Decide whether the current change plan is coherent, needs targeted Phase 4 adjustment, or is blocked.
 
-The Phase 3 subagent may normalize paths, stable anchor names, line ranges, duplicate source-anchor rows, and table formatting so the combined result is reviewable. It must preserve each per-change subagent's source judgment when building global indexes; plan-level interpretation belongs in `coverage-review.md` and `change-plan-adjustments.md`.
+The Phase 3 subagent may normalize paths, line range formatting, and table formatting so the combined result is reviewable. It must not merge away original Phase 2 anchor names or treat anchor-name mismatch as a coverage issue. Plan-level interpretation belongs in `coverage-review.md` and `change-plan-adjustments.md`.
 
 ## Per-Document Reverse Indexes
 
@@ -67,8 +76,10 @@ Each per-document file must include:
 
 - source document metadata line
 - source classification
-- mechanical coverage summary
-- full reverse-index table for that source document
+- Phase 2 anchor line-range coverage summary
+- original Phase 2 anchor rows grouped by line range
+- meaningful uncovered source ranges, if any
+- cross-change/capability overlap table
 
 Use this exact source metadata format near the top of each per-document file:
 
@@ -76,31 +87,26 @@ Use this exact source metadata format near the top of each per-document file:
 Source Document: `docs/prototype/pages/editor.md`
 ```
 
-Each `source-anchors/<source-doc-slug>.md` file must include:
+Each `source-anchors/<source-doc-slug>.md` file must include a coverage table:
 
-| Anchor | Lines | Source Phrase | Coverage Status | Changes | Capabilities | Roles | Rationale |
+| Range Type | Lines | Source Phrase | Source Anchors | Changes | Capabilities | Coverage Status | Rationale |
 | --- | --- | --- | --- | --- | --- | --- | --- |
 
-If semantic source lines are not present in any per-change output, add reverse-index rows for those spans so mechanical coverage remains reviewable. Mark them `unclassified` unless there is explicit source evidence for a non-coverage status.
+`Range Type` should be one of:
 
-## Line-Span Coverage
+- `phase-2-anchor-range`
+- `merged-covered-range`
+- `meaningful-uncovered-range`
+- `non-semantic-uncovered-range`
 
-For Markdown or text source files, Phase 3 must support a mechanical coverage check:
+Use `meaningful-uncovered-range` only after reading the source text and determining that the uncovered range contains product, system, data, auth/privacy, deployment, verification, failure-path, or preserve significance.
 
-- Every non-empty semantic line in required or conditionally read documents must belong to exactly one source anchor row in the per-document reverse index, unless it is classified as `non-semantic-formatting`.
-- Table separator rows, blank lines, generated table-of-contents lines, and purely decorative separators may be grouped with adjacent anchors or classified as `non-semantic-formatting`.
-- A heading line belongs to the section anchor it opens.
-- A table row with source meaning should normally be its own anchor or part of a small contiguous table-row range.
-- Do not use a single broad document-level anchor when the document contains multiple sections, rows, states, routes, decisions, requirements, or verification obligations.
-- Record uncovered semantic line ranges, overlapping anchor line ranges, and bad line ranges in `coverage-review.md` and `phase-3-agent-report.md`.
+Each per-document file must also include an overlap table:
 
-After writing per-document anchor files, run the bundled checker when available:
+| Overlap Lines | Participating Anchors | Changes | Capabilities | Overlap Reason | Human Review Notes |
+| --- | --- | --- | --- | --- | --- |
 
-```sh
-node .codex/skills/source-aligned-change-plan-coverage/scripts/check-anchor-coverage.mjs .
-```
-
-If the skill lives outside the repository root, run the same script by its absolute path and pass the repository root as the argument. Paste the checker totals into `phase-3-agent-report.md`. A failed checker result is a Phase 3 blocker unless corrected or reclassified with evidence.
+Overlap rows are expected when independent changes cite the same source context. Do not treat overlap as a blocker unless the reason is duplicated scope, conflicting ownership, or unclear after review.
 
 ## Required Index Tables
 
@@ -111,19 +117,19 @@ If the skill lives outside the repository root, run the same script by its absol
 
 `source-anchors/index.md` must include:
 
-| Source Document | Anchor File | Classification | Line Span Coverage | Anchors | Unclassified | Unresolved Conflicts | Notes |
+| Source Document | Anchor File | Classification | Phase 2 Range Coverage Summary | Meaningful Uncovered Ranges | Cross-Change Overlaps | Unresolved Conflicts | Notes |
 | --- | --- | --- | --- | --- | --- | --- | --- |
 
 `source-anchor-index.md` must include a compact navigational summary only:
 
-| Source Document | Anchor File | Classification | Anchor Count | Coverage Summary | Notes |
-| --- | --- | --- | --- | --- | --- |
+| Source Document | Anchor File | Classification | Phase 2 Anchor Ranges | Meaningful Uncovered Ranges | Overlap Summary | Notes |
+| --- | --- | --- | --- | --- | --- | --- |
 
-Do not duplicate the full per-anchor table in `source-anchor-index.md`.
+Do not duplicate the full per-document coverage or overlap tables in `source-anchor-index.md`.
 
 `source-doc-manifest.md` must include:
 
-| Source Document | Classification | Anchor File | Line Span Coverage | Uncovered Semantic Lines | Reason |
+| Source Document | Classification | Anchor File | Phase 2 Range Coverage Summary | Meaningful Uncovered Ranges | Reason |
 | --- | --- | --- | --- | --- | --- |
 
 `change-source-map.md` must include:
@@ -142,20 +148,19 @@ Evaluate:
 
 1. Does every planned change have one independent per-change source anchor file and one nested capability anchor file per planned capability increment?
 2. Does every required or conditionally read source document have exactly one per-document reverse-index file linked from `source-anchors/index.md`?
-3. Do all required or conditionally read Markdown/text documents report no uncovered semantic line ranges, no overlapping anchor line ranges, and no bad line ranges?
-4. Did the bundled anchor coverage checker pass, or does the report include an equivalent deterministic check with no failures?
-5. Does every source anchor have a non-`unclassified` status, or is each `unclassified` anchor listed as a concrete blocker?
-6. Does every planned capability increment in every change have source anchors or an explicit capability gap?
-7. Which source documents, sections, anchors, statuses, and capabilities are concentrated in each change?
-8. Which source anchors or source sections appear across multiple changes or capability increments, and is that pattern reasonable for the current plan?
-9. Are any source-backed spans not covered by any change or planned capability increment and not justified by `reference-only`, `prototype-only-not-production`, `superseded`, `duplicate`, `explicit-non-goal`, `no-product-or-system-impact`, or another explicit non-coverage status?
-10. Are any non-coverage classifications unsupported by source evidence?
-11. Does every durable behavior boundary map to a capability?
-12. Are any planned capability increments missing, overstated, or assigned to the wrong change?
-13. Are any change scopes too broad because they merge independently verifiable loops?
-14. Are any change scopes too narrow because they omit a source-backed failure, verification, data, auth, privacy, deployment, or preserve boundary?
-15. Are any capabilities technical modules instead of long-lived behavior boundaries?
-16. Are there unresolved conflicts that block a coherent change plan?
+3. For each source document, what source ranges are covered by the union of all Phase 2 anchor line ranges?
+4. Which uncovered ranges are non-semantic or safe to ignore, and which are meaningful source obligations?
+5. Are any meaningful uncovered ranges production obligations rather than `reference-only`, `prototype-only-not-production`, `superseded`, `duplicate`, `explicit-non-goal`, `no-product-or-system-impact`, or another justified non-coverage status?
+6. Which Phase 2 anchors from different changes or capabilities overlap by line range in each source document?
+7. Are overlaps valid shared context, dependency/preserve evidence, duplicated scope, conflicting ownership, broad anchor ranges, or unclear?
+8. Does every source anchor have a non-`unclassified` status, or is each `unclassified` anchor listed as a concrete blocker?
+9. Does every planned capability increment in every change have source anchors or an explicit capability gap?
+10. Does every durable behavior boundary map to a capability?
+11. Are any planned capability increments missing, overstated, or assigned to the wrong change?
+12. Are any change scopes too broad because they merge independently verifiable loops?
+13. Are any change scopes too narrow because they omit a source-backed failure, verification, data, auth, privacy, deployment, or preserve boundary?
+14. Are any capabilities technical modules instead of long-lived behavior boundaries?
+15. Are there unresolved conflicts that block a coherent change plan?
 
 ## Required Review Tables
 
@@ -166,7 +171,12 @@ Evaluate:
 
 It must include a per-source-document coverage table:
 
-| Source Document | Anchor Coverage Summary | Changes Referencing It | Uncovered Source-Backed Spans | Non-Coverage Statuses | Review Judgment |
+| Source Document | Phase 2 Range Coverage Summary | Changes Referencing It | Meaningful Uncovered Ranges | Cross-Change Overlaps | Non-Coverage Statuses | Review Judgment |
+| --- | --- | --- | --- | --- | --- | --- |
+
+It must include a source-overlap review table:
+
+| Source Document | Overlap Lines | Participating Anchors | Changes | Overlap Reason | Review Judgment |
 | --- | --- | --- | --- | --- | --- |
 
 It must include a per-capability coverage table:
@@ -181,38 +191,38 @@ It must include a global statistics table:
 
 It must include a plan-impact table:
 
-| Finding | Source Anchors | Affected Changes | Plan Impact | Required Adjustment |
+| Finding | Source Ranges or Anchors | Affected Changes | Plan Impact | Required Phase 4 Adjustment |
 | --- | --- | --- | --- | --- |
 
-## Adjustment Rules
+## Adjustment Recommendation Rules
 
-Adjust `change-plan.md` only when global coverage evidence requires it.
+Phase 3 recommends plan changes only when global source-document coverage evidence requires it. It writes recommendations to `reviews/change-plan-adjustments.md` and returns `Decision: adjust`. Phase 3 must not directly edit `change-plan.md` or Phase 2 per-change/capability anchor files.
 
-Add or split a change only when a source-backed user/system loop has its own entry, fact, projection, failure path, and verification surface.
+Recommend adding or splitting a change only when a meaningful uncovered source range or problematic overlap reveals a source-backed user/system loop with its own entry, fact, projection, failure path, and verification surface.
 
-Add or rename a capability only when source anchors reveal a durable behavior boundary that is not represented by the current capability map.
+Recommend adding or renaming a capability only when uncovered ranges or overlap analysis reveal a durable behavior boundary that is not represented by the current capability map.
 
-Keep a source-backed span out of all changes only if the non-coverage rationale is source-backed and production-safe.
+Recommend keeping a source range out of all changes only if the non-coverage rationale is source-backed and production-safe.
 
-Attach a source-backed span to an existing change only if that change's scope already owns the same user/system loop in the plan.
+Recommend attaching a source range to an existing change only if that change's scope already owns the same user/system loop in the plan.
 
-Do not create changes for background prose, repeated summaries, discarded options, pure implementation details, or prototype demo mechanics unless they define a production behavior, boundary, or verification obligation.
+Do not recommend changes for background prose, repeated summaries, discarded options, pure implementation details, or prototype demo mechanics unless they define a production behavior, boundary, or verification obligation.
 
-If `change-plan.md` changes, the next Phase 2 pass must rerun with fresh independent subagents for the current planned changes.
+If a gap requires broad reanalysis rather than targeted use of Phase 3 source-range findings, return `Decision: blocked` and state that a full Phase 2 rerun would be required only after user confirmation.
 
 ## Decision Values
 
 `coverage-review.md` must end with exactly one decision:
 
 - `Decision: complete`
-- `Decision: iterate`
+- `Decision: adjust`
 - `Decision: blocked`
 
-Use `complete` only when every planned change has a per-change source anchor file and one nested capability anchor file per planned capability increment, all required Phase 3 assembly outputs exist, every planned capability increment is source-backed or has a justified non-coverage/gap rationale, there are no unclassified anchors, no uncovered semantic line ranges, no overlapping anchor line ranges, no bad line ranges, no failed deterministic checker result, no missing per-document reverse-index files, no blocking conflicts, and the change/capability plan covers all source-backed product and system obligations or classifies them with a justified non-coverage status.
+Use `complete` only when every planned change has a per-change source anchor file and one nested capability anchor file per planned capability increment, all required Phase 3 assembly outputs exist, every planned capability increment is source-backed or has a justified non-coverage/gap rationale, there are no unclassified anchors, no missing per-document reverse-index files, no blocking conflicts, every source document's meaningful content is covered by at least one Phase 2 anchor line range or classified with justified non-coverage, and cross-change overlaps are explained as valid sharing or explicitly non-blocking.
 
-Use `iterate` when the plan was adjusted or should be adjusted, then run Phase 2 again with fresh independent per-change subagents.
+Use `adjust` when meaningful source content is not covered by any Phase 2 anchor range, overlap shows duplicated or distorted scope, capability boundaries need targeted edits, or current Phase 2 artifacts need focused updates. Phase 4 must run next.
 
-Use `blocked` when source documents conflict, source roots are incomplete, or the user must decide a boundary before coverage can close.
+Use `blocked` when source documents conflict, source roots are incomplete, the user must decide a boundary before coverage can close, or targeted Phase 4 adjustment is insufficient without a broad Phase 2 rerun.
 
 ## Final Report
 
@@ -222,17 +232,18 @@ When complete, `alignment-final-report.md` must summarize:
 - per-change source anchor files consumed
 - per-change capability anchor files consumed
 - source documents classified
-- source anchors indexed
+- Phase 2 anchor line ranges indexed by source document
+- source documents covered
+- meaningful uncovered source ranges, or confirmation that none remain
+- cross-change and cross-capability overlap findings
 - changes covered
 - capabilities covered
 - planned capability increments covered or gap-classified
-- global coverage statistics
-- source-backed spans not covered by any change, or confirmation that none remain
 - non-coverage classifications
 - conflicts resolved or remaining
 - confirmation that every required or conditionally read source document has a per-document reverse-index file
-- confirmation that no required or conditionally read Markdown/text source document has uncovered semantic line ranges, overlapping anchor line ranges, or bad line ranges
-- confirmation that the bundled anchor coverage checker or equivalent deterministic check passed
+- confirmation that every source document's meaningful content is covered by Phase 2 anchor ranges or justified
+- confirmation that no bundled coverage script was used as a gate
 - confirmation that no source anchor remains unclassified
 
-The final agent reply should be short and include the decision, changed files, remaining blockers, and whether another iteration is required.
+The final agent reply should be short and include the decision, changed files, meaningful uncovered ranges, overlap findings, remaining blockers, and whether Phase 4 is required.

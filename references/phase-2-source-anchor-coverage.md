@@ -17,7 +17,7 @@ Write current Phase 2 copies only:
 - `openspec/orchestrate/change-capability-anchors/<change-slug>/capability-anchors/<capability-slug>.md` for each planned capability increment in that change.
 - `openspec/orchestrate/reports/phase-2-agent-report.md`
 
-Do not create `iterations/`. If Phase 3 requests iteration, update these files in place and remove stale per-change anchor files whose changes are no longer current.
+Do not create `iterations/`. If Phase 4 applies targeted adjustments, update these files in place and remove stale per-change anchor files whose changes are no longer current.
 
 Do not write these Phase 3 assembly outputs in Phase 2:
 
@@ -147,7 +147,7 @@ Do not treat `preserve`, `dependency`, or `reference` as direct capability advan
 | Order | Change | Capability Anchor Files | Capability Increments | Capability Gaps | Blockers |
 | --- | --- | --- | --- | --- | --- |
 
-Do not include per-source-document coverage statistics here. Phase 3 owns global source-document coverage, line-span checks, and source/capability/change maps.
+Do not include per-source-document coverage statistics here. Phase 3 owns per-source-document Phase 2 anchor line-range coverage, cross-change overlap review, and source/capability/change maps.
 
 ## Quality Gate
 
