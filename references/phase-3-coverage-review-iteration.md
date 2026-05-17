@@ -4,7 +4,9 @@ Phase 3 consumes the independent per-change anchor analyses from Phase 2 and aud
 
 Phase 3 is not a second source-extraction pass and must not create an alternate source-anchor corpus for later `openspec-propose` work. Phase 2 per-change anchor files are the canonical propose input. Phase 3's job is to answer: after unioning all canonical Phase 2 change-anchor line ranges for each source document, does any meaningful source content remain uncovered by every change, and do any overlaps reveal duplicated ownership, conflicting boundaries, or broad/imprecise anchors?
 
-Phase 3 may use `scripts/phase3_line_range_audit.py` as a deterministic mechanical helper to parse line ranges, merge ranges, list candidate uncovered intervals, list overlap clusters, and flag malformed anchor rows. This helper is not a semantic judge and its output is not a quality gate. Phase 3 must not run legacy/deleted coverage checkers or use raw line counts as the decision basis.
+Phase 3 must preserve its per-document reasoning trail. In addition to the manifest and global review, it writes one review file per source document under `openspec/orchestrate/source-doc-coverage/`. These files are intermediate audit process artifacts: they explain how the decision was reached for each source document. They are not canonical source anchors and must not be used by later `openspec-propose` work instead of the Phase 2 per-change anchor files.
+
+Phase 3 may use `scripts/phase3_line_range_audit.py` as a deterministic mechanical helper to parse line ranges, merge ranges, list candidate uncovered intervals, list overlap clusters, and flag malformed anchor rows or non-canonical line-range formatting warnings. This helper is not a semantic judge and its output is not a quality gate. Phase 3 must not run legacy/deleted coverage checkers or use raw line counts as the decision basis.
 
 ## Inputs
 
@@ -20,19 +22,30 @@ Phase 3 may use `scripts/phase3_line_range_audit.py` as a deterministic mechanic
 Write current copies only:
 
 - `openspec/orchestrate/source-doc-manifest.md`
+- `openspec/orchestrate/source-doc-coverage/<source-relative-path-without-extension>.coverage.md` for every source document listed in the manifest
 - `openspec/orchestrate/change-capability-anchors/index.md`
 - `openspec/orchestrate/reviews/coverage-review.md`
 - `openspec/orchestrate/reviews/change-plan-adjustments.md` only when the decision is `adjust` or `blocked`
 - `openspec/orchestrate/reports/phase-3-agent-report.md`
 - `openspec/orchestrate/reports/alignment-final-report.md` only when the decision is `complete`
 
-Do not create default `source-anchors/`, `source-anchor-index.md`, `change-source-map.md`, or `capability-source-map.md` files. Those duplicate Phase 2 anchors and make human review harder. If the user explicitly requests an auxiliary export, write it outside the default workflow and state that it is not a canonical propose input.
+Use a single-level filename for per-source files. Derive it from the source document path as listed in the manifest, remove the file extension, and replace path separators with `--`. Do not create nested directories under `source-doc-coverage/`. For example:
+
+```text
+docs/2026-02-26-biopower-product-design.md
+-> openspec/orchestrate/source-doc-coverage/docs--2026-02-26-biopower-product-design.coverage.md
+
+docs/prototype/pages/editor.md
+-> openspec/orchestrate/source-doc-coverage/docs--prototype--pages--editor.coverage.md
+```
+
+Do not create default `source-anchors/`, `source-anchor-index.md`, `change-source-map.md`, or `capability-source-map.md` files. Those duplicate Phase 2 anchors and make human review harder. `source-doc-coverage/` is allowed because it records Phase 3 review process, not a canonical anchor set. If the user explicitly requests an auxiliary export, write it outside the default workflow and state that it is not a canonical propose input.
 
 Phase 3 proposes adjustments in `reviews/change-plan-adjustments.md`; it does not update `change-plan.md` or Phase 2 per-change/capability anchor files. Targeted updates belong to Phase 4.
 
 ## Source Discovery and Reading Boundary
 
-Enumerate every candidate source document under the user-specified roots and write the result to `source-doc-manifest.md`. Enumeration means listing paths and classifications; it does not require reading every file body.
+Enumerate every candidate source document under the user-specified roots and write the result to `source-doc-manifest.md`. Enumeration means listing paths and classifications; it does not require reading every file body. For every manifest row, also write a matching per-source review file under `source-doc-coverage/`, even when the final classification is `reference-only`, `intentionally-not-read`, or `non-source-artifact`.
 
 Classify each document as:
 
@@ -51,6 +64,8 @@ Use Phase 2 canonical anchor rows, Phase 2 source-doc traces, Phase 1 source hin
 
 When reading is needed, read the smallest useful range: the candidate uncovered range plus nearby headings or local context. Do not reread all source documents end-to-end as a default Phase 3 step. If broad reading is required to make a safe decision, return `Decision: blocked` and explain why Phase 2 or the input source set is insufficient.
 
+Each per-source review file must make the reading boundary explicit. If the document was not read in full, list the ranges that were read and explain why those ranges were sufficient. If the document has no Phase 2 anchor ranges and was classified as reference-only or non-source, record the minimum evidence used to justify that classification.
+
 ## Audit Workflow
 
 Evaluate Phase 2 outputs in this order:
@@ -64,18 +79,20 @@ Evaluate Phase 2 outputs in this order:
 4. Build `change-capability-anchors/index.md` from the per-change directories.
 5. Extract every canonical Phase 2 change-anchor row with its source document, original anchor name, line range, source phrase, coverage status, change, capabilities, roles, and rationale. Preserve the original anchor names and ranges from each change.
 6. Read nested capability anchor files only to verify derived-view consistency and evaluate capability boundaries. Do not count nested capability rows as additional coverage when they duplicate canonical change anchors.
-7. Optionally run `scripts/phase3_line_range_audit.py` to mechanically parse canonical rows, normalize line ranges, merge ranges, list candidate uncovered intervals, list overlaps, and flag malformed rows. Include a short summary of helper findings in the Phase 3 report if used.
+7. Optionally run `scripts/phase3_line_range_audit.py` to mechanically parse canonical rows, normalize line ranges, merge ranges, list candidate uncovered intervals, list overlaps, and flag malformed rows or non-canonical line-range formatting warnings. Include a short summary of helper findings in the Phase 3 report if used.
 8. For each source document in the manifest, union all canonical Phase 2 change-anchor line ranges. The union is the coverage basis for that source document.
-9. Identify ranges outside every canonical Phase 2 anchor range. Read only those candidate ranges plus necessary local context and classify them:
+9. Create or update the matching `source-doc-coverage/<source-relative-path-without-extension>.coverage.md` file before writing the final global review. This file must show the document-specific coverage process: classification, canonical ranges, merged range summary, candidate uncovered intervals, read scope, semantic classifications, overlap findings, non-coverage rationale, and per-document judgment.
+10. Identify ranges outside every canonical Phase 2 anchor range. Read only those candidate ranges plus necessary local context and classify them:
    - ignore blank lines, table separators, decorative separators, generated table-of-contents lines, and pure formatting
    - ignore background prose, repeated summaries, discarded options, and purely explanatory text unless it defines a production behavior, boundary, data fact, verification obligation, deployment requirement, auth/privacy rule, failure path, or preserve constraint
    - record each remaining meaningful uncovered range as a coverage gap
-10. Treat a source document with no canonical Phase 2 anchor ranges as a whole-document `candidate-uncovered` item until targeted reading proves it is reference-only, intentionally not read, a non-source artifact, or meaningful uncovered content.
-11. For each source document, detect cross-change and cross-capability overlaps by intersecting canonical Phase 2 anchor line ranges. List overlaps when ranges intersect or one range contains another; preserve all participating original anchor names.
-12. Explain each overlap as one of: valid shared source context, dependency/preserve evidence, same user/system loop split across changes, duplicated scope, conflicting ownership, broad anchor range, or unclear.
-13. Build an exhaustive adjustment ledger for every meaningful uncovered range, blocking capability-view inconsistency, or problematic overlap. Do not summarize with `+N more`; each required adjustment needs its own finding id.
-14. Build compact global statistics across source documents, changes, capabilities, covered ranges, meaningful uncovered ranges, overlap findings, gaps, and conflicts.
-15. Decide whether the current change plan is coherent, needs targeted Phase 4 adjustment, or is blocked.
+11. Treat a source document with no canonical Phase 2 anchor ranges as a whole-document `candidate-uncovered` item until targeted reading proves it is reference-only, intentionally not read, a non-source artifact, or meaningful uncovered content.
+12. For each source document, detect cross-change and cross-capability overlaps by intersecting canonical Phase 2 anchor line ranges. List overlaps when ranges intersect or one range contains another; preserve all participating original anchor names.
+13. Explain each overlap as one of: valid shared source context, dependency/preserve evidence, same user/system loop split across changes, duplicated scope, conflicting ownership, broad anchor range, or unclear.
+14. Ensure each source document's per-source review file is complete and linked from `source-doc-manifest.md`. The global `coverage-review.md` may summarize, but it must not be the only place where per-document reasoning exists.
+15. Build an exhaustive adjustment ledger for every meaningful uncovered range, blocking capability-view inconsistency, or problematic overlap. Do not summarize with `+N more`; each required adjustment needs its own finding id.
+16. Build compact global statistics across source documents, changes, capabilities, covered ranges, meaningful uncovered ranges, overlap findings, gaps, and conflicts.
+17. Decide whether the current change plan is coherent, needs targeted Phase 4 adjustment, or is blocked.
 
 The Phase 3 subagent may normalize paths, line range formatting, and table formatting in its review files so the result is readable. It must not merge away original Phase 2 anchor names or treat cross-change anchor-name mismatch as a coverage issue. Within one change, capability-view mismatch against the canonical change table is an artifact consistency issue and must be listed in the adjustment ledger or blockers.
 
@@ -83,8 +100,44 @@ The Phase 3 subagent may normalize paths, line range formatting, and table forma
 
 `source-doc-manifest.md` must include:
 
-| Source Document | Classification | Phase 2 Anchor Ranges | Meaningful Uncovered Ranges | Read Scope | Reason |
-| --- | --- | --- | --- | --- | --- |
+| Source Document | Classification | Review File | Phase 2 Anchor Ranges | Meaningful Uncovered Ranges | Read Scope | Reason |
+| --- | --- | --- | --- | --- | --- | --- |
+
+Each `source-doc-coverage/<source-relative-path-without-extension>.coverage.md` file must include:
+
+### Source Document
+
+- Source document path
+- Classification
+- Total lines, if known
+- Whether the file was read fully or targeted ranges only
+
+### Phase 2 Canonical Coverage
+
+| Change | Anchor | Lines | Coverage Status | Capabilities | Roles | Rationale |
+| --- | --- | --- | --- | --- | --- | --- |
+
+### Merged Range Summary
+
+| Merged Range | Covered By Changes | Coverage Meaning |
+| --- | --- | --- |
+
+### Candidate Uncovered Ranges
+
+| Candidate Range | Read Scope | Semantic Classification | Meaningful? | Reason |
+| --- | --- | --- | --- | --- |
+
+### Overlap Review
+
+| Overlap Lines | Participating Anchors | Changes | Overlap Reason | Review Judgment |
+| --- | --- | --- | --- | --- |
+
+### Document Judgment
+
+- Meaningful uncovered ranges, or `None`
+- Non-coverage statuses used
+- Required Phase 4 findings, or `None`
+- Judgment: `covered`, `covered-by-classification`, `adjust`, or `blocked`
 
 `change-capability-anchors/index.md` must include:
 
@@ -98,8 +151,8 @@ The Phase 3 subagent may normalize paths, line range formatting, and table forma
 
 It must include a per-source-document coverage table:
 
-| Source Document | Phase 2 Range Coverage Summary | Meaningful Uncovered Ranges | Cross-Change Overlaps | Read Scope | Non-Coverage Statuses | Review Judgment |
-| --- | --- | --- | --- | --- | --- | --- |
+| Source Document | Review File | Phase 2 Range Coverage Summary | Meaningful Uncovered Ranges | Cross-Change Overlaps | Read Scope | Non-Coverage Statuses | Review Judgment |
+| --- | --- | --- | --- | --- | --- | --- | --- |
 
 It must include a source-overlap review table:
 
@@ -174,6 +227,8 @@ If a gap requires broad reanalysis rather than targeted use of Phase 3 source-ra
 
 Use `complete` only when every planned change has a per-change source anchor file and one nested capability anchor file per planned capability increment, all nested capability files are consistent derived views of their canonical change files, every source document under the specified roots is manifest-classified, every planned capability increment is source-backed or has a justified non-coverage/gap rationale, there are no unclassified anchors, no blocking conflicts, every source document's meaningful content is covered by at least one canonical Phase 2 change-anchor line range or classified with justified non-coverage, every adjustment ledger item is closed or non-blocking, and cross-change overlaps are explained as valid sharing or explicitly non-blocking.
 
+Additionally, use `complete` only when every source document listed in `source-doc-manifest.md` has a matching `source-doc-coverage/<source-relative-path-without-extension>.coverage.md` file with document-specific merged ranges, candidate uncovered range classifications, overlap review, and judgment. Missing per-source review files are a Phase 3 artifact blocker and require `Decision: blocked` unless they can be produced in the same Phase 3 pass.
+
 Use `adjust` when meaningful source content is not covered by any canonical Phase 2 change-anchor range, overlap shows duplicated or distorted scope, capability boundaries need targeted edits, or current Phase 2 artifacts need focused updates. Phase 4 must run next, using the exhaustive adjustment ledger.
 
 Use `blocked` when source documents conflict, source roots are incomplete, the user must decide a boundary before coverage can close, or targeted Phase 4 adjustment is insufficient without a broad Phase 2 rerun.
@@ -186,6 +241,7 @@ When complete, `alignment-final-report.md` must summarize:
 - per-change source anchor files consumed
 - per-change capability anchor files consumed
 - source documents classified
+- per-source-document review files written
 - Phase 2 anchor line ranges reviewed by source document
 - source documents covered
 - meaningful uncovered source ranges, or confirmation that none remain

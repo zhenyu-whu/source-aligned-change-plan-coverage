@@ -17,7 +17,8 @@ from typing import Dict, Iterable, List, Optional, Tuple
 
 
 TABLE_SEPARATOR_RE = re.compile(r"^:?-{3,}:?$")
-SIMPLE_RANGE_RE = re.compile(r"^L?(\d+)(?:\s*-\s*L?(\d+))?$", re.IGNORECASE)
+CANONICAL_RANGE_SEGMENT_RE = re.compile(r"^L([1-9]\d*)-L([1-9]\d*)$")
+LEGACY_RANGE_SEGMENT_RE = re.compile(r"^L?(\d+)(?:\s*-\s*L?(\d+))?$", re.IGNORECASE)
 
 
 @dataclass
@@ -28,6 +29,7 @@ class AnchorRow:
     source_document: str
     anchor: str
     lines: str
+    raw_lines: str
     source_phrase: str
     coverage_status: str
     capabilities: str
@@ -50,6 +52,10 @@ def split_md_row(line: str) -> Optional[List[str]]:
 
 def normalize_cell(value: str) -> str:
     return re.sub(r"\s+", " ", value.replace("`", "")).strip()
+
+
+def normalize_spacing(value: str) -> str:
+    return re.sub(r"\s+", " ", value).strip()
 
 
 def parse_anchor_rows(markdown_path: Path, change: str) -> List[AnchorRow]:
@@ -78,7 +84,8 @@ def parse_anchor_rows(markdown_path: Path, change: str) -> List[AnchorRow]:
 
             source_document = normalize_cell(cell("source document"))
             anchor = normalize_cell(cell("anchor"))
-            line_spec = normalize_cell(cell("lines"))
+            raw_line_spec = normalize_spacing(cell("lines"))
+            line_spec = normalize_cell(raw_line_spec)
             if not source_document or not anchor or not line_spec:
                 continue
             rows.append(
@@ -89,6 +96,7 @@ def parse_anchor_rows(markdown_path: Path, change: str) -> List[AnchorRow]:
                     source_document=source_document,
                     anchor=anchor,
                     lines=line_spec,
+                    raw_lines=raw_line_spec,
                     source_phrase=cell("source phrase"),
                     coverage_status=cell("coverage status"),
                     capabilities=cell("capabilities"),
@@ -98,21 +106,46 @@ def parse_anchor_rows(markdown_path: Path, change: str) -> List[AnchorRow]:
     return rows
 
 
-def parse_line_ranges(row: AnchorRow) -> Tuple[List[Tuple[int, int]], List[str]]:
+def parse_line_ranges(row: AnchorRow) -> Tuple[List[Tuple[int, int]], List[str], List[str]]:
     ranges: List[Tuple[int, int]] = []
     errors: List[str] = []
+    warnings: List[str] = []
+
+    if "`" in row.raw_lines:
+        warnings.append("line range should not be wrapped in markdown backticks")
+    if "," in row.lines:
+        warnings.append("multiple line ranges should be separated with '; ', not ','")
+
     parts = [part.strip() for part in re.split(r"[;,]", row.lines) if part.strip()]
     for part in parts:
-        match = SIMPLE_RANGE_RE.match(part)
-        if not match:
-            errors.append(f"unsupported range segment: {part}")
-            continue
-        start = int(match.group(1))
-        end = int(match.group(2) or match.group(1))
+        canonical_match = CANONICAL_RANGE_SEGMENT_RE.match(part)
+        if canonical_match:
+            start = int(canonical_match.group(1))
+            end = int(canonical_match.group(2))
+        else:
+            warnings.append(f"non-canonical range segment: {part}; expected L<start>-L<end>")
+            match = LEGACY_RANGE_SEGMENT_RE.match(part)
+            if not match:
+                errors.append(f"unsupported range segment: {part}")
+                continue
+            start = int(match.group(1))
+            end = int(match.group(2) or match.group(1))
         if start > end:
+            warnings.append(f"range start greater than end, normalized mechanically: {part}")
             start, end = end, start
+        if start <= 0 or end <= 0:
+            errors.append(f"line numbers must be positive: {part}")
+            continue
         ranges.append((start, end))
-    return ranges, errors
+    return ranges, errors, warnings
+
+
+def intersect_ranges(left: ParsedRange, right: ParsedRange) -> Optional[Tuple[int, int]]:
+    start = max(left.start, right.start)
+    end = min(left.end, right.end)
+    if start <= end:
+        return start, end
+    return None
 
 
 def iter_canonical_change_files(orchestrate_dir: Path) -> Iterable[Tuple[str, Path]]:
@@ -151,18 +184,14 @@ def overlap_groups(ranges: List[ParsedRange]) -> List[Dict[str, object]]:
     groups: List[Dict[str, object]] = []
     sorted_ranges = sorted(ranges, key=lambda item: (item.start, item.end, item.row.change, item.row.anchor))
     for index, current in enumerate(sorted_ranges):
-        participants = [current]
-        overlap_start = current.start
-        overlap_end = current.end
         for other in sorted_ranges[index + 1 :]:
-            if other.start > overlap_end:
+            if other.start > current.end:
                 break
-            if other.end >= overlap_start:
-                participants.append(other)
-                overlap_start = max(overlap_start, other.start)
-                overlap_end = min(overlap_end, other.end)
-        distinct_changes = {item.row.change for item in participants}
-        if len(participants) > 1 and len(distinct_changes) > 1:
+            intersection = intersect_ranges(current, other)
+            if not intersection or current.row.change == other.row.change:
+                continue
+            overlap_start, overlap_end = intersection
+            participants = [current, other]
             groups.append(
                 {
                     "overlap_lines": [overlap_start, overlap_end],
@@ -191,6 +220,7 @@ def main() -> int:
     source_root = Path(args.source_root)
     by_doc: Dict[str, List[ParsedRange]] = {}
     malformed: List[Dict[str, object]] = []
+    range_format_warnings: List[Dict[str, object]] = []
     rows_read = 0
 
     for change, change_file in iter_canonical_change_files(orchestrate_dir):
@@ -199,7 +229,9 @@ def main() -> int:
             if ";" in row.source_document:
                 malformed.append({"row": asdict(row), "errors": ["multiple source documents in one row"]})
                 continue
-            ranges, errors = parse_line_ranges(row)
+            ranges, errors, warnings = parse_line_ranges(row)
+            if warnings:
+                range_format_warnings.append({"row": asdict(row), "warnings": warnings})
             if errors:
                 malformed.append({"row": asdict(row), "errors": errors})
                 continue
@@ -238,9 +270,11 @@ def main() -> int:
             "canonical_rows_read": rows_read,
             "source_documents_with_ranges": len(documents),
             "malformed_rows": len(malformed),
+            "range_format_warnings": len(range_format_warnings),
             "note": "Mechanical candidates only; semantic review is required before any decision.",
         },
         "malformed_rows": malformed,
+        "range_format_warnings": range_format_warnings,
         "documents": documents,
     }
     print(json.dumps(result, ensure_ascii=False, indent=2 if args.pretty else None))

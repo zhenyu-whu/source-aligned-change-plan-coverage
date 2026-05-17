@@ -63,9 +63,9 @@ If an adjustment cannot be made from Phase 3 findings plus targeted source conte
    - preserve the original Phase 2 anchor evidence that still applies
    - add Phase 3's meaningful uncovered source ranges where the adjusted change now owns them
    - remove or reclassify anchors that moved to another change
-   - keep line ranges as navigation hints
+   - keep line ranges as navigation hints using normalized `L<start>-L<end>` formatting
    - record gaps and blockers explicitly
-   - assign each new or changed canonical row a stable anchor id and the planned capability or `change-level-context`
+   - assign each new or changed canonical row a concise human-readable semantic anchor title and the planned capability or `change-level-context`
 6. For each affected capability increment, update or create its nested capability anchor file by deriving rows from the canonical change table:
    - copy the canonical `Source Document`, `Anchor`, `Lines`, `Source Phrase`, and primary `Coverage Status`
    - keep capability-specific rationale/propose-use wording only when it does not break traceability

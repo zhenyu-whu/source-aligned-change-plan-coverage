@@ -72,19 +72,17 @@ Each per-change anchor table must include:
 
 For anchors that directly advance the change, `Capabilities` must name the planned capability increment or increments supported by that anchor. Anchors used only as preserve, dependency, reference, non-goal, or later-expansion evidence may list contextual capabilities, but the rationale must say they are not direct capability advancement. If an anchor applies to the change as a whole but not to a direct capability increment, set `Capabilities` to `change-level-context` and explain the role.
 
-Use source-native anchors. Prefer:
+Use concise human-readable semantic anchor titles. The `Anchor` value is primarily for human review, not a global machine identity. Prefer a short plain semantic title that describes what the cited source range proves for this change.
 
-- headings and subheadings
-- table rows
-- numbered plan rows
-- route names
-- command/API/DTO/entity/table/job/event identifiers
-- decision IDs
-- prototype object keys
-- verification rows
-- deployment or ops anchors
+Anchor title guidance:
 
-Every Markdown or text anchor must include a stable anchor name and a line range. Line ranges are navigation hints, not the only identity.
+- Do not use local numbering prefixes such as `A01`.
+- Do not wrap anchor titles in backticks.
+- Avoid verbose category prefixes such as `Product module:` or `Architecture:` unless they are necessary for clarity.
+- Prefer a plain semantic title over copying a long source heading when the heading is less clear for the current change.
+- Cross-change anchor titles may repeat or differ; Phase 3 distinguishes them by source document, change, and line range.
+
+Line ranges are navigation hints, not the only identity. Every Markdown or text anchor must include a `Lines` value in `L<start>-L<end>` format. For multiple ranges, join them with `; `, for example `L20-L22; L93-L105; L136-L149`.
 
 ## Per-Change Capability Anchor Files
 
@@ -176,7 +174,7 @@ Before finishing Phase 2:
 - Confirm every canonical anchor row that directly names a planned capability appears in that capability's nested file.
 - Confirm capability files do not introduce independent anchors, narrower line ranges, merged source rows, or renamed anchors that break traceability to the canonical change table.
 - Confirm every anchor in each per-change file has a primary coverage status.
-- Confirm Markdown/text anchors include line ranges.
+- Confirm Markdown/text anchors use concise human-readable semantic titles and normalized `Lines` values in `L<start>-L<end>` format.
 - List all per-change `unclassified` and `unresolved-conflict` anchors in the Phase 2 report.
 - List all capability gaps in the Phase 2 report.
 - Confirm no Phase 3 review outputs or optional auxiliary exports were generated or rewritten by Phase 2.
