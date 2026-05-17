@@ -1,6 +1,6 @@
 # Phase 1: Initial Source-Aligned Change Plan
 
-Phase 1 creates the initial top-level OpenSpec change plan from the user-specified source documents. It does not create concrete OpenSpec changes, proposals, specs, designs, tasks, acceptance artifacts, or source coverage maps.
+Phase 1 creates the initial top-level OpenSpec change plan from the user-specified source documents. It does not create concrete OpenSpec changes, proposals, specs, designs, tasks, acceptance artifacts, source coverage maps, line-range anchors, coverage statuses, or a backlog of evidence items waiting for Phase 2.
 
 Write the plan to:
 
@@ -103,8 +103,8 @@ A foundation change is allowed only when all conditions hold:
 8. Order changes by real behavior dependencies, prioritizing the earliest minimal runnable loop.
 9. Build a capability progression matrix that shows how each change advances each capability.
 10. Mark key scenarios, non-goals, risks, conflicts, and deferred content from the input documents.
-11. Make `Source evidence` as precise as possible with exact source paths, headings, section numbers, decision IDs, route/page/object names, APIs, commands, DTOs, entities, tables, jobs, events, assets, environments, or verification anchors.
-12. If evidence is only a semantic phrase, preserve it but mark it as needing Phase 2 anchor resolution.
+11. Add concise `Source evidence` hints only to justify the planned slice. These hints may name source paths, headings, section numbers, decision IDs, route/page/object names, APIs, commands, DTOs, entities, tables, jobs, events, assets, environments, or verification anchors.
+12. Do not extract or enumerate every source-backed requirement in Phase 1. Do not create line ranges, anchor tables, coverage statuses, "pending Phase 2" evidence lists, or evidence counts. If a hint is only semantic, keep it as a short non-canonical plan clue; Phase 2 owns precise anchor resolution.
 
 ## Output
 
@@ -157,7 +157,7 @@ For each change:
 
 - Change name:
 - Closed-loop outcome:
-- Source evidence:
+- Source evidence hints (Phase 1, non-canonical):
 - Capability changes:
   - New: use capability ids from the Capability Map, or write `None`.
   - Modified: use capability ids from the Capability Map, or write `None`.
@@ -194,5 +194,5 @@ Answer:
 - source documents read
 - generated plan path
 - notable assumptions or conflicts
-- source evidence entries that need Phase 2 anchor resolution
+- whether any change lacks useful source hints; do not enumerate every pending evidence item
 - blockers, or `无`
