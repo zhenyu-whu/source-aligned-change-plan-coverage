@@ -17,16 +17,9 @@ Write current Phase 2 copies only:
 - `openspec/orchestrate/change-capability-anchors/<change-slug>/capability-anchors/<capability-slug>.md` for each planned capability increment in that change.
 - `openspec/orchestrate/reports/phase-2-agent-report.md`
 
-Do not create `iterations/`. If Phase 4 applies targeted adjustments, update these files in place and remove stale per-change anchor files whose changes are no longer current.
+If Phase 4 applies targeted adjustments, update these files in place and remove stale per-change anchor files whose changes are no longer current.
 
-Do not write Phase 3 review outputs or optional legacy/auxiliary exports in Phase 2:
-
-- `source-doc-manifest.md`
-- `change-capability-anchors/index.md`
-- `source-anchor-index.md`
-- `source-anchors/`
-- `change-source-map.md`
-- `capability-source-map.md`
+Phase 2 writes only the outputs listed above. Phase 3 owns the source manifest, per-source coverage notes, review files, and `change-capability-anchors/index.md`.
 
 ## Per-Change Subagent Discipline
 
@@ -41,7 +34,7 @@ Phase 2 must be reviewable as a set of independent change analyses.
    - Ask it to map each canonical source-backed requirement to the specific capability increment it supports for that change.
    - Ask it to derive nested capability files from the canonical change anchor table after the canonical table is complete.
    - It may read any source document needed to find precise anchors for that change.
-   - It must not read other `change-capability-anchors/<other-change-slug>/` directories, prior Phase 2 summaries, Phase 3 review files, or optional auxiliary exports such as `source-anchors/`, `change-source-map.md`, or `capability-source-map.md`.
+   - It must not read other `change-capability-anchors/<other-change-slug>/` directories, prior Phase 2 summaries, or Phase 3 review files.
    - It must write only inside `openspec/orchestrate/change-capability-anchors/<change-slug>/`.
 
 Use deterministic change slugs:
@@ -177,6 +170,6 @@ Before finishing Phase 2:
 - Confirm Markdown/text anchors use concise human-readable semantic titles and normalized `Lines` values in `L<start>-L<end>` format.
 - List all per-change `unclassified` and `unresolved-conflict` anchors in the Phase 2 report.
 - List all capability gaps in the Phase 2 report.
-- Confirm no Phase 3 review outputs or optional auxiliary exports were generated or rewritten by Phase 2.
+- Confirm Phase 2 generated or rewrote only current Phase 2 outputs.
 
 Final reply should be a short report: changes analyzed, per-change anchor files written, per-change capability anchor files written, per-change source gaps, capability gaps, unclassified anchors, unresolved conflicts, and blockers.

@@ -16,7 +16,7 @@ Because Phase 2 subagents are independent across changes, their anchor names and
 - Source document roots or exact source document paths.
 - Optional existing change plan to refine.
 
-Do not write outputs under `docs/plans/`. All workflow artifacts belong under `openspec/orchestrate/`.
+All workflow artifacts belong under `openspec/orchestrate/`.
 
 ## Output Layout
 
@@ -52,7 +52,7 @@ Optional bundled helper:
 └── phase3_line_range_audit.py   # mechanical Phase 3 candidate uncovered/overlap helper
 ```
 
-Do not create `iterations/`. Do not create default `source-anchors/`, `source-anchor-index.md`, `change-source-map.md`, or `capability-source-map.md` artifacts; Phase 2 per-change anchor files are the canonical source inputs for later `openspec-propose` work, and Phase 3 review files are audit outputs. The `source-doc-coverage/` directory is allowed only for Phase 3 per-document audit process notes and must not be treated as a canonical anchor corpus or later `openspec-propose` input. When Phase 4 adjusts the plan or Phase 2-derived artifacts, update the current files in place. Reports may summarize the latest pass, but they should not preserve every intermediate attempt.
+Phase 2 per-change anchor files are the canonical source inputs for later `openspec-propose` work, and Phase 3 review files are audit outputs. The `source-doc-coverage/` directory records Phase 3 per-document audit process notes, not a canonical anchor corpus or later `openspec-propose` input. When Phase 4 adjusts the plan or Phase 2-derived artifacts, update the current files in place. Reports summarize the latest pass instead of preserving every intermediate attempt.
 
 ## Reference Files
 

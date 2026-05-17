@@ -2,7 +2,7 @@
 
 Phase 4 runs only after Phase 3 returns `Decision: adjust`. It applies targeted changes to the current change plan and the affected Phase 2 output files using Phase 3's exhaustive adjustment ledger, per-source-document coverage gaps, overlap findings, and capability-view consistency findings. It exists to avoid rerunning the expensive Phase 2 workflow when Phase 3 has already identified precise source-backed uncovered ranges, problematic overlaps, or capability-boundary issues.
 
-Phase 4 MUST be performed by a fresh independent subagent. It must not rerun all Phase 2 per-change subagents, run legacy/deleted coverage checkers, or perform a new global source search for every change.
+Phase 4 MUST be performed by a fresh independent subagent. It must not rerun all Phase 2 per-change subagents or perform a new global source search for every change.
 
 ## Inputs
 
@@ -44,10 +44,8 @@ Phase 4 must not:
 - rerun Phase 2 globally
 - ask one subagent to reanalyze every planned change from scratch
 - rewrite unaffected per-change directories
-- create Phase 3-only reverse-index or duplicate map artifacts as a substitute for updating canonical Phase 2 anchors
 - invent new anchors without source evidence
 - use raw uncovered line counts as a plan-adjustment driver without semantic review of the uncovered ranges
-- run deleted or legacy coverage checkers
 - update a nested capability anchor file without first adding, updating, or confirming the matching canonical row in that change's `<change-slug>.md`
 - leave any Phase 3 adjustment ledger row without an explicit closure status
 
@@ -105,7 +103,6 @@ It must also include:
 - confirmation that canonical change anchors were updated before nested capability views
 - confirmation that affected nested capability views match the canonical change anchor rows
 - confirmation that no full Phase 2 rerun was performed
-- confirmation that no legacy/deleted coverage checker was run
 - next required step: `Run Phase 3 again`, or `Blocked`
 
 ## Completion

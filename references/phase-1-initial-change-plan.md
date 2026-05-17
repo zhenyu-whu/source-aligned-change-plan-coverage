@@ -14,8 +14,6 @@ Write the Phase 1 report to:
 openspec/orchestrate/reports/phase-1-agent-report.md
 ```
 
-Do not write generated plans to `docs/plans/`.
-
 ## Goal
 
 Plan a set of scientific, verifiable, iterative OpenSpec changes from the user-specified source documents.

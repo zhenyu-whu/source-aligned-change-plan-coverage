@@ -6,7 +6,7 @@ Phase 3 is not a second source-extraction pass and must not create an alternate 
 
 Phase 3 must preserve its per-document reasoning trail. In addition to the manifest and global review, it writes one review file per source document under `openspec/orchestrate/source-doc-coverage/`. These files are intermediate audit process artifacts: they explain how the decision was reached for each source document. They are not canonical source anchors and must not be used by later `openspec-propose` work instead of the Phase 2 per-change anchor files.
 
-Phase 3 may use `scripts/phase3_line_range_audit.py` as a deterministic mechanical helper to parse line ranges, merge ranges, list candidate uncovered intervals, list overlap clusters, and flag malformed anchor rows or non-canonical line-range formatting warnings. This helper is not a semantic judge and its output is not a quality gate. Phase 3 must not run legacy/deleted coverage checkers or use raw line counts as the decision basis.
+Phase 3 may use `scripts/phase3_line_range_audit.py` as a deterministic mechanical helper to parse line ranges, merge ranges, list candidate uncovered intervals, list overlap clusters, and flag malformed anchor rows or non-canonical line-range formatting warnings. This helper is not a semantic judge and its output is not a quality gate. Raw line counts must not be used as the decision basis.
 
 ## Inputs
 
@@ -39,7 +39,7 @@ docs/prototype/pages/editor.md
 -> openspec/orchestrate/source-doc-coverage/docs--prototype--pages--editor.coverage.md
 ```
 
-Do not create default `source-anchors/`, `source-anchor-index.md`, `change-source-map.md`, or `capability-source-map.md` files. Those duplicate Phase 2 anchors and make human review harder. `source-doc-coverage/` is allowed because it records Phase 3 review process, not a canonical anchor set. If the user explicitly requests an auxiliary export, write it outside the default workflow and state that it is not a canonical propose input.
+Use only the outputs listed above for the default workflow. `source-doc-coverage/` records Phase 3 review process, not a canonical anchor set.
 
 Phase 3 proposes adjustments in `reviews/change-plan-adjustments.md`; it does not update `change-plan.md` or Phase 2 per-change/capability anchor files. Targeted updates belong to Phase 4.
 
@@ -252,8 +252,7 @@ When complete, `alignment-final-report.md` must summarize:
 - non-coverage classifications
 - conflicts resolved or remaining
 - confirmation that every source document under the specified roots is covered by Phase 2 anchor ranges or justified
-- confirmation that no Phase 3 reverse-index or duplicate map artifacts were created by default
-- confirmation that no legacy/deleted coverage checker or raw helper output was used as a gate
+- confirmation that no raw helper output was used as a gate
 - confirmation that any line-range helper output, if used, was treated only as mechanical candidate input
 - confirmation that no source anchor remains unclassified
 
