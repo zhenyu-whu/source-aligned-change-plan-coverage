@@ -12,13 +12,13 @@ The primary Phase 2 analysis unit is one change. The per-change file is the cano
 
 ## Outputs
 
-Write current Phase 2 copies only:
+Write Phase 2 pass artifacts only:
 
 - `openspec/orchestrate/change-capability-anchors/<change-slug>/<change-slug>.md` for each planned change.
 - `openspec/orchestrate/change-capability-anchors/<change-slug>/capability-anchors/<capability-slug>.md` for each planned capability increment in that change.
 - `openspec/orchestrate/reports/phase-2-agent-report.md`
 
-If Phase 4 applies targeted adjustments, update these files in place and remove stale per-change atom files whose changes are no longer current.
+These files are immutable after Phase 2 completes. If Phase 4 applies targeted adjustments, it must write adjusted copies and supersession/removal mappings under `openspec/orchestrate/phase-4-adjustments/pass-<NN>/`; it must not edit, delete, or rewrite the original Phase 2 files or `reports/phase-2-agent-report.md`.
 
 Phase 2 writes only the outputs listed above. Phase 1 owns the initial source manifest. Phase 3 enriches the manifest with global coverage review and owns the global obligation atom index, per-source coverage notes, review files, and `change-capability-anchors/index.md`.
 

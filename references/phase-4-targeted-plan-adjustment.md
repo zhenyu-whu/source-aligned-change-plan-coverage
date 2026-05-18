@@ -1,8 +1,8 @@
-# Phase 4: Targeted Change Plan and Obligation Atom Artifact Adjustment
+# Phase 4: Targeted Change Plan and Obligation Atom Adjustment Packet
 
-Phase 4 runs only after Phase 3 returns `Decision: adjust`. It applies targeted changes to the current change/capability framework and the affected Phase 2 output files using Phase 3's exhaustive adjustment ledger, per-source-document missing atoms, duplicate/ownership findings, broad-anchor compression findings, capability progression findings, change complexity findings, overlap findings, and capability-view consistency findings.
+Phase 4 runs only after Phase 3 returns `Decision: adjust`. It publishes a targeted adjustment packet for the current change/capability framework and affected Phase 2-derived atom artifacts using Phase 3's exhaustive adjustment ledger, per-source-document missing atoms, duplicate/ownership findings, broad-anchor compression findings, capability progression findings, change complexity findings, overlap findings, and capability-view consistency findings.
 
-Phase 4 exists to scientifically recalibrate the initial framework without rerunning the expensive Phase 2 workflow when Phase 3 has already identified precise source-backed missing obligations, ownership problems, sequencing problems, or over-complex change slices.
+Phase 4 exists to scientifically recalibrate the initial framework without rerunning the expensive Phase 2 workflow and without modifying Phase 2's original outputs. Phase 3 has already identified precise source-backed missing obligations, ownership problems, sequencing problems, or over-complex change slices; Phase 4 records the resulting effective changes in its own pass directory so each phase's original outputs remain reviewable.
 
 Phase 4 MUST be performed by a fresh independent subagent. It must not rerun all Phase 2 per-change subagents or perform a new global source search for every change.
 
@@ -21,17 +21,18 @@ Phase 4 starts from the assumption that Phase 2 atoms are source-backed candidat
 
 ## Outputs
 
-Update current files in place:
+Write a new pass directory. Use the next monotonically increasing directory name under `openspec/orchestrate/phase-4-adjustments/`, such as `pass-01`, `pass-02`, and so on. Never overwrite an existing Phase 4 pass directory, and never edit, delete, or rewrite original Phase 2 files.
 
-- `openspec/orchestrate/change-plan.md`
-- `openspec/orchestrate/reviews/change-plan-adjustments.md`
-- affected `openspec/orchestrate/change-capability-anchors/<change-slug>/<change-slug>.md`
-- affected `openspec/orchestrate/change-capability-anchors/<change-slug>/capability-anchors/<capability-slug>.md`
-- new per-change or per-capability atom files when the adjusted plan adds them
-- `openspec/orchestrate/reports/phase-2-agent-report.md`, preserving unaffected rows and marking targeted Phase 4 updates
-- `openspec/orchestrate/reports/phase-4-agent-report.md`
+- `openspec/orchestrate/phase-4-adjustments/pass-<NN>/change-plan.md` as the adjusted effective plan snapshot. It supersedes root `change-plan.md` only for later effective review; it does not overwrite it.
+- `openspec/orchestrate/phase-4-adjustments/pass-<NN>/phase-4-adjustment-index.md`, mapping each affected original/effective artifact and atom row to its adjusted, added, superseded, removed, reclassified, or blocked result.
+- adjusted copies of affected per-change files under `openspec/orchestrate/phase-4-adjustments/pass-<NN>/change-capability-anchors/<change-slug>/<change-slug>.md`.
+- adjusted copies of affected per-capability files under `openspec/orchestrate/phase-4-adjustments/pass-<NN>/change-capability-anchors/<change-slug>/capability-anchors/<capability-slug>.md`.
+- new per-change or per-capability atom files under the pass directory when the adjusted plan adds them.
+- `openspec/orchestrate/phase-4-adjustments/pass-<NN>/phase-2-agent-report-addendum.md`, preserving the original Phase 2 report by reference and recording only Phase 4 targeted adjustments.
+- `openspec/orchestrate/phase-4-adjustments/pass-<NN>/phase-4-agent-report.md`.
+- Optional `openspec/orchestrate/reports/phase-4-agent-report.md` as a latest-pass pointer or summary, if the workflow wants a stable root-level entry point.
 
-Do not write Phase 3 review outputs in Phase 4 except `reviews/change-plan-adjustments.md` closure status. A fresh Phase 3 pass rebuilds the compact manifest, per-source reviews, and global obligation atom index after Phase 4 finishes.
+Do not write Phase 3 review outputs in Phase 4, including `reviews/change-plan-adjustments.md`. Preserve Phase 3's adjustment ledger as the review input, and record closure status in `phase-4-adjustment-index.md` and `phase-4-agent-report.md`. A fresh Phase 3 pass rebuilds the compact manifest, per-source reviews, and global obligation atom index after Phase 4 finishes by consuming the latest effective artifact set.
 
 ## Scope Rules
 
@@ -48,7 +49,7 @@ Phase 4 may:
 - split over-complex changes by coherent atom groups when Phase 3 shows the current change would be too large to implement, review, verify, or archive safely
 - narrow a change's capability increments when Phase 3 shows some atoms are preserve/dependency/context rather than direct advancement
 - create new per-change and per-capability atom files for new changes or capability increments
-- update affected existing per-change and per-capability atom files so they match the adjusted plan and preserve canonical-change/capability-view consistency
+- write adjusted copies of affected existing per-change and per-capability atom files so they match the adjusted plan and preserve canonical-change/capability-view consistency in the effective view
 - read targeted source context around Phase 3's missing atoms or overlap findings when needed to verify wording or line ranges
 
 Phase 4 must not:
@@ -56,10 +57,12 @@ Phase 4 must not:
 - rerun Phase 2 globally
 - ask one subagent to reanalyze every planned change from scratch
 - rewrite unaffected per-change directories
+- modify, delete, or rewrite original Phase 2 output files or `reports/phase-2-agent-report.md`
+- modify Phase 3 review outputs such as `reviews/change-plan-adjustments.md`
 - discard or rewrite source-backed Phase 2 atom content merely because the change/capability framework changed
 - invent new atoms without source evidence
 - use raw uncovered line counts as a plan-adjustment driver without semantic review of the uncovered ranges
-- update a nested capability atom file without first adding, updating, or confirming the matching canonical row in that change's `<change-slug>.md`
+- write an adjusted nested capability atom file without first adding, updating, or confirming the matching adjusted canonical row in that change's `<change-slug>.md` copy
 - leave duplicate direct atoms unresolved when Phase 3 has enough evidence to choose an owner
 - leave any Phase 3 adjustment ledger row without an explicit closure status
 
@@ -112,7 +115,7 @@ Use these rules:
 - Keep a change together when splitting would force fake stubs, break one user/system loop, or make either side unverifiable.
 - Prefer the earliest minimal runnable loop after a foundation change; defer only atoms that are not required for that loop's production truth.
 
-When `change-plan.md` changes, update all affected plan surfaces together:
+When the effective change plan changes, write an adjusted `phase-4-adjustments/pass-<NN>/change-plan.md` snapshot with all affected plan surfaces updated together:
 
 - `Capability Map`: capability id, behavior boundary, first change, later expansion.
 - `Capability Progression Matrix`: cells must describe concrete atom groups or deltas, not generic reuse.
@@ -134,22 +137,23 @@ When `change-plan.md` changes, update all affected plan surfaces together:
    - sequence adjustment: the change order or atom delta placement must change so capability atoms advance in a coherent order
    - complexity adjustment: one or more changes must be split, narrowed, or merged because the current atom/evidence load is not reviewable
    - blocked: ownership cannot be resolved from Phase 3 evidence plus targeted source context
-5. Update `change-plan.md` using the smallest coherent adjustment that covers the source-backed obligation or fixes the slicing/capability issue. If all findings are artifact-only, do not edit the plan, but state why ownership is already correct.
-6. After any plan edit, verify the adjusted plan still passes the Closed-loop Test, foundation exception rules, anti one-to-one capability mapping rule, and split challenge from Phase 1. If not, revise the plan or return `blocked`.
-7. Reconcile planned capability increments with the adjusted atom ownership:
+5. Create the next `openspec/orchestrate/phase-4-adjustments/pass-<NN>/` directory and initialize its `phase-4-adjustment-index.md`.
+6. Write `phase-4-adjustments/pass-<NN>/change-plan.md` using the smallest coherent adjustment that covers the source-backed obligation or fixes the slicing/capability issue. If all findings are artifact-only, copy or reference the effective input plan as unchanged in the pass index and state why ownership is already correct. Do not edit root `openspec/orchestrate/change-plan.md`.
+7. After any adjusted-plan snapshot change, verify the adjusted plan still passes the Closed-loop Test, foundation exception rules, anti one-to-one capability mapping rule, and split challenge from Phase 1. If not, revise the adjusted snapshot or return `blocked`.
+8. Reconcile planned capability increments with the adjusted atom ownership:
    - each direct atom must appear under exactly one owner change and one owner capability
    - each capability matrix cell must be backed by one or more direct atoms or an explicit gap
    - no matrix cell may describe generic reuse, dependency-only behavior, or repeated ownership of the same atom
    - first appearance of a capability remains `New`; later direct deltas are `Modified`
    - later changes that only preserve or depend on prior atoms must not list that capability as advanced
-8. Re-evaluate the adjusted change order and complexity budget:
+9. Re-evaluate the adjusted change order and complexity budget:
    - every capability's atom sequence is baseline -> refinement/hardening/extension, unless source evidence justifies another order
    - every non-foundation change still has a single closed-loop outcome
    - every later change depends on earlier realized baseline atoms instead of repeating them as direct scope
    - every earlier change carries only the future/context atoms needed to keep current design coherent
    - every split/merge/narrowing decision has a source-backed and reviewability-backed rationale
    - no adjusted change is overloaded with unrelated atom groups or evidence surfaces
-9. For each affected existing change, update its canonical per-change file:
+10. For each affected existing change, write an adjusted canonical per-change file copy under `phase-4-adjustments/pass-<NN>/change-capability-anchors/<change-slug>/<change-slug>.md`:
    - preserve the original Phase 2 atom evidence that still applies
    - add Phase 3's missing obligation atoms where the adjusted change now owns them
    - split broad atoms into smaller atoms when Phase 3 found compressed obligations
@@ -160,25 +164,30 @@ When `change-plan.md` changes, update all affected plan surfaces together:
    - record atom gaps and blockers explicitly
    - assign each new or changed canonical atom a concise readable local atom id, source document, line range, atom type, source fact, normativity, owner capability, coverage status, roles, propose use, and evidence need
    - update the supporting source anchor table so every direct atom has traceable source evidence
-10. For each affected capability increment, update or create its nested capability atom file by deriving rows from the canonical change ledger:
+11. For each affected capability increment, write or create its adjusted nested capability atom file under the pass directory by deriving rows from the adjusted canonical change ledger copy:
    - copy the canonical `Atom ID`, `Source Document`, `Lines`, `Atom Type`, `Source Fact`, `Normativity`, `Coverage Status`, owner capability, `Propose Use`, and `Evidence Need`
    - keep capability-specific rationale/propose-use wording only when it does not break traceability
    - ensure every canonical atom that directly names that capability appears in the capability file
    - ensure every capability-file row has a matching canonical atom row
-11. If the plan adds a new change, create its `change-capability-anchors/<change-slug>/<change-slug>.md` and nested capability atom files from the Phase 3 source obligation or overlap evidence and targeted source context.
-12. If the plan removes, splits, merges, reorders, or renames a change or capability, remove or rewrite stale affected atom files only inside the targeted update set, and record where each prior direct atom moved or how it was reclassified.
-13. Update `reports/phase-2-agent-report.md` in place:
-   - preserve unaffected Phase 2 rows
-   - mark affected rows as `Phase 4 targeted update`
+12. If the plan adds a new change, create its `phase-4-adjustments/pass-<NN>/change-capability-anchors/<change-slug>/<change-slug>.md` and nested capability atom files from the Phase 3 source obligation or overlap evidence and targeted source context.
+13. If the plan removes, splits, merges, reorders, or renames a change or capability, record each original file as superseded, removed, or remapped in `phase-4-adjustment-index.md`; do not delete or rewrite the original Phase 2 files.
+14. Write `phase-4-adjustments/pass-<NN>/phase-2-agent-report-addendum.md`:
+   - preserve unaffected Phase 2 rows by reference
+   - mark affected rows as `Phase 4 targeted adjustment`
    - add rows for new changes or capability files
-   - list removed stale change directories or files if any
+   - list superseded or removed stale change directories or files in the effective view
    - summarize missing atoms added, broad atoms split, and duplicates reclassified
-14. Update `reviews/change-plan-adjustments.md` with an applied-adjustments section. It must preserve the original ledger and add a closure table:
+15. Write `phase-4-adjustments/pass-<NN>/phase-4-adjustment-index.md` with an applied-adjustments section. It must preserve the original Phase 3 ledger by reference or copied excerpt and add a closure table:
 
 | Finding ID | Closure Status | Plan Adjustment | Canonical Change Atom | Capability View Updates | Duplicate/Relation Resolution | Remaining Gap or Blocker |
 | --- | --- | --- | --- | --- | --- | --- |
 
-15. Run a local artifact consistency check by inspection or deterministic parsing before finishing:
+It must also include an artifact mapping table:
+
+| Original or Prior Effective Artifact | Phase 4 Artifact | Effective Action | Affected Atom IDs | Reason |
+| --- | --- | --- | --- | --- |
+
+16. Run a local artifact consistency check by inspection or deterministic parsing before finishing:
     - every ledger row has closure status `applied`, `non-coverage-classified`, `duplicate-resolved`, or `blocked`
     - every plan-changing ledger row has a recorded change/capability adjustment rationale
     - every capability matrix cell for affected changes is backed by direct atoms or explicit gaps
@@ -188,13 +197,14 @@ When `change-plan.md` changes, update all affected plan surfaces together:
     - every new/changed canonical atom that directly names a capability appears in that capability file
     - no duplicate direct atom remains in the affected files unless it is explicitly marked `blocked`
     - every broad-anchor compression finding resulted in split atoms or a source-backed non-coverage classification
-16. Write `reports/phase-4-agent-report.md`.
+    - no original Phase 2 file was modified, deleted, or rewritten
+17. Write `phase-4-adjustments/pass-<NN>/phase-4-agent-report.md`. Optionally write `reports/phase-4-agent-report.md` as a latest-pass pointer or summary.
 
 ## Phase 4 Report
 
-`reports/phase-4-agent-report.md` must include:
+`phase-4-adjustments/pass-<NN>/phase-4-agent-report.md` must include:
 
-| Phase 3 Finding | Source Ranges or Atoms | Plan Change Applied | Phase 2 Files Updated | Atom Resolution | Remaining Gap or Blocker |
+| Phase 3 Finding | Source Ranges or Atoms | Plan Change Applied | Phase 4 Adjustment Files Written | Atom Resolution | Remaining Gap or Blocker |
 | --- | --- | --- | --- | --- | --- |
 
 It must also include:
@@ -204,20 +214,22 @@ It must also include:
 - capability atom progression recalibration summary
 - change packet context recalibration summary
 - change complexity recalibration summary
-- whether `change-plan.md` changed
+- whether the adjusted `phase-4-adjustments/pass-<NN>/change-plan.md` snapshot differs from the effective input plan
 - capability map and progression matrix updates, or confirmation that all findings were artifact-only
 - affected changes and capabilities
 - new, split, removed, or reclassified atoms
-- new or removed change/capability atom files
+- new, superseded, removed, or remapped change/capability atom files in the effective view
 - targeted source documents read, if any
 - confirmation that adjusted changes still satisfy the Closed-loop Test or are valid foundation exceptions
 - confirmation that adjusted capability relations are direct `New` or `Modified` advancement only
 - confirmation that adjusted capability atom sequences are coherent
 - confirmation that change packets contain necessary upstream baseline and downstream design context without pulling future scope into current direct ownership
 - confirmation that adjusted change complexity is reviewable
-- confirmation that canonical change atom ledgers were updated before nested capability views
-- confirmation that affected nested capability views match the canonical change atom rows
+- confirmation that adjusted canonical change atom ledger copies were written before adjusted nested capability view copies
+- confirmation that affected adjusted nested capability views match the adjusted canonical change atom rows
 - confirmation that duplicate direct atoms were resolved or blocked
+- confirmation that original Phase 2 files and `reports/phase-2-agent-report.md` were not modified
+- confirmation that Phase 3 review outputs, including `reviews/change-plan-adjustments.md`, were not modified
 - confirmation that no full Phase 2 rerun was performed
 - next required step: `Run Phase 3 again`, or `Blocked`
 
@@ -228,7 +240,7 @@ Phase 4 ends with exactly one status in `phase-4-agent-report.md`:
 - `Phase 4 Status: adjusted`
 - `Phase 4 Status: blocked`
 
-Use `adjusted` when every Phase 3 adjustment ledger row has been closed, capability atom progression is coherent, adjusted changes remain reviewably scoped, and all affected Phase 2 artifacts are synchronized through the canonical change atom ledger and derived capability views.
+Use `adjusted` when every Phase 3 adjustment ledger row has been closed, capability atom progression is coherent, adjusted changes remain reviewably scoped, all affected effective artifacts are represented in the Phase 4 adjustment packet through adjusted canonical change atom ledgers and derived capability views, and original Phase 2 outputs remain untouched.
 
 Use `blocked` when the adjustment needs source boundaries, product decisions, or broad reanalysis that Phase 4 is not allowed to perform.
 

@@ -39,6 +39,17 @@ openspec/orchestrate/
 │       ├── <change-slug>.md         # one independent obligation atom + source anchor analysis per change
 │       └── capability-anchors/
 │           └── <capability-slug>.md # capability atom view scoped to this change
+├── phase-4-adjustments/
+│   └── pass-<NN>/
+│       ├── change-plan.md                   # Phase 4 adjusted plan snapshot; does not overwrite the Phase 1/2 plan
+│       ├── phase-4-adjustment-index.md      # maps original Phase 2 artifacts/rows to adjusted, superseded, removed, or added outputs
+│       ├── phase-2-agent-report-addendum.md # Phase 4 addendum; does not overwrite the Phase 2 report
+│       ├── phase-4-agent-report.md
+│       └── change-capability-anchors/
+│           └── <change-slug>/
+│               ├── <change-slug>.md
+│               └── capability-anchors/
+│                   └── <capability-slug>.md
 ├── reviews/
 │   ├── phase-3-trace/
 │   │   ├── local-to-global-atom-map.md       # Phase 3 mapping from every local Phase 2 atom/context row to a global atom id or relation
@@ -52,7 +63,7 @@ openspec/orchestrate/
     ├── phase-1-agent-report.md
     ├── phase-2-agent-report.md
     ├── phase-3-agent-report.md
-    ├── phase-4-agent-report.md        # only when Phase 4 is invoked
+    ├── phase-4-agent-report.md        # optional latest Phase 4 pass pointer/summary
     ├── change-capability-human-plan.md # only when Phase 3 completes; human reading aid, not source of truth
     └── alignment-final-report.md
 ```
@@ -64,7 +75,7 @@ Optional bundled helper:
 └── phase3_line_range_audit.py   # mechanical Phase 3 candidate uncovered/overlap helper
 ```
 
-Phase 2 per-change files are the canonical per-change source inputs for later `openspec-propose` work because they contain the obligation atom ledger and supporting source anchors. Phase 3's `change-capability-anchors/obligation-atom-index.md` is the global uniqueness and ownership registry for those same atoms. The `source-doc-coverage/` directory records Phase 3 per-document audit process notes, not a replacement for the per-change atom ledgers. `reviews/phase-3-trace/` records the current Phase 3 pass's intermediate review trail so humans can audit how local atoms became global atoms, how duplicate ownership was resolved, how uncovered source ranges were classified, and why the final decision was reached. These trace files are not source of truth and must be regenerated or overwritten on each fresh Phase 3 pass. `reports/change-capability-human-plan.md` is a human-facing synthesis of the final change packets and capability progression; it must not replace the atom ledgers or global atom index as source of truth. When Phase 4 adjusts the plan or Phase 2-derived artifacts, update the current files in place. Reports summarize the latest pass instead of preserving every intermediate attempt.
+Phase 2 per-change files are the canonical source inputs for the original Phase 2 pass because they contain the obligation atom ledger and supporting source anchors. They must remain immutable after Phase 2 completes so humans can review the exact Phase 2 output later. Phase 3's `change-capability-anchors/obligation-atom-index.md` is the global uniqueness and ownership registry for the current effective atom set. The `source-doc-coverage/` directory records Phase 3 per-document audit process notes, not a replacement for the per-change atom ledgers. `reviews/phase-3-trace/` records the current Phase 3 pass's intermediate review trail so humans can audit how local atoms became global atoms, how duplicate ownership was resolved, how uncovered source ranges were classified, and why the final decision was reached. These trace files are not source of truth and must be regenerated or overwritten on each fresh Phase 3 pass. `reports/change-capability-human-plan.md` is a human-facing synthesis of the final change packets and capability progression; it must not replace the atom ledgers or global atom index as source of truth. When Phase 4 adjusts the plan or Phase 2-derived artifacts, it must write a new `phase-4-adjustments/pass-<NN>/` adjustment packet instead of editing or deleting Phase 2 files in place. Later Phase 3 and `openspec-propose` work consume the latest effective artifact set: original Phase 2 files plus the latest Phase 4 adjustment packet's adjusted, added, superseded, or removed mappings. Reports summarize the latest pass, while each Phase 4 pass directory preserves that pass's adjusted outputs.
 
 ## Reference Files
 
@@ -77,12 +88,12 @@ Read these references only when entering the matching phase:
 
 ## Subagent Rule
 
-This workflow is subagent-based. Phase 1 and Phase 3 MUST each be performed by a fresh independent subagent. Phase 2 MUST use fresh independent subagents for each planned change. Phase 4 MUST use a fresh independent targeted-adjustment subagent when Phase 3 finds source-backed missing obligations, duplicate atom ownership, broad-anchor compression, or other findings that require plan or Phase 2 artifact updates.
+This workflow is subagent-based. Phase 1 and Phase 3 MUST each be performed by a fresh independent subagent. Phase 2 MUST use fresh independent subagents for each planned change. Phase 4 MUST use a fresh independent targeted-adjustment subagent when Phase 3 finds source-backed missing obligations, duplicate atom ownership, broad-anchor compression, or other findings that require plan or Phase 2-derived artifact adjustments.
 
 - Phase 1: full-source initial change/capability framework generation.
 - Phase 2 change analysis: one canonical obligation atom analysis subagent per planned change; each subagent must read every source document from the Phase 1 manifest and produce a per-source direct-atom/contextual-atom/no-atom decision for that change. Do not use one subagent to analyze multiple changes. Nested capability files are derived views from that change's canonical atom ledger.
-- Phase 3: cross-change/global obligation atom synthesis, source-document coverage review, duplicate atom/ownership review, capability atom progression review, change complexity review, line-range coverage review, cross-change overlap review, and adjustment decision using Phase 2 atom ledgers as the source of truth.
-- Phase 4: scientific change/capability framework adjustment plus targeted Phase 2 artifact synchronization using Phase 3 findings; do not rerun the full Phase 2 workflow.
+- Phase 3: cross-change/global obligation atom synthesis, source-document coverage review, duplicate atom/ownership review, capability atom progression review, change complexity review, line-range coverage review, cross-change overlap review, and adjustment decision using the effective atom set: immutable Phase 2 atom ledgers plus the latest Phase 4 adjustment packet when one exists.
+- Phase 4: scientific change/capability framework adjustment plus a targeted Phase 4 adjustment packet for Phase 2-derived artifacts using Phase 3 findings; do not rerun the full Phase 2 workflow and do not edit original Phase 2 files in place.
 
 If Phase 3 returns `adjust`, spawn a fresh Phase 4 subagent, then run Phase 3 again with a fresh review subagent. Do not reuse prior phase or per-change agents. Do not rerun all Phase 2 subagents unless Phase 4 reports that targeted adjustment is insufficient and the user explicitly requests a full Phase 2 rerun.
 
@@ -97,10 +108,10 @@ The main agent only orchestrates, checks interface-level outputs, and starts the
 3. Phase 2 change analysis: for every planned change, spawn a fresh independent subagent. Each subagent uses only that change's name, plan definition, planned capability increments, and the Phase 1 source document manifest to independently read every source document and extract that change's direct obligation atoms, contextual atoms, or an explicit no-current-change-obligation classification for each document. It writes `change-capability-anchors/<change-slug>/<change-slug>.md` as the canonical per-change/per-source obligation atom ledger and source anchor table for the change, then derives `change-capability-anchors/<change-slug>/capability-anchors/<capability-slug>.md` files from that canonical atom ledger.
 4. Phase 3: spawn a fresh subagent to synthesize all Phase 2 per-change outputs into `source-doc-manifest.md`, `source-doc-coverage/<source-relative-path-without-extension>.coverage.md` files, `change-capability-anchors/index.md`, `change-capability-anchors/obligation-atom-index.md`, `reviews/phase-3-trace/*.md`, `reviews/coverage-review.md`, `reports/change-capability-human-plan.md` only when complete, and, only when needed, `reviews/change-plan-adjustments.md`; for each source document, review all production-meaningful obligation-bearing content, verify that each obligation atom is owned by exactly one change/capability or has a justified non-coverage status, detect duplicate atoms and broad anchors that compress UI/flow obligations, analyze each capability's atom progression order across changes, evaluate each change's atom load and implementation complexity, union line ranges only as secondary coverage evidence, list cross-change/capability overlaps for human review, record the intermediate local-to-global mapping/remainder/duplicate/progression/decision trace files for human audit, and decide:
    - `complete`: every production-meaningful source obligation is represented by exactly one current direct obligation atom or has a justified non-coverage status, every source document's non-atom content is production-safe to ignore, every capability's atom progression order is coherent, every change remains reviewably scoped, and the plan is coherent.
-   - `adjust`: uncovered obligation atoms, duplicate/ambiguous atom ownership, broad anchor compression, incoherent capability progression, over-complex change scope, overlap conflicts, or bad slicing require framework and Phase 2 artifact updates.
+   - `adjust`: uncovered obligation atoms, duplicate/ambiguous atom ownership, broad anchor compression, incoherent capability progression, over-complex change scope, overlap conflicts, or bad slicing require framework changes or Phase 4 adjustment-packet outputs.
    - `blocked`: source docs, change boundaries, conflicts, or coverage evidence are insufficient.
-5. Phase 4: if Phase 3 returns `adjust`, spawn a fresh targeted-adjustment subagent. It updates `change-plan.md`, `reviews/change-plan-adjustments.md`, and only the affected Phase 2 output files in place. It must not rerun the full Phase 2 workflow. For every affected change, it updates the canonical obligation atom ledger first, then regenerates or synchronizes the affected nested capability files from that canonical ledger.
-6. Continue Phase 3 -> Phase 4 -> Phase 3 until Phase 3 returns `complete` or `blocked`.
+5. Phase 4: if Phase 3 returns `adjust`, spawn a fresh targeted-adjustment subagent. It writes the next `phase-4-adjustments/pass-<NN>/` directory with an adjusted `change-plan.md` snapshot, `phase-4-adjustment-index.md`, `phase-2-agent-report-addendum.md`, adjusted copies for only the affected Phase 2-derived atom files, and `phase-4-agent-report.md`. It must not edit, delete, or rewrite the original Phase 2 output files or `reports/phase-2-agent-report.md`. It must not rerun the full Phase 2 workflow. For every affected change, it writes the adjusted canonical obligation atom ledger copy first, then derives the affected nested capability file copies from that adjusted canonical ledger. If a change or capability is removed, split, merged, or renamed, Phase 4 records the superseded or removed original artifact in `phase-4-adjustment-index.md` instead of deleting the original Phase 2 file.
+6. Continue Phase 3 -> Phase 4 -> Phase 3 until Phase 3 returns `complete` or `blocked`. After a Phase 4 pass exists, each later Phase 3 pass must evaluate the latest effective artifact set by applying the latest `phase-4-adjustments/pass-<NN>/phase-4-adjustment-index.md` mappings to the original Phase 2 outputs.
 
 ## Main-Agent Gates
 
@@ -118,6 +129,6 @@ After each phase, check only interface facts:
 - Phase 3 reports may include deterministic line-range helper results as mechanical candidates, but must not use helper output as the quality gate. Raw line counts or uncovered ranges alone are not sufficient without semantic review.
 - Phase 3 outputs contain a decision of `complete`, `adjust`, or `blocked`.
 - When Phase 3 returns `complete`, outputs contain `reports/change-capability-human-plan.md` with human-readable change packets, capability progression, upstream baseline, downstream design constraints, non-goals, and links back to atom ledgers and the global atom index.
-- If Phase 4 is invoked, its report states which Phase 3 findings were addressed, which files were updated, which new or changed per-change/capability atom files were written, how duplicate or missing atoms were resolved, and whether targeted adjustment was sufficient.
+- If Phase 4 is invoked, its report states which Phase 3 findings were addressed, which Phase 4 adjustment packet files were written, which original Phase 2 artifacts were left untouched, which per-change/capability atom files were adjusted, added, superseded, or removed in the effective view, how duplicate or missing atoms were resolved, and whether targeted adjustment was sufficient.
 
 Do not start `openspec-propose` from this workflow until Phase 3 reports `complete`.
