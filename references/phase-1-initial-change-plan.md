@@ -1,11 +1,17 @@
 # Phase 1: Initial Source-Aligned Change Plan
 
-Phase 1 creates the initial top-level OpenSpec change plan from the user-specified source documents. It does not create concrete OpenSpec changes, proposals, specs, designs, tasks, acceptance artifacts, source coverage maps, line-range anchors, coverage statuses, or a backlog of evidence items waiting for Phase 2.
+Phase 1 creates the initial top-level OpenSpec change/capability framework from the user-specified source documents. It must enumerate and read every source document under the user-specified source roots before slicing the plan. It does not create concrete OpenSpec changes, proposals, specs, designs, tasks, acceptance artifacts, obligation atom ledgers, line-range anchors, coverage statuses, or a backlog of evidence items waiting for Phase 2.
 
 Write the plan to:
 
 ```text
 openspec/orchestrate/change-plan.md
+```
+
+Write the initial full-source manifest to:
+
+```text
+openspec/orchestrate/source-doc-manifest.md
 ```
 
 Write the Phase 1 report to:
@@ -16,11 +22,13 @@ openspec/orchestrate/reports/phase-1-agent-report.md
 
 ## Goal
 
-Plan a set of scientific, verifiable, iterative OpenSpec changes from the user-specified source documents.
+Plan a set of scientific, verifiable, iterative OpenSpec changes from a full reading of the user-specified source documents.
 
 Each change should represent a reviewable, implementable, verifiable, archivable system behavior change. Do not mechanically split by technical module, database table, page, component, SDK, queue, or prototype scene.
 
-Use only the documents or directories the user specifies. Do not read or rely on the current `openspec/` directory, existing specs, existing changes, archive history, or custom artifacts unless the user explicitly includes them as input.
+Use only the documents or directories the user specifies. For every specified source root, enumerate all source documents and read every source document body before producing the initial framework. Do not read or rely on the current `openspec/` directory, existing specs, existing changes, archive history, or custom artifacts unless the user explicitly includes them as input.
+
+If the specified source set is too large to read safely, return a blocker instead of sampling. The Phase 1 framework is only valid when it is based on a full-source read.
 
 ## Change-Capability Model
 
@@ -91,20 +99,34 @@ A foundation change is allowed only when all conditions hold:
 
 ## Workflow
 
-1. Read the user-specified input documents.
-2. Extract core user or system paths.
-3. Express each path as: entry -> behavior -> system fact -> visible result -> failure recovery.
-4. Identify long-lived behavior capabilities with English kebab-case ids.
-5. Generate candidate vertical changes from user/system loops, not from the capability list.
-6. For each candidate change, identify the direct increment it contributes to each involved capability, and classify that relation as `New` or `Modified`.
-7. Filter, merge, or reslice candidates using the Closed-loop Test, Change Complexity Calibration, the Split Challenge, and the anti one-to-one mapping rule.
-8. Order changes by real behavior dependencies, prioritizing the earliest minimal runnable loop.
-9. Build a capability progression matrix that shows how each change advances each capability.
-10. Mark key scenarios, non-goals, risks, conflicts, and deferred content from the input documents.
-11. Add concise `Source evidence` hints only to justify the planned slice. These hints may name source paths, headings, section numbers, decision IDs, route/page/object names, APIs, commands, DTOs, entities, tables, jobs, events, assets, environments, or verification anchors.
-12. Do not extract or enumerate every source-backed requirement in Phase 1. Do not create line ranges, anchor tables, coverage statuses, "pending Phase 2" evidence lists, or evidence counts. If a hint is only semantic, keep it as a short non-canonical plan clue; Phase 2 owns precise anchor resolution.
+1. Enumerate every source document under the user-specified roots or exact paths.
+2. Read every enumerated source document body. Do not sample, skim only filenames, or defer full reading to Phase 2.
+3. Write `source-doc-manifest.md` with every source document, read status, high-level source role, and coarse topic/path hints.
+4. Extract core user or system paths.
+5. Express each path as: entry -> behavior -> system fact -> visible result -> failure recovery.
+6. Identify long-lived behavior capabilities with English kebab-case ids.
+7. Generate candidate vertical changes from user/system loops, not from the capability list.
+8. For each candidate change, identify the direct increment it contributes to each involved capability, and classify that relation as `New` or `Modified`.
+9. Filter, merge, or reslice candidates using the Closed-loop Test, Change Complexity Calibration, the Split Challenge, and the anti one-to-one mapping rule.
+10. Order changes by real behavior dependencies, prioritizing the earliest minimal runnable loop.
+11. Build a capability progression matrix that shows how each change advances each capability.
+12. Mark key scenarios, non-goals, risks, conflicts, and deferred content from the input documents.
+13. Add concise `Source evidence` hints only to justify the planned slice. These hints may name source paths, headings, section numbers, decision IDs, route/page/object names, APIs, commands, DTOs, entities, tables, jobs, events, assets, environments, or verification anchors.
+14. Do not extract or enumerate every source-backed requirement in Phase 1. Do not create obligation atom ledgers, line ranges, anchor tables, coverage statuses, "pending Phase 2" evidence lists, or evidence counts. If a hint is only semantic, keep it as a short non-canonical plan clue; Phase 2 owns precise obligation atom and anchor resolution.
 
 ## Output
+
+Produce `openspec/orchestrate/source-doc-manifest.md` with:
+
+| Source Document | Read Status | Source Role | Coarse Topics / Paths | Notes |
+| --- | --- | --- | --- | --- |
+
+Rules:
+
+- Every user-specified source document must appear exactly once.
+- `Read Status` must be `read-full` for source documents used by this workflow.
+- Non-source artifacts may be listed as `non-source-artifact` only when they are under a specified root and are not meaningful source docs.
+- Do not add coverage status, atom counts, or line-range coverage in Phase 1.
 
 Produce `openspec/orchestrate/change-plan.md` with:
 
@@ -193,4 +215,5 @@ Answer:
 - generated plan path
 - notable assumptions or conflicts
 - whether any change lacks useful source hints; do not enumerate every pending evidence item
+- confirmation that every source document in the manifest was read in full
 - blockers, or `无`
