@@ -6,6 +6,8 @@ Phase 4 exists to scientifically recalibrate the initial framework without rerun
 
 Phase 4 MUST be performed by a fresh independent subagent. It must not rerun all Phase 2 per-change subagents or perform a new global source search for every change.
 
+Phase 4 starts from the assumption that Phase 2 atoms are source-backed candidate facts. It should preserve atom content and adjust ownership, capability mapping, contextual status, or sequencing by default. Rewrite or split an atom only when Phase 3 shows that the atom compressed multiple obligations, lacks source support, has an invalid line/source fact, or was semantically distorted by the old change/capability framework.
+
 ## Inputs
 
 - `openspec/orchestrate/change-plan.md`
@@ -38,6 +40,8 @@ Phase 4 may:
 - add, remove, split, merge, or rename changes when Phase 3's source obligation or overlap evidence requires it
 - add, remove, split, merge, or rename capabilities when Phase 3 identifies durable behavior-boundary gaps
 - attach missing obligation atoms to an existing change when the existing change already owns the same user/system loop
+- move a valid atom to a different owner change/capability when Phase 3 proves the original ownership was wrong
+- reclassify a direct atom as contextual future-compatibility, dependency, preserve, reference, later-change, or explicit non-goal when it constrains design but is not current scope
 - split a broad Phase 2 atom into multiple smaller atoms when Phase 3 finds compressed UI/flow/data/verification obligations
 - resolve duplicate direct atoms by choosing one owner and reclassifying the other rows as preserve, dependency, reference, later-change, or explicit non-goal
 - reorder changes when Phase 3 shows capability atoms depend on prerequisites that currently appear too late
@@ -52,6 +56,7 @@ Phase 4 must not:
 - rerun Phase 2 globally
 - ask one subagent to reanalyze every planned change from scratch
 - rewrite unaffected per-change directories
+- discard or rewrite source-backed Phase 2 atom content merely because the change/capability framework changed
 - invent new atoms without source evidence
 - use raw uncovered line counts as a plan-adjustment driver without semantic review of the uncovered ranges
 - update a nested capability atom file without first adding, updating, or confirming the matching canonical row in that change's `<change-slug>.md`
@@ -78,6 +83,8 @@ Use these rules to decide the smallest coherent plan adjustment:
 - Add, split, merge, or rename a capability when Phase 3 reveals a durable behavior boundary that is missing, conflated, too technical, or assigned to the wrong long-lived behavior boundary.
 - Resolve duplicate direct atoms by choosing the owner change that first implements the production obligation. Later changes may only keep a direct atom when they add a source-backed delta; otherwise they must become `preserves:<global-atom-id>`, `depends-on:<global-atom-id>`, `reference`, or another contextual relation.
 - Represent staged capability maturity as distinct atoms: an early change may own a baseline atom, and a later change may own a `refines` or `modifies` delta atom. Do not repeat the same atom across changes to simulate maturity.
+- Treat earlier changes as realized baseline providers, not global-context catchalls. A future obligation belongs in an earlier change only as contextual future-compatibility or preserve constraint when it affects current data model, API contract, state machine, auth/privacy boundary, worker boundary, persistence format, or verification truthfulness.
+- If a future obligation does not affect current design, leave it with its later owner and remove it from the earlier change's direct scope.
 - Do not create one capability per page, table, SDK, queue, provider, component, or source document section. Capabilities must remain long-lived behavior boundaries.
 
 Evaluate capability atom progression before editing files:
@@ -112,6 +119,7 @@ When `change-plan.md` changes, update all affected plan surfaces together:
 - Affected `Change Roadmap` entries: in scope, out of scope, vertical slice, dependencies, archive readiness.
 - Add or update a per-change `Obligation Atom Plan` subsection listing the global or local atom ids owned by the change, grouped by capability.
 - Add or update a per-change `Complexity Budget` subsection summarizing direct atom groups, advanced capabilities, proof surfaces, and why the change remains reviewable.
+- Add or update a per-change `Change Packet Notes` subsection summarizing direct atom groups, contextual atoms, upstream realized baseline, downstream constraints that affect current design, non-goals, and links to the relevant atom ledgers.
 - For every changed capability relation, keep only direct `New` or `Modified` advancement in the matrix; move dependency, preserve, or reference-only relations to notes.
 
 ## Workflow
@@ -137,6 +145,8 @@ When `change-plan.md` changes, update all affected plan surfaces together:
 8. Re-evaluate the adjusted change order and complexity budget:
    - every capability's atom sequence is baseline -> refinement/hardening/extension, unless source evidence justifies another order
    - every non-foundation change still has a single closed-loop outcome
+   - every later change depends on earlier realized baseline atoms instead of repeating them as direct scope
+   - every earlier change carries only the future/context atoms needed to keep current design coherent
    - every split/merge/narrowing decision has a source-backed and reviewability-backed rationale
    - no adjusted change is overloaded with unrelated atom groups or evidence surfaces
 9. For each affected existing change, update its canonical per-change file:
@@ -144,6 +154,8 @@ When `change-plan.md` changes, update all affected plan surfaces together:
    - add Phase 3's missing obligation atoms where the adjusted change now owns them
    - split broad atoms into smaller atoms when Phase 3 found compressed obligations
    - remove, reclassify, or relate duplicate direct atoms that moved to another owner
+   - preserve valid atom source facts when only ownership or contextual status changes
+   - add contextual future-compatibility atoms when later obligations affect the current design
    - keep line ranges as navigation hints using normalized `L<start>-L<end>` formatting
    - record atom gaps and blockers explicitly
    - assign each new or changed canonical atom a concise readable local atom id, source document, line range, atom type, source fact, normativity, owner capability, coverage status, roles, propose use, and evidence need
@@ -190,6 +202,7 @@ It must also include:
 - ledger closure summary with finding ids and closure statuses
 - targeted adjustment graph summary: owner change decisions, capability boundary decisions, loop impact, and boundary impact
 - capability atom progression recalibration summary
+- change packet context recalibration summary
 - change complexity recalibration summary
 - whether `change-plan.md` changed
 - capability map and progression matrix updates, or confirmation that all findings were artifact-only
@@ -200,6 +213,7 @@ It must also include:
 - confirmation that adjusted changes still satisfy the Closed-loop Test or are valid foundation exceptions
 - confirmation that adjusted capability relations are direct `New` or `Modified` advancement only
 - confirmation that adjusted capability atom sequences are coherent
+- confirmation that change packets contain necessary upstream baseline and downstream design context without pulling future scope into current direct ownership
 - confirmation that adjusted change complexity is reviewable
 - confirmation that canonical change atom ledgers were updated before nested capability views
 - confirmation that affected nested capability views match the canonical change atom rows

@@ -35,11 +35,14 @@ Write current copies only:
 - `openspec/orchestrate/reviews/coverage-review.md`
 - `openspec/orchestrate/reviews/change-plan-adjustments.md` only when the decision is `adjust` or `blocked`
 - `openspec/orchestrate/reports/phase-3-agent-report.md`
+- `openspec/orchestrate/reports/change-capability-human-plan.md` only when the decision is `complete`
 - `openspec/orchestrate/reports/alignment-final-report.md` only when the decision is `complete`
 
 Use a single-level filename for per-source files. Derive it from the source document path as listed in the manifest, remove the file extension, and replace path separators with `--`. Do not create nested directories under `source-doc-coverage/`.
 
 Phase 3 proposes adjustments in `reviews/change-plan-adjustments.md`; it does not update `change-plan.md` or Phase 2 per-change/capability atom files. Targeted updates belong to Phase 4.
+
+When Phase 3 completes, `reports/change-capability-human-plan.md` is the human-facing synthesis for later `openspec-propose` and `openspec-apply-change` work. It must group atoms into readable change packets and capability progression narratives, while linking back to the canonical atom ledgers and global atom index. It is not a source of truth and must not replace atom-level coverage artifacts.
 
 ## Global Atom Index
 
@@ -56,6 +59,8 @@ Rules:
 - If two Phase 2 atoms describe the same source obligation, pick one direct owner and classify the others as preserve/dependency/reference/context. Do not allow two direct current-change atoms for the same obligation.
 - If a later change genuinely strengthens or narrows an earlier obligation, create a new atom only for the additional source-backed delta and set `Atom Relation` to `refines:<global-atom-id>` or `modifies:<global-atom-id>`.
 - If a source fact only preserves or depends on another change's atom, use `Atom Relation` such as `preserves:<global-atom-id>` or `depends-on:<global-atom-id>` and do not count it as duplicate direct coverage.
+- If a source fact is needed only to keep the current design compatible with a later obligation, classify it as contextual future-compatibility and link it to the future or candidate global atom when known. Do not count it as current direct ownership.
+- Earlier changes may provide baseline contracts for later changes, but they must not absorb all future global obligations. Later changes should depend on realized baseline atoms and own only source-backed deltas.
 - `duplicate` is not a complete rationale unless it names the duplicated `Global Atom ID` and explains semantic equivalence.
 
 ## Source Discovery and Reading Boundary
@@ -114,9 +119,10 @@ Evaluate Phase 2 outputs in this order:
 16. Explain each overlap as one of: valid shared source context, dependency/preserve evidence, same user/system loop split across changes, duplicate direct atom, conflicting ownership, broad anchor range, or unclear.
 17. Build a capability atom progression review. For each capability, order its global atoms by planned change order and classify each atom as baseline, refinement, hardening, extension, preserve/dependency, or misplaced repeat. Flag atoms that appear before prerequisites, repeat without delta, skip necessary failure/verification boundaries, or stretch a capability beyond its behavior boundary.
 18. Build a change complexity review. For each change, count direct atoms, involved capabilities, source documents touched, entry/fact/projection/failure/verification surfaces, expected evidence types, UI states, worker/API/data surfaces, and cross-cutting concerns. Flag changes whose atom load or surface area suggests the implementation would be too complex to review and archive safely.
-19. Build an exhaustive adjustment ledger for every missing atom, duplicate direct atom, ambiguous ownership, broad-anchor compression finding, blocking capability-view inconsistency, problematic overlap, capability progression issue, or change complexity issue. Do not summarize with `+N more`; each required adjustment needs its own finding id.
-20. Build compact global statistics across source documents, global atoms, changes, capabilities, meaningful missing atoms, duplicate findings, capability progression findings, change complexity findings, covered non-atom ranges, overlap findings, gaps, and conflicts.
-21. Decide whether the current change plan is coherent, needs targeted Phase 4 adjustment, or is blocked.
+19. Build a downstream change packet review. For each change, group direct atoms by capability, list contextual atoms that affect current design, name upstream realized baseline atoms from earlier changes, name downstream constraints that must not be designed out, list non-goals, and link to the canonical ledger and global atom ids.
+20. Build an exhaustive adjustment ledger for every missing atom, duplicate direct atom, ambiguous ownership, broad-anchor compression finding, blocking capability-view inconsistency, problematic overlap, capability progression issue, change packet gap, or change complexity issue. Do not summarize with `+N more`; each required adjustment needs its own finding id.
+21. Build compact global statistics across source documents, global atoms, changes, capabilities, meaningful missing atoms, duplicate findings, capability progression findings, change complexity findings, change packet gaps, covered non-atom ranges, overlap findings, gaps, and conflicts.
+22. Decide whether the current change plan is coherent, needs targeted Phase 4 adjustment, or is blocked.
 
 ## Required Tables
 
@@ -170,13 +176,13 @@ Each `source-doc-coverage/<source-relative-path-without-extension>.coverage.md` 
 
 `change-capability-anchors/index.md` must include:
 
-| Change | Change Directory | Source Atom File | Capability Atom Files | Source Documents Read In Phase 2 | Atoms | Anchors | Capability Atom Gaps | Duplicate Risks | Blockers |
-| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| Change | Change Directory | Source Atom File | Capability Atom Files | Source Documents Read In Phase 2 | Direct Atoms | Contextual Atoms | Anchors | Capability Atom Gaps | Duplicate Risks | Blockers |
+| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
 
 `coverage-review.md` must include a per-change coverage table:
 
-| Change | Atom Files | Source Documents | Atoms | Capabilities | Atom Gaps | Duplicate Risks | Review Judgment |
-| --- | --- | --- | --- | --- | --- | --- | --- |
+| Change | Atom Files | Source Documents | Direct Atoms | Contextual Atoms | Capabilities | Atom Gaps | Duplicate Risks | Change Packet Gaps | Review Judgment |
+| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
 
 It must include a per-source-document coverage table:
 
@@ -218,7 +224,25 @@ It must include a plan-impact table:
 | Finding ID | Finding Type | Source Ranges or Atoms | Semantic Reason | Recommended Owner Change | Recommended Owner Capabilities | Required Phase 4 File Updates | Closure Criteria |
 | --- | --- | --- | --- | --- | --- | --- | --- |
 
-`Finding Type` should be one of `missing-obligation-atom`, `duplicate-direct-atom`, `ambiguous-atom-ownership`, `broad-anchor-compression`, `problematic-overlap`, `capability-view-inconsistency`, `capability-boundary-gap`, `capability-progression-issue`, `change-complexity-issue`, `change-slicing-issue`, or `blocked-decision`. Every ledger row must be actionable without rereading the whole Phase 3 report.
+`Finding Type` should be one of `missing-obligation-atom`, `duplicate-direct-atom`, `ambiguous-atom-ownership`, `broad-anchor-compression`, `problematic-overlap`, `capability-view-inconsistency`, `capability-boundary-gap`, `capability-progression-issue`, `change-packet-context-gap`, `change-complexity-issue`, `change-slicing-issue`, or `blocked-decision`. Every ledger row must be actionable without rereading the whole Phase 3 report.
+
+When the decision is `complete`, `reports/change-capability-human-plan.md` must include readable change packets:
+
+| Change | Closed-loop Outcome | Direct Atom Groups | Contextual Atoms / Future Constraints | Upstream Realized Baseline | Downstream Constraints | Non-Goals | Evidence Burden | Ledger Links |
+| --- | --- | --- | --- | --- | --- | --- | --- | --- |
+
+It must also include a capability progression narrative:
+
+| Capability | Baseline Change | Refinement / Hardening / Extension Changes | Atom Progression Summary | Human Review Notes |
+| --- | --- | --- | --- | --- |
+
+Rules:
+
+- Group atoms into readable atom groups instead of dumping every atom row again.
+- Link each group back to the canonical per-change ledger and `obligation-atom-index.md`.
+- State which earlier change becomes realized baseline for each later change dependency.
+- Include future constraints only when they affect current design; otherwise leave future obligations to their owning later change.
+- Keep this document human-facing. Do not use it as coverage source of truth.
 
 ## Review Questions
 
@@ -242,7 +266,9 @@ Evaluate:
 16. For each capability, do its atoms advance in a coherent sequence from baseline to refinement/hardening/extension?
 17. Are any later-change atoms repeating an earlier atom without a source-backed delta?
 18. Does any change advance too many capability atom groups, touch too many surfaces, or require too many evidence types to remain reviewable?
-19. Should any change be split, merged, reordered, or narrowed before `openspec-propose` starts?
+19. Does each later change rely on earlier realized baseline atoms instead of restating them as direct ownership?
+20. Does each change packet include the contextual future constraints needed to avoid bad current design, without pulling future scope into the change?
+21. Should any change be split, merged, reordered, or narrowed before `openspec-propose` starts?
 
 ## Adjustment Recommendation Rules
 
@@ -257,6 +283,8 @@ Recommend attaching a source atom to an existing change only if that change's sc
 Recommend reordering or splitting capability increments when atom progression shows a later change depends on atoms not yet introduced, repeats prior atoms without delta, or mixes baseline, refinement, hardening, and extension in a way that would make propose artifacts ambiguous.
 
 Recommend splitting a change when the complexity review shows the change has multiple independently verifiable atom groups, too many direct capability advances, too many source/UI/data/worker surfaces, or an evidence burden too large for a focused reviewable implementation.
+
+Recommend targeted Phase 4 adjustment when a change packet lacks necessary upstream baseline context, downstream design constraints, or non-goal exclusions needed for later `openspec-propose` to produce coherent artifacts.
 
 Recommend classifying a range as non-atom content only if the non-coverage rationale is source-backed and production-safe.
 

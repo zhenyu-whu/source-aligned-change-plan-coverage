@@ -26,6 +26,16 @@ Phase 2 writes only the outputs listed above. Phase 1 owns the initial source ma
 
 An obligation atom is the smallest source-backed production obligation that should survive into later `openspec-propose` artifacts. A later proposal/spec/design/tasks file should be able to consume an atom directly without reinterpreting a broad source paragraph.
 
+For each source document and each planned change, Phase 2 must classify extracted source facts into one of three buckets:
+
+- Direct obligation atom: the current change must implement, preserve, verify, or explicitly exclude this source-backed production obligation. It must affect the current change's UI behavior, data fact, API or worker behavior, auth/privacy boundary, failure/recovery path, verification requirement, preserve constraint, or non-goal boundary.
+- Contextual atom: the current change does not directly implement this source-backed fact or future obligation, but must know it to avoid a bad design. Use this when later obligations affect the current data model, API contract, state machine, auth/privacy boundary, worker boundary, persistence format, verification truthfulness, or capability sequencing. Contextual atoms are non-owning and must not count as direct capability advancement.
+- No-current-change-obligation: the document was read in full and has no source fact that the current change directly owns or needs as contextual design information. The reason may point to another change, a later change, prototype-only material, or no production/system impact.
+
+A direct obligation atom is valid only when it is source-backed, implementation-relevant, small enough to be independently verified or excluded, and assignable to exactly one current owner change/capability. One atom should represent one condition, state, action, display rule, data fact, transition, failure path, preserve boundary, verification requirement, or explicit non-goal. If a source paragraph contains multiple such obligations, split it into multiple atoms.
+
+Contextual atoms should be retained in the canonical per-change ledger when they protect downstream design coherence, but they are not coverage ownership. If a future atom has no current design impact, classify the source row as `later-change` or `no-current-change-obligation` instead of carrying it as context.
+
 Atom types:
 
 - `page-role`
@@ -50,7 +60,7 @@ Atom types:
 - `dependency`
 - `reference`
 
-Every direct atom must have exactly one owner change and one direct owner capability, except change-wide context atoms may use `change-level-context`. Preserve, dependency, reference, explicit non-goal, prototype-only, superseded, and no-impact facts may be recorded as contextual atoms, but they must not be counted as direct capability advancement.
+Every direct atom must have exactly one owner change and one direct owner capability, except change-wide context atoms may use `change-level-context`. Preserve, dependency, reference, future-compatibility, explicit non-goal, prototype-only, superseded, and no-impact facts may be recorded as contextual atoms, but they must not be counted as direct capability advancement.
 
 Atom ids are local candidate ids in Phase 2 because per-change subagents are independent. Use stable, readable ids such as:
 
@@ -71,8 +81,9 @@ Phase 2 must be reviewable as a set of independent change analyses.
    - Give it the Phase 1 source document manifest and source roots needed to resolve paths.
    - Ask it to simulate the later `openspec-propose` source search for only that change, but across every source document in the manifest.
    - Ask it to read every source document body listed in the manifest, even when the document appears unlikely to apply to that change.
-   - Ask it to extract obligation atoms for the whole change vertical slice first: entry, fact, projection, failure path, verification, dependency, preserve boundary, explicit non-goal, and archive readiness.
-   - Ask it to map each direct production atom to the specific capability increment it supports for that change.
+- Ask it to extract obligation atoms for the whole change vertical slice first: entry, fact, projection, failure path, verification, dependency, preserve boundary, explicit non-goal, and archive readiness.
+- Ask it to distinguish direct owning atoms from contextual atoms. A future or later-change source fact belongs in this change only when it constrains the current design; otherwise it should be recorded as another-change/later-change/no-current-change-obligation rationale.
+- Ask it to map each direct production atom to the specific capability increment it supports for that change.
    - Ask it to produce a per-source-document extraction ledger: each source document must have atoms, contextual atoms, or an explicit `no-current-change-obligation` / `reference-only-for-this-change` classification.
    - Ask it to write supporting source anchors after the obligation atom ledger is complete.
    - Ask it to derive nested capability files from the canonical atom ledger after the canonical ledger is complete.
@@ -135,6 +146,7 @@ Rules:
 - `No-Atom Classification` may be `has-current-change-atoms`, `reference-only-for-this-change`, `later-change`, `no-current-change-obligation`, `prototype-only-not-production`, `no-product-or-system-impact`, `unresolved-conflict`, or `blocked`.
 - A document cannot be omitted because it seems irrelevant; it must have a row and a reason.
 - If a document has no direct atoms for this change, the reason must explain why its source obligations belong to another change, are contextual, or do not affect production.
+- If a document contains later obligations that would affect the current change's data model, API contract, state machine, permission boundary, worker boundary, persistence format, or verification truthfulness, record contextual atoms instead of only `later-change`.
 
 ### Obligation Atom Ledger
 
@@ -151,6 +163,7 @@ Rules:
 - `Owner Capability` must name one planned capability increment for direct atoms, or `change-level-context` for contextual atoms.
 - `Propose Use` must say how the atom should enter proposal, spec, design, tasks, evidence, non-goals, or preserve constraints.
 - `Evidence Need` must name the proof type expected later, such as `unit`, `contract`, `integration`, `worker`, `browser-e2e`, `visual`, `fixture`, `manual`, or `none`.
+- Contextual atoms must have `Normativity: context`, a non-direct `Coverage Status` such as `later-change`, `preserve-existing`, `reference-only`, or `capability-boundary`, and `Propose Use` wording that explains how they constrain design without becoming current scope.
 
 ### Source Anchor Table
 
@@ -220,18 +233,19 @@ For each atom mapping, record one or more roles:
 - `non-goal`
 - `dependency`
 - `later-expansion`
+- `future-compatibility`
 - `reference`
 - `superseded-by`
 - `conflict`
 
-Do not treat `preserve`, `dependency`, or `reference` as direct capability advancement in the change plan matrix.
+Do not treat `preserve`, `dependency`, `future-compatibility`, or `reference` as direct capability advancement in the change plan matrix.
 
 ## Phase 2 Report
 
 `reports/phase-2-agent-report.md` is an orchestration trace, not a global coverage report. It must include:
 
-| Order | Change | Change Directory | Source Atom File | Subagent Status | Manifest Source Docs | Source Docs Read | Per-Source Rows | Atoms | Anchors | Atom Gaps | Duplicate Risks | Blockers |
-| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| Order | Change | Change Directory | Source Atom File | Subagent Status | Manifest Source Docs | Source Docs Read | Per-Source Rows | Direct Atoms | Contextual Atoms | Anchors | Atom Gaps | Duplicate Risks | Blockers |
+| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
 
 | Order | Change | Capability Atom Files | Capability Increments | Capability Atom Gaps | Blockers |
 | --- | --- | --- | --- | --- | --- |
@@ -251,6 +265,7 @@ Before finishing Phase 2:
 - Confirm every per-change file includes the change definition excerpt used, planned capability increments used, full source manifest used, per-source-document extraction ledger, obligation atom ledger, source anchor table, atom gaps, duplicate-risk notes, and blockers.
 - Confirm the per-source-document extraction ledger has exactly one row for every Phase 1 manifest source document.
 - Confirm every direct production atom has one owner capability or an explicit gap/blocker.
+- Confirm contextual atoms are non-owning design context and are not counted as current capability advancement.
 - Confirm every nested capability file covers its planned capability increment with source atoms or an explicit capability atom gap.
 - Confirm every nested capability atom row exists in that change's canonical atom ledger with the same `Atom ID`, `Source Document`, `Lines`, `Atom Type`, `Source Fact`, `Normativity`, `Coverage Status`, and direct owner capability.
 - Confirm every canonical atom row that directly names a planned capability appears in that capability's nested file.
