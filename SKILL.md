@@ -1,19 +1,23 @@
 ---
 name: source-aligned-change-plan-coverage
-description: Use before openspec propose when the user wants a global, source-doc-aligned OpenSpec change/capability plan with obligation atom coverage, source anchor traceability, gap analysis, and iterative refinement until every production-meaningful source obligation is owned by exactly one change/capability atom or explicitly gap-classified.
+description: Use before openspec propose when the user wants a source-doc-first OpenSpec change/capability plan with obligation atom coverage, source anchor traceability, gap analysis, and a final plan refit where every production-meaningful source obligation is owned by exactly one change/capability atom or explicitly gap-classified.
 ---
 
 # Source-Aligned Change Plan Coverage
 
 Create a globally source-aligned OpenSpec change plan before any individual `openspec-propose` change is created.
 
-This skill turns a full-source initial change/capability framework into per-change, per-source-document obligation atom ledgers, then reviews the combined atom corpus globally and adjusts the framework. An obligation atom is the smallest source-backed production obligation that should survive into later `openspec-propose` artifacts. It may represent a page state, trigger, display rule, primary action, disabled action, recovery path, data fact, auth/privacy rule, failure path, responsive behavior, verification requirement, preserve constraint, or explicit non-goal. A contextual atom is a source-backed fact or future obligation that the current change must know about to avoid bad design, but does not directly implement or count as current capability advancement. Source anchors and line ranges are trace evidence for atoms; they are not the coverage goal.
+This skill turns full-source documents into a normalized obligation atom index, then derives the final change/capability plan from that stable atom set. An obligation atom is the smallest source-backed production obligation that should survive into later `openspec-propose` artifacts. It may represent a page state, trigger, display rule, primary action, disabled action, recovery path, data fact, auth/privacy rule, failure path, responsive behavior, verification requirement, preserve constraint, or explicit non-goal. A contextual atom is a source-backed fact or future obligation that a change must know about to avoid bad design, but does not directly implement or count as current capability advancement. Source anchors and line ranges are trace evidence for atoms; they are not the coverage goal.
 
-Phase 1 is a full-source planning pass: it enumerates and reads every source document under the user-specified roots, then produces the first scientific change/capability framework. It may cite coarse source hints for human orientation, but it must not create obligation atoms, pending evidence inventories, line-range anchors, coverage statuses, or Phase 2 work queues. Phase 2 is the first phase that extracts source-backed candidate direct obligation atoms and necessary contextual atoms. It is per-change and subagent-isolated: each planned change gets a fresh subagent that reads every source document listed in the Phase 1 manifest and independently decides which direct atoms in each document belong to that change, which contextual atoms should accompany it without ownership, and which documents have no current-change obligation for that change. Capability mappings are ownership tags on direct atoms. Nested capability files are derived capability views for that same change, not independent second-pass source searches.
+Phase 1 creates an initial change/capability framework from a full-source read. That framework is a slicing hypothesis, not the final authority. It may cite coarse source hints for human orientation, but it must not create obligation atoms, pending evidence inventories, line-range anchors, coverage statuses, or Phase 2 work queues.
 
-Because Phase 2 subagents are independent across changes, their local atom ids, anchor names, and line ranges may differ for the same source content across different changes. Within one change, however, the per-change file is canonical for that change: every nested capability atom row must derive from a row in that change's obligation atom ledger, and every direct capability-owned atom must appear in that capability's nested file. Phase 3 audits Phase 2 outputs across changes, source documents, and capabilities: it builds a global obligation atom index, detects missing atoms, duplicate atoms, ambiguous ownership, broad anchors that compress obligations, and source ranges whose remaining content is non-production or non-meaningful. It also evaluates whether each capability's atoms progress in a coherent order across changes and whether each change's atom load is reviewably small. Phase 4 uses that global analysis to scientifically adjust the change/capability framework, atom ownership, capability sequencing, and change granularity. Existing Phase 2 atoms are treated as source-backed candidate facts by default; Phase 4 should reassign ownership or contextual status unless Phase 3 proves that an atom is too broad, unsupported, or semantically wrong. As a secondary aid, Phase 3 still reviews line-range coverage and cross-change overlaps. Phase 3 may use the bundled deterministic line-range helper for mechanical candidate ranges, but final coverage decisions require semantic obligation review and must not be made from raw line counts alone.
+Phase 2 is source-first obligation atom extraction. Each source document is read once for canonical extraction, using the Phase 1 framework only as candidate ownership context. Phase 2 must not run one independent extraction pass per planned change. A source-backed atom may be assigned to a candidate change/capability, left unassigned, marked as candidate-new-change/capability, or classified as contextual/non-production/non-goal. The Phase 2 source atom files are immutable raw extraction evidence after the phase completes.
 
-Later `openspec-propose` and `openspec-apply-change` work must not consume isolated atom rows alone. A completed workflow should provide a change packet for each change: direct owning atoms, contextual atoms, capability progression notes, upstream realized baseline from earlier changes, downstream constraints that affect current design, non-goals, and links to the global atom index. Earlier changes provide baseline contracts for later changes, but they must not absorb all future global obligations. Future obligations belong in an earlier change only as contextual or preserve constraints when they affect current data model, API contract, state machine, auth/privacy boundary, worker boundary, persistence format, or verification truthfulness.
+Phase 3 is coverage normalization and gap audit. It consumes the Phase 2 source atom files, reviews remaining source content semantically, adds source-backed missing atoms to the normalized global index when evidence is precise, splits broad atoms, resolves duplicates, and ensures every production-meaningful obligation has one normalized global atom, a justified non-direct/non-coverage status, or an explicit Phase 4 placement handoff. Phase 3 may use deterministic line-range helpers only to find mechanical candidates; semantic review is the gate.
+
+Phase 4 is plan refit from the stable atom set. It evaluates the initial change order, capability progression, dependency graph, and change complexity after the atom granularity is clear. Phase 4 may accept the Phase 1 framework or refactor changes/capabilities by splitting, merging, reordering, renaming, or remapping atom ownership. Every refit decision must preserve atom-level traceability: each global atom is mapped to its final change/capability, contextual status, non-goal, or blocker.
+
+Later `openspec-propose` and `openspec-apply-change` work must not consume isolated source atom rows alone. A completed workflow provides a change packet for each final change: direct owning atoms, contextual atoms, capability progression notes, upstream realized baseline from earlier changes, downstream constraints that affect current design, non-goals, and links to the global atom index. Earlier changes provide baseline contracts for later changes, but they must not absorb all future global obligations. Future obligations belong in an earlier change only as contextual or preserve constraints when they affect current data model, API contract, state machine, auth/privacy boundary, worker boundary, persistence format, or verification truthfulness.
 
 ## Required Inputs
 
@@ -28,45 +32,49 @@ Keep only core orchestration artifacts at the root:
 
 ```text
 openspec/orchestrate/
-├── change-plan.md
-├── source-doc-manifest.md          # Phase 1 enumerates and reads; Phase 3 enriches coverage review
+├── change-plan.md                         # latest effective plan; Phase 1 creates it, Phase 4 may refit it
+├── source-doc-manifest.md                 # Phase 1 enumerates and reads; Phase 3 enriches coverage review
+├── source-obligation-atoms/
+│   ├── index.md                           # Phase 2 index of per-source extraction files
+│   ├── work-queue.md                      # Phase 2A lightweight batching plan; not coverage evidence
+│   └── <source-relative-path>.atoms.md     # Phase 2 canonical source-first raw atom extraction
 ├── source-doc-coverage/
-│   └── <source-relative-path-without-extension>.coverage.md # single-level Phase 3 per-source-doc audit file; replace path separators with "--"
+│   └── <source-relative-path>.coverage.md  # Phase 3 per-source-doc semantic coverage audit
 ├── change-capability-anchors/
-│   ├── index.md                    # Phase 3 index of per-change atom directories
-│   ├── obligation-atom-index.md     # Phase 3 global unique atom registry for propose/source review
+│   ├── index.md                           # Phase 4 index of final change packets
+│   ├── obligation-atom-index.md            # Phase 3 normalized global atom registry
 │   └── <change-slug>/
-│       ├── <change-slug>.md         # one independent obligation atom + source anchor analysis per change
+│       ├── <change-slug>.md                # Phase 4 final change packet derived from global atoms
 │       └── capability-anchors/
-│           └── <capability-slug>.md # capability atom view scoped to this change
-├── phase-4-adjustments/
+│           └── <capability-slug>.md        # Phase 4 final capability view scoped to this change
+├── phase-4-plan-refit/
 │   └── pass-<NN>/
-│       ├── change-plan.md                   # Phase 4 adjusted plan snapshot; does not overwrite the Phase 1/2 plan
-│       ├── phase-4-adjustment-index.md      # maps original Phase 2 artifacts/rows to adjusted, superseded, removed, or added outputs
-│       ├── phase-2-agent-report-addendum.md # Phase 4 addendum; does not overwrite the Phase 2 report
-│       ├── phase-4-agent-report.md
-│       └── change-capability-anchors/
-│           └── <change-slug>/
-│               ├── <change-slug>.md
-│               └── capability-anchors/
-│                   └── <capability-slug>.md
+│       ├── input-change-plan.md
+│       ├── change-plan.md
+│       ├── atom-plan-mapping.md
+│       └── phase-4-agent-report.md
 ├── reviews/
 │   ├── phase-3-trace/
-│   │   ├── local-to-global-atom-map.md       # Phase 3 mapping from every local Phase 2 atom/context row to a global atom id or relation
-│   │   ├── source-remainder-review.md        # Phase 3 semantic review of source ranges not covered by atom rows
-│   │   ├── duplicate-ownership-review.md     # Phase 3 duplicate, overlap, and unique-owner resolution ledger
-│   │   ├── capability-change-scope-review.md # Phase 3 capability progression and change complexity working review
-│   │   └── adjustment-decision-log.md        # Phase 3 candidate findings and final decision rationale
+│   │   ├── source-to-global-atom-map.md
+│   │   ├── source-remainder-review.md
+│   │   ├── duplicate-ownership-review.md
+│   │   └── atom-normalization-decision-log.md
+│   ├── phase-4-trace/
+│   │   ├── capability-progression-review.md
+│   │   ├── change-complexity-review.md
+│   │   └── plan-refit-decision-log.md
 │   ├── coverage-review.md
-│   └── change-plan-adjustments.md   # only when Phase 3 decides adjust or blocked
+│   └── change-plan-adjustments.md          # only when Phase 4 adjusts, needs recheck, or blocks
 └── reports/
     ├── phase-1-agent-report.md
     ├── phase-2-agent-report.md
     ├── phase-3-agent-report.md
-    ├── phase-4-agent-report.md        # optional latest Phase 4 pass pointer/summary
-    ├── change-capability-human-plan.md # only when Phase 3 completes; human reading aid, not source of truth
+    ├── phase-4-agent-report.md
+    ├── change-capability-human-plan.md     # final human reading aid, not source of truth
     └── alignment-final-report.md
 ```
+
+Use single-level filenames under `source-obligation-atoms/` and `source-doc-coverage/`: derive the name from the source document path, remove the extension, replace path separators with `--`, and add `.atoms.md` or `.coverage.md`.
 
 Optional bundled helper:
 
@@ -75,60 +83,64 @@ Optional bundled helper:
 └── phase3_line_range_audit.py   # mechanical Phase 3 candidate uncovered/overlap helper
 ```
 
-Phase 2 per-change files are the canonical source inputs for the original Phase 2 pass because they contain the obligation atom ledger and supporting source anchors. They must remain immutable after Phase 2 completes so humans can review the exact Phase 2 output later. Phase 3's `change-capability-anchors/obligation-atom-index.md` is the global uniqueness and ownership registry for the current effective atom set. The `source-doc-coverage/` directory records Phase 3 per-document audit process notes, not a replacement for the per-change atom ledgers. `reviews/phase-3-trace/` records the current Phase 3 pass's intermediate review trail so humans can audit how local atoms became global atoms, how duplicate ownership was resolved, how uncovered source ranges were classified, and why the final decision was reached. These trace files are not source of truth and must be regenerated or overwritten on each fresh Phase 3 pass. `reports/change-capability-human-plan.md` is a human-facing synthesis of the final change packets and capability progression; it must not replace the atom ledgers or global atom index as source of truth. When Phase 4 adjusts the plan or Phase 2-derived artifacts, it must write a new `phase-4-adjustments/pass-<NN>/` adjustment packet instead of editing or deleting Phase 2 files in place. Later Phase 3 and `openspec-propose` work consume the latest effective artifact set: original Phase 2 files plus the latest Phase 4 adjustment packet's adjusted, added, superseded, or removed mappings. Reports summarize the latest pass, while each Phase 4 pass directory preserves that pass's adjusted outputs.
+Phase 2 source atom files are immutable raw extraction evidence. Phase 3's `change-capability-anchors/obligation-atom-index.md` is the normalized global uniqueness and ownership registry. Phase 4 derives final change packets and capability views from that global index; it must not invent atoms without source evidence. `reports/change-capability-human-plan.md` is a human-facing synthesis of the final change packets and capability progression; it must not replace the source atom ledgers or global atom index as source of truth.
 
 ## Reference Files
 
 Read these references only when entering the matching phase:
 
 - Phase 1 initial plan: `references/phase-1-initial-change-plan.md`
-- Phase 2 source coverage: `references/phase-2-source-anchor-coverage.md`
-- Phase 3 source document coverage review: `references/phase-3-coverage-review-iteration.md`
-- Phase 4 targeted plan adjustment: `references/phase-4-targeted-plan-adjustment.md`
+- Phase 2 source-first atom extraction: `references/phase-2-source-anchor-coverage.md`
+- Phase 3 coverage normalization: `references/phase-3-coverage-review-iteration.md`
+- Phase 4 plan refit: `references/phase-4-targeted-plan-adjustment.md`
 
 ## Subagent Rule
 
-This workflow is subagent-based. Phase 1 and Phase 3 MUST each be performed by a fresh independent subagent. Phase 2 MUST use fresh independent subagents for each planned change. Phase 4 MUST use a fresh independent targeted-adjustment subagent when Phase 3 finds source-backed missing obligations, duplicate atom ownership, broad-anchor compression, or other findings that require plan or Phase 2-derived artifact adjustments.
+This workflow is subagent-based.
 
-- Phase 1: full-source initial change/capability framework generation.
-- Phase 2 change analysis: one canonical obligation atom analysis subagent per planned change; each subagent must read every source document from the Phase 1 manifest and produce a per-source direct-atom/contextual-atom/no-atom decision for that change. Do not use one subagent to analyze multiple changes. Nested capability files are derived views from that change's canonical atom ledger.
-- Phase 3: cross-change/global obligation atom synthesis, source-document coverage review, duplicate atom/ownership review, capability atom progression review, change complexity review, line-range coverage review, cross-change overlap review, and adjustment decision using the effective atom set: immutable Phase 2 atom ledgers plus the latest Phase 4 adjustment packet when one exists.
-- Phase 4: scientific change/capability framework adjustment plus a targeted Phase 4 adjustment packet for Phase 2-derived artifacts using Phase 3 findings; do not rerun the full Phase 2 workflow and do not edit original Phase 2 files in place.
+- Phase 1: use a fresh independent subagent for full-source initial change/capability framework generation.
+- Phase 2: first build a lightweight `source-obligation-atoms/work-queue.md` from the manifest, source roles, paths, document names, and line counts. This overview is only for batching and parallelization; it must not extract atoms, decide coverage, or classify source obligations. Then use fresh source-extraction subagents partitioned by source document or source-document batch. Each source document must have one canonical Phase 2 extraction owner. Do not spawn one Phase 2 subagent per planned change, and do not ask multiple subagents to independently extract the same source document unless Phase 3 explicitly requests targeted validation.
+- Phase 3: use a fresh independent subagent for source coverage normalization, gap audit, duplicate review, and global atom index generation.
+- Phase 4: use a fresh independent subagent for atom-driven change/capability plan refit, capability progression review, change complexity review, and final change packet generation.
 
-If Phase 3 returns `adjust`, spawn a fresh Phase 4 subagent, then run Phase 3 again with a fresh review subagent. Do not reuse prior phase or per-change agents. Do not rerun all Phase 2 subagents unless Phase 4 reports that targeted adjustment is insufficient and the user explicitly requests a full Phase 2 rerun.
+If Phase 4 returns `needs-coverage-recheck`, spawn a fresh Phase 3 subagent, then a fresh Phase 4 subagent. Do not rerun Phase 2 unless Phase 3 or Phase 4 reports that targeted review is insufficient and the user explicitly requests a full source extraction rerun.
 
-Using this skill explicitly authorizes its required subagent workflow. Do not ask for additional confirmation solely to spawn the phase or per-change subagents. If subagents are unavailable or disallowed by the runtime, stop and report a blocker instead of doing the phase in the main agent.
+Using this skill explicitly authorizes its required subagent workflow. Do not ask for additional confirmation solely to spawn the phase subagents. If subagents are unavailable or disallowed by the runtime, stop and report a blocker instead of doing the phase in the main agent.
 
 The main agent only orchestrates, checks interface-level outputs, and starts the next phase. It should not silently redo a phase's content work.
 
 ## Workflow
 
-1. Create `openspec/orchestrate/`, `openspec/orchestrate/reviews/`, `openspec/orchestrate/reviews/phase-3-trace/`, and `openspec/orchestrate/reports/`.
-2. Phase 1: if there is no current `change-plan.md`, spawn a fresh subagent to enumerate and read every source document, write the initial `source-doc-manifest.md`, and generate the initial change/capability framework using the Phase 1 reference.
-3. Phase 2 change analysis: for every planned change, spawn a fresh independent subagent. Each subagent uses only that change's name, plan definition, planned capability increments, and the Phase 1 source document manifest to independently read every source document and extract that change's direct obligation atoms, contextual atoms, or an explicit no-current-change-obligation classification for each document. It writes `change-capability-anchors/<change-slug>/<change-slug>.md` as the canonical per-change/per-source obligation atom ledger and source anchor table for the change, then derives `change-capability-anchors/<change-slug>/capability-anchors/<capability-slug>.md` files from that canonical atom ledger.
-4. Phase 3: spawn a fresh subagent to synthesize all Phase 2 per-change outputs into `source-doc-manifest.md`, `source-doc-coverage/<source-relative-path-without-extension>.coverage.md` files, `change-capability-anchors/index.md`, `change-capability-anchors/obligation-atom-index.md`, `reviews/phase-3-trace/*.md`, `reviews/coverage-review.md`, `reports/change-capability-human-plan.md` only when complete, and, only when needed, `reviews/change-plan-adjustments.md`; for each source document, review all production-meaningful obligation-bearing content, verify that each obligation atom is owned by exactly one change/capability or has a justified non-coverage status, detect duplicate atoms and broad anchors that compress UI/flow obligations, analyze each capability's atom progression order across changes, evaluate each change's atom load and implementation complexity, union line ranges only as secondary coverage evidence, list cross-change/capability overlaps for human review, record the intermediate local-to-global mapping/remainder/duplicate/progression/decision trace files for human audit, and decide:
-   - `complete`: every production-meaningful source obligation is represented by exactly one current direct obligation atom or has a justified non-coverage status, every source document's non-atom content is production-safe to ignore, every capability's atom progression order is coherent, every change remains reviewably scoped, and the plan is coherent.
-   - `adjust`: uncovered obligation atoms, duplicate/ambiguous atom ownership, broad anchor compression, incoherent capability progression, over-complex change scope, overlap conflicts, or bad slicing require framework changes or Phase 4 adjustment-packet outputs.
-   - `blocked`: source docs, change boundaries, conflicts, or coverage evidence are insufficient.
-5. Phase 4: if Phase 3 returns `adjust`, spawn a fresh targeted-adjustment subagent. It writes the next `phase-4-adjustments/pass-<NN>/` directory with an adjusted `change-plan.md` snapshot, `phase-4-adjustment-index.md`, `phase-2-agent-report-addendum.md`, adjusted copies for only the affected Phase 2-derived atom files, and `phase-4-agent-report.md`. It must not edit, delete, or rewrite the original Phase 2 output files or `reports/phase-2-agent-report.md`. It must not rerun the full Phase 2 workflow. For every affected change, it writes the adjusted canonical obligation atom ledger copy first, then derives the affected nested capability file copies from that adjusted canonical ledger. If a change or capability is removed, split, merged, or renamed, Phase 4 records the superseded or removed original artifact in `phase-4-adjustment-index.md` instead of deleting the original Phase 2 file.
-6. Continue Phase 3 -> Phase 4 -> Phase 3 until Phase 3 returns `complete` or `blocked`. After a Phase 4 pass exists, each later Phase 3 pass must evaluate the latest effective artifact set by applying the latest `phase-4-adjustments/pass-<NN>/phase-4-adjustment-index.md` mappings to the original Phase 2 outputs.
+1. Create `openspec/orchestrate/`, `source-obligation-atoms/`, `source-doc-coverage/`, `change-capability-anchors/`, `reviews/phase-3-trace/`, `reviews/phase-4-trace/`, and `reports/`.
+2. Phase 1: if there is no current `change-plan.md`, spawn a fresh subagent to enumerate and read every source document, write `source-doc-manifest.md`, and generate the initial change/capability framework using the Phase 1 reference.
+3. Phase 2: create `source-obligation-atoms/work-queue.md` by lightly surveying the manifest, source roles, paths, document names, and line counts for batching only. Then spawn source-extraction subagents partitioned by source document or source-document batch. Each subagent reads its assigned source document bodies in full, uses the Phase 1 plan only as candidate ownership context, extracts canonical source-backed atom candidates, records source remainder notes, and writes `source-obligation-atoms/<source>.atoms.md`. Write `source-obligation-atoms/index.md` and `reports/phase-2-agent-report.md`.
+4. Phase 3: spawn a fresh subagent to normalize Phase 2 atoms into `change-capability-anchors/obligation-atom-index.md`, audit source remainders, add precise missing atoms to the global index, split broad atoms, resolve duplicates/ambiguous ownership, write all per-source coverage files and Phase 3 trace files, and decide:
+   - `coverage-complete`: every production-meaningful source obligation is represented by exactly one direct global atom or has a justified non-direct/non-coverage status.
+   - `blocked`: source docs, atom evidence, ownership boundaries, or conflicts are insufficient for a stable global atom index.
+5. Phase 4: after `coverage-complete`, spawn a fresh subagent to refit the change/capability plan from the stable global atom index. It writes the next `phase-4-plan-refit/pass-<NN>/` packet, updates the latest effective `change-plan.md` when needed, derives final `change-capability-anchors/<change-slug>/` packets, writes Phase 4 trace files, and ends with:
+   - `accepted`: the Phase 1 framework remains coherent after atom-level review.
+   - `adjusted`: the framework was refit and all atom mappings remain traceable.
+   - `needs-coverage-recheck`: the refit exposed missing/broad/conflicting source obligations that require a fresh Phase 3 pass.
+   - `blocked`: a user decision or broad reanalysis is required.
+6. Continue Phase 3 -> Phase 4 until Phase 4 returns `accepted`, `adjusted`, or `blocked`.
+
+Do not start `openspec-propose` from this workflow until Phase 4 returns `accepted` or `adjusted` and final change packets exist.
 
 ## Main-Agent Gates
 
 After each phase, check only interface facts:
 
-- Required files exist under `openspec/orchestrate/`.
+- Required directories and reports exist under `openspec/orchestrate/`.
 - Phase reports state the input docs, output files, and blockers.
 - Phase 1 outputs contain `change-plan.md`, `source-doc-manifest.md`, and `reports/phase-1-agent-report.md`; the manifest lists every source document under the specified roots with full-read status, or Phase 1 reports a blocker.
-- Phase 2 outputs contain one `change-capability-anchors/<change-slug>/<change-slug>.md` file and one `change-capability-anchors/<change-slug>/capability-anchors/<capability-slug>.md` file for each planned capability increment in that change.
-- Phase 2 per-change files contain an obligation atom ledger and a supporting source anchor table; nested capability files are consistent derived views: every capability atom row exists in the same change's canonical atom ledger, and every canonical atom row that directly names a planned capability exists in that capability's nested file.
-- Phase 2 reports include a per-change subagent trace showing every manifest source document was read for that change, per-source direct-atom/contextual-atom/no-atom decisions, obligation atoms found, anchors used, capability increments mapped, gaps, duplicate-risk notes, and blockers for each planned change.
-- Phase 3 outputs contain `change-capability-anchors/index.md`, `change-capability-anchors/obligation-atom-index.md`, `source-doc-manifest.md`, one `source-doc-coverage/<source-relative-path-without-extension>.coverage.md` file for every source document listed in the manifest, `reviews/phase-3-trace/local-to-global-atom-map.md`, `reviews/phase-3-trace/source-remainder-review.md`, `reviews/phase-3-trace/duplicate-ownership-review.md`, `reviews/phase-3-trace/capability-change-scope-review.md`, `reviews/phase-3-trace/adjustment-decision-log.md`, `reviews/coverage-review.md`, `reports/phase-3-agent-report.md`, and `reviews/change-plan-adjustments.md` only when adjustment or blocking findings exist.
-- Phase 3 reports include per-source-document obligation atom coverage summaries, global atom synthesis, capability atom progression findings, change complexity findings, source ranges whose content has no production obligation, missing or duplicate atom findings, broad-anchor compression findings, cross-change/capability overlap findings, non-coverage classifications, and source-backed obligations not mapped to any change or capability.
-- Phase 3 trace files expose the intermediate reasoning path: every local Phase 2 atom/context row maps to a global atom id or non-direct relation; every uncovered source range reviewed has a semantic classification; every duplicate/overlap candidate has a unique-owner or relation decision; every capability/change scope concern has a progression or complexity judgment; every candidate finding has a final decision and, when applicable, a Phase 4 handoff.
-- Phase 3 reports may include deterministic line-range helper results as mechanical candidates, but must not use helper output as the quality gate. Raw line counts or uncovered ranges alone are not sufficient without semantic review.
-- Phase 3 outputs contain a decision of `complete`, `adjust`, or `blocked`.
-- When Phase 3 returns `complete`, outputs contain `reports/change-capability-human-plan.md` with human-readable change packets, capability progression, upstream baseline, downstream design constraints, non-goals, and links back to atom ledgers and the global atom index.
-- If Phase 4 is invoked, its report states which Phase 3 findings were addressed, which Phase 4 adjustment packet files were written, which original Phase 2 artifacts were left untouched, which per-change/capability atom files were adjusted, added, superseded, or removed in the effective view, how duplicate or missing atoms were resolved, and whether targeted adjustment was sufficient.
-
-Do not start `openspec-propose` from this workflow until Phase 3 reports `complete`.
+- Phase 2 outputs contain `source-obligation-atoms/work-queue.md`, `source-obligation-atoms/index.md`, one `source-obligation-atoms/<source>.atoms.md` file for every source document listed as `read-full`, and `reports/phase-2-agent-report.md`.
+- Phase 2 reports include a work queue summary and a source-extraction trace showing every manifest source document was assigned exactly one canonical extraction owner, read in full by that owner, atom candidates found, source remainders recorded, candidate ownership mappings, unassigned atoms, gaps, duplicate-risk notes, and blockers.
+- Phase 3 outputs contain `change-capability-anchors/obligation-atom-index.md`, `source-doc-manifest.md`, one `source-doc-coverage/<source>.coverage.md` file for every source document listed in the manifest, all `reviews/phase-3-trace/*.md` files, `reviews/coverage-review.md`, and `reports/phase-3-agent-report.md`.
+- Phase 3 reports include per-source-document obligation coverage summaries, normalized global atom synthesis, missing atom findings, duplicate/ownership resolutions, broad-atom split decisions, non-coverage classifications, and source-backed obligations not mapped to any change or capability.
+- Phase 3 outputs contain `Decision: coverage-complete` or `Decision: blocked`.
+- Phase 4 outputs contain the latest `phase-4-plan-refit/pass-<NN>/` packet, `reviews/phase-4-trace/*.md`, `reports/phase-4-agent-report.md`, and `reports/alignment-final-report.md`; when the status is `accepted` or `adjusted`, they also contain final `change-capability-anchors/index.md`, final per-change packets, final capability views, and `reports/change-capability-human-plan.md`.
+- Phase 4 reports state whether the initial plan was accepted or adjusted, which atom groups drove plan changes, how capability progression was evaluated, how change complexity was evaluated, which atoms moved or changed status, and whether a Phase 3 recheck is required.
+- Final change packets contain direct owning atoms, contextual atoms, upstream realized baseline, downstream constraints, non-goals, evidence burden, and links back to the global atom index and source atom files.
+- No final direct atom is owned by multiple changes/capabilities.
+- No final change is over-complex without a documented blocker or split rationale.
+- No `openspec-propose` run starts before Phase 4 reaches `accepted` or `adjusted`.

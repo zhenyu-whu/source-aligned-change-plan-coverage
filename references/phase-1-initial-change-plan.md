@@ -1,6 +1,6 @@
 # Phase 1: Initial Source-Aligned Change Plan
 
-Phase 1 creates the initial top-level OpenSpec change/capability framework from the user-specified source documents. It must enumerate and read every source document under the user-specified source roots before slicing the plan. It does not create concrete OpenSpec changes, proposals, specs, designs, tasks, acceptance artifacts, obligation atom ledgers, line-range anchors, coverage statuses, or a backlog of evidence items waiting for Phase 2.
+Phase 1 creates the initial top-level OpenSpec change/capability framework from the user-specified source documents. It must enumerate and read every source document under the user-specified source roots before slicing the plan. The Phase 1 framework is a source-informed slicing hypothesis that Phase 4 may refit after obligation atoms are normalized. It does not create concrete OpenSpec changes, proposals, specs, designs, tasks, acceptance artifacts, obligation atom ledgers, line-range anchors, coverage statuses, or a backlog of evidence items waiting for Phase 2.
 
 Write the plan to:
 
@@ -112,7 +112,7 @@ A foundation change is allowed only when all conditions hold:
 11. Build a capability progression matrix that shows how each change advances each capability.
 12. Mark key scenarios, non-goals, risks, conflicts, and deferred content from the input documents.
 13. Add concise `Source evidence` hints only to justify the planned slice. These hints may name source paths, headings, section numbers, decision IDs, route/page/object names, APIs, commands, DTOs, entities, tables, jobs, events, assets, environments, or verification anchors.
-14. Do not extract or enumerate every source-backed requirement in Phase 1. Do not create obligation atom ledgers, line ranges, anchor tables, coverage statuses, "pending Phase 2" evidence lists, or evidence counts. If a hint is only semantic, keep it as a short non-canonical plan clue; Phase 2 owns precise obligation atom and anchor resolution.
+14. Do not extract or enumerate every source-backed requirement in Phase 1. Do not create obligation atom ledgers, line ranges, anchor tables, coverage statuses, "pending Phase 2" evidence lists, or evidence counts. If a hint is only semantic, keep it as a short non-canonical plan clue; Phase 2 owns source-first atom extraction, Phase 3 owns coverage normalization, and Phase 4 owns final plan refit.
 
 ## Output
 
@@ -206,6 +206,7 @@ Answer:
 8. Does any change combine multiple independently verifiable functional points that could be implemented and archived separately?
 9. Does the first feature change after a foundation change introduce infrastructure-heavy concerns before its functional point needs their full behavior?
 10. Does the plan merge behavior only to avoid a one-to-one appearance in the capability matrix?
+11. Are any initial change/capability boundaries marked as hypotheses that may need Phase 4 refit after atom extraction?
 
 ## Phase Report
 
