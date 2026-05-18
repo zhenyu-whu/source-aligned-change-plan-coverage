@@ -32,6 +32,11 @@ Write current copies only:
 - `openspec/orchestrate/source-doc-coverage/<source-relative-path-without-extension>.coverage.md` for every source document listed in the manifest
 - `openspec/orchestrate/change-capability-anchors/index.md`
 - `openspec/orchestrate/change-capability-anchors/obligation-atom-index.md`
+- `openspec/orchestrate/reviews/phase-3-trace/local-to-global-atom-map.md`
+- `openspec/orchestrate/reviews/phase-3-trace/source-remainder-review.md`
+- `openspec/orchestrate/reviews/phase-3-trace/duplicate-ownership-review.md`
+- `openspec/orchestrate/reviews/phase-3-trace/capability-change-scope-review.md`
+- `openspec/orchestrate/reviews/phase-3-trace/adjustment-decision-log.md`
 - `openspec/orchestrate/reviews/coverage-review.md`
 - `openspec/orchestrate/reviews/change-plan-adjustments.md` only when the decision is `adjust` or `blocked`
 - `openspec/orchestrate/reports/phase-3-agent-report.md`
@@ -41,6 +46,8 @@ Write current copies only:
 Use a single-level filename for per-source files. Derive it from the source document path as listed in the manifest, remove the file extension, and replace path separators with `--`. Do not create nested directories under `source-doc-coverage/`.
 
 Phase 3 proposes adjustments in `reviews/change-plan-adjustments.md`; it does not update `change-plan.md` or Phase 2 per-change/capability atom files. Targeted updates belong to Phase 4.
+
+`reviews/phase-3-trace/` records the current Phase 3 pass's intermediate audit trail. These files are review aids, not source of truth. They must be overwritten on each fresh Phase 3 pass and must be consistent with the final `obligation-atom-index.md`, per-source coverage files, and `coverage-review.md`.
 
 When Phase 3 completes, `reports/change-capability-human-plan.md` is the human-facing synthesis for later `openspec-propose` and `openspec-apply-change` work. It must group atoms into readable change packets and capability progression narratives, while linking back to the canonical atom ledgers and global atom index. It is not a source of truth and must not replace atom-level coverage artifacts.
 
@@ -105,24 +112,29 @@ Evaluate Phase 2 outputs in this order:
 8. Verify Phase 2 per-change full-source discipline: every per-change file must have one per-source extraction ledger row for every Phase 1 manifest source document. Missing per-source rows are blockers or adjustment findings.
 9. Build a semantic duplicate/ownership review across extracted atoms. Same source document/range, equivalent source facts, equivalent state/action/verification obligations, or identical propose use across changes are duplicate candidates until reviewed.
 10. Build `change-capability-anchors/obligation-atom-index.md` with one global direct owner per production obligation.
-11. For each source document in the manifest, create or update the matching `source-doc-coverage/<source-relative-path-without-extension>.coverage.md` file before writing the final global review.
-12. For each source document, inspect obligation-bearing sections and verify atom completeness:
+11. Write `reviews/phase-3-trace/local-to-global-atom-map.md`, mapping every extracted canonical Phase 2 atom/context row to exactly one global atom id, relation, non-direct status, or blocker.
+12. Write `reviews/phase-3-trace/duplicate-ownership-review.md`, preserving every duplicate/overlap/broad-anchor candidate considered and its unique-owner, relation, non-coverage, adjust, or blocked decision.
+13. For each source document in the manifest, create or update the matching `source-doc-coverage/<source-relative-path-without-extension>.coverage.md` file before writing the final global review.
+14. For each source document, inspect obligation-bearing sections and verify atom completeness:
     - For pages/objects: page role, route, entry, exit, layout constraints with behavior impact, every named state, state triggers, display, primary actions, disabled actions, recovery, interaction rules, object dependencies, action labels that define behavior, acceptance criteria, responsive behavior, and non-goals.
     - For flow/state/system docs: lifecycle stages, allowed transitions, overlay/blocking rules, fixture fields, scene ids, verification matrix rows, interaction outcomes, and preserve boundaries.
     - For architecture/product docs: data facts, auth/privacy rules, runtime/deployment requirements, worker/job rules, provider boundaries, failure/recovery rules, observability/audit rules, and verification requirements.
-13. Identify source ranges outside every Phase 2 atom or source anchor range. Read those candidate ranges plus necessary local context and classify them:
+15. Identify source ranges outside every Phase 2 atom or source anchor range. Read those candidate ranges plus necessary local context and classify them:
     - ignore blank lines, table separators, decorative separators, generated table-of-contents lines, and pure formatting
     - ignore background prose, repeated summaries, discarded options, and purely explanatory text unless it defines a production behavior, boundary, data fact, verification obligation, deployment requirement, auth/privacy rule, failure path, or preserve constraint
     - record each remaining meaningful uncovered source obligation as a missing atom finding
-14. Detect broad-anchor compression: a Phase 2 row covers a line range containing multiple mandatory UI/flow/data/verification obligations, but the atom ledger only records a summary. Record each missing atom separately.
-15. Detect cross-change and cross-capability overlaps by intersecting atom and anchor line ranges. List overlaps when ranges intersect or one range contains another; preserve all participating original atom ids and anchor names.
-16. Explain each overlap as one of: valid shared source context, dependency/preserve evidence, same user/system loop split across changes, duplicate direct atom, conflicting ownership, broad anchor range, or unclear.
-17. Build a capability atom progression review. For each capability, order its global atoms by planned change order and classify each atom as baseline, refinement, hardening, extension, preserve/dependency, or misplaced repeat. Flag atoms that appear before prerequisites, repeat without delta, skip necessary failure/verification boundaries, or stretch a capability beyond its behavior boundary.
-18. Build a change complexity review. For each change, count direct atoms, involved capabilities, source documents touched, entry/fact/projection/failure/verification surfaces, expected evidence types, UI states, worker/API/data surfaces, and cross-cutting concerns. Flag changes whose atom load or surface area suggests the implementation would be too complex to review and archive safely.
-19. Build a downstream change packet review. For each change, group direct atoms by capability, list contextual atoms that affect current design, name upstream realized baseline atoms from earlier changes, name downstream constraints that must not be designed out, list non-goals, and link to the canonical ledger and global atom ids.
-20. Build an exhaustive adjustment ledger for every missing atom, duplicate direct atom, ambiguous ownership, broad-anchor compression finding, blocking capability-view inconsistency, problematic overlap, capability progression issue, change packet gap, or change complexity issue. Do not summarize with `+N more`; each required adjustment needs its own finding id.
-21. Build compact global statistics across source documents, global atoms, changes, capabilities, meaningful missing atoms, duplicate findings, capability progression findings, change complexity findings, change packet gaps, covered non-atom ranges, overlap findings, gaps, and conflicts.
-22. Decide whether the current change plan is coherent, needs targeted Phase 4 adjustment, or is blocked.
+16. Write `reviews/phase-3-trace/source-remainder-review.md`, listing every candidate remaining source range reviewed, how it was discovered, read scope, semantic classification, whether it contains a production obligation, and the resulting atom/status/finding.
+17. Detect broad-anchor compression: a Phase 2 row covers a line range containing multiple mandatory UI/flow/data/verification obligations, but the atom ledger only records a summary. Record each missing atom separately.
+18. Detect cross-change and cross-capability overlaps by intersecting atom and anchor line ranges. List overlaps when ranges intersect or one range contains another; preserve all participating original atom ids and anchor names.
+19. Explain each overlap as one of: valid shared source context, dependency/preserve evidence, same user/system loop split across changes, duplicate direct atom, conflicting ownership, broad anchor range, or unclear.
+20. Build a capability atom progression review. For each capability, order its global atoms by planned change order and classify each atom as baseline, refinement, hardening, extension, preserve/dependency, or misplaced repeat. Flag atoms that appear before prerequisites, repeat without delta, skip necessary failure/verification boundaries, or stretch a capability beyond its behavior boundary.
+21. Build a change complexity review. For each change, count direct atoms, involved capabilities, source documents touched, entry/fact/projection/failure/verification surfaces, expected evidence types, UI states, worker/API/data surfaces, and cross-cutting concerns. Flag changes whose atom load or surface area suggests the implementation would be too complex to review and archive safely.
+22. Write `reviews/phase-3-trace/capability-change-scope-review.md`, recording the capability progression review, change complexity review, and any capability-boundary or slicing candidates considered.
+23. Build a downstream change packet review. For each change, group direct atoms by capability, list contextual atoms that affect current design, name upstream realized baseline atoms from earlier changes, name downstream constraints that must not be designed out, list non-goals, and link to the canonical ledger and global atom ids.
+24. Build an exhaustive adjustment ledger for every missing atom, duplicate direct atom, ambiguous ownership, broad-anchor compression finding, blocking capability-view inconsistency, problematic overlap, capability progression issue, change packet gap, or change complexity issue. Do not summarize with `+N more`; each required adjustment needs its own finding id.
+25. Write `reviews/phase-3-trace/adjustment-decision-log.md`, preserving all candidate findings considered, the decision for each, whether it became a Phase 4 finding, and the evidence linking it to final `coverage-review.md` or `change-plan-adjustments.md`.
+26. Build compact global statistics across source documents, global atoms, changes, capabilities, meaningful missing atoms, duplicate findings, capability progression findings, change complexity findings, change packet gaps, covered non-atom ranges, overlap findings, gaps, and conflicts.
+27. Decide whether the current change plan is coherent, needs targeted Phase 4 adjustment, or is blocked.
 
 ## Required Tables
 
@@ -178,6 +190,36 @@ Each `source-doc-coverage/<source-relative-path-without-extension>.coverage.md` 
 
 | Change | Change Directory | Source Atom File | Capability Atom Files | Source Documents Read In Phase 2 | Direct Atoms | Contextual Atoms | Anchors | Capability Atom Gaps | Duplicate Risks | Blockers |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
+
+`reviews/phase-3-trace/local-to-global-atom-map.md` must include one row for every canonical Phase 2 atom/context row:
+
+| Change | Local Atom ID | Source Document | Lines | Local Capability | Local Coverage Status | Global Atom ID or Relation | Global Owner Change | Global Owner Capability | Review Decision | Reason |
+| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
+
+`reviews/phase-3-trace/source-remainder-review.md` must include every candidate uncovered or non-atom source range that Phase 3 reviewed:
+
+| Source Document | Candidate Range | How Found | Read Scope | Semantic Classification | Production Obligation? | Atom / Status / Finding | Reason |
+| --- | --- | --- | --- | --- | --- | --- | --- |
+
+`reviews/phase-3-trace/duplicate-ownership-review.md` must include every semantic duplicate, overlap, broad-anchor, or ownership candidate considered:
+
+| Candidate ID | Source Ranges or Local Atoms | Candidate Type | Equivalent Obligation? | Direct Owner Decision | Non-Owner Classification or Relation | Phase 4 Finding | Reason |
+| --- | --- | --- | --- | --- | --- | --- | --- |
+
+`reviews/phase-3-trace/capability-change-scope-review.md` must include a capability progression working table:
+
+| Capability | Atom Family / Boundary | Changes Reviewed | Baseline Owner | Later Delta Owners | Repeats / Dependencies / Context | Progression Decision | Phase 4 Finding |
+| --- | --- | --- | --- | --- | --- | --- | --- |
+
+It must also include a change complexity working table:
+
+| Change | Direct Atom Groups | Context Groups | Capabilities Advanced | Evidence Surfaces | Complexity Decision | Phase 4 Finding |
+| --- | --- | --- | --- | --- | --- | --- |
+
+`reviews/phase-3-trace/adjustment-decision-log.md` must include every candidate adjustment or blocker considered, including candidates closed as safe:
+
+| Review Item | Finding Class | Input Evidence | Decision | Output Artifact | Phase 4 Needed? | Reason |
+| --- | --- | --- | --- | --- | --- | --- |
 
 `coverage-review.md` must include a per-change coverage table:
 
@@ -304,6 +346,8 @@ Use `complete` only when every planned change has a per-change atom file and one
 
 Additionally, use `complete` only when every source document listed in `source-doc-manifest.md` has a matching `source-doc-coverage/<source-relative-path-without-extension>.coverage.md` file with document-specific atom coverage, non-atom range classifications, duplicate/ownership review, overlap review, and judgment. Missing per-source review files are a Phase 3 artifact blocker and require `Decision: blocked` unless they can be produced in the same Phase 3 pass.
 
+Also use `complete` only when all five `reviews/phase-3-trace/` files exist and reconcile with the final review: every local canonical row in `local-to-global-atom-map.md` appears in `obligation-atom-index.md` or has a justified non-direct relation, every candidate range in `source-remainder-review.md` has a semantic classification, every duplicate/overlap candidate in `duplicate-ownership-review.md` has a resolution, every capability/change scope candidate in `capability-change-scope-review.md` has a judgment, and every candidate finding in `adjustment-decision-log.md` is closed, classified, or handed to Phase 4.
+
 Use `adjust` when meaningful source obligations are not represented by atoms, direct atoms are duplicated, ownership is ambiguous, broad anchors compress obligations, overlap shows duplicated or distorted scope, capability boundaries need targeted edits, capability atom progression is incoherent, a change is too complex or badly sliced, or current Phase 2 artifacts need focused updates. Phase 4 must run next, using the exhaustive adjustment ledger.
 
 Use `blocked` when source documents conflict, source roots are incomplete, the user must decide a boundary before coverage can close, or targeted Phase 4 adjustment is insufficient without a broad Phase 2 rerun.
@@ -317,6 +361,7 @@ When complete, `alignment-final-report.md` must summarize:
 - per-change capability atom files consumed
 - source documents classified
 - per-source-document review files written
+- Phase 3 trace files written
 - global obligation atoms indexed
 - source documents covered by atoms
 - missing obligation atoms, or confirmation that none remain
