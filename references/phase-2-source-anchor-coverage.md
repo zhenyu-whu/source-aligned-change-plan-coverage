@@ -102,6 +102,8 @@ Candidate artifact projection values:
 - `contextual-only`: non-direct context that should constrain interpretation but not become downstream implementation scope.
 - `unsure`: use only when source semantics are insufficient; Phase 3 must resolve or block.
 
+`contextual-only` must pair with contextual, reference, non-production, non-goal, or other non-direct candidate statuses. If a row is a `direct-candidate`, do not assign `contextual-only`; choose `spec-requirement`, `spec-guard`, `design-obligation`, or `verification-obligation`. If the source fact seems contextual rather than direct, change the candidate status to `contextual-candidate`; if the projection cannot be decided safely, use `unsure` and explain why Phase 3 must resolve it.
+
 ## Phase 2A: Work Queue Planning
 
 Before spawning extraction subagents, create `source-obligation-atoms/work-queue.md`.

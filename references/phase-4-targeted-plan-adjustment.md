@@ -74,6 +74,7 @@ Phase 4 must not:
 - use raw uncovered line counts as a plan-adjustment driver without semantic review
 - leave any direct global atom without exactly one final owner change/capability unless it is non-direct, non-coverage, or blocked
 - leave any direct global atom without final artifact projection
+- leave any final direct global atom with `contextual-only`; contextual-only atoms must be moved to the context table, non-direct handling, or blocker status
 - force a `design-obligation` or `verification-obligation` atom into specs as a `spec-requirement` merely because it is direct
 - leave duplicated direct ownership unresolved
 - create one capability per page, table, SDK, queue, external service, component, or source document section
@@ -103,7 +104,7 @@ Use these rules:
 - Represent staged maturity as distinct atoms. Do not repeat the same atom across changes to simulate progression.
 - Treat earlier changes as realized baseline providers, not global-context catchalls.
 - Treat future domain behavior as contextual or downstream constraints until the first change that directly implements it. Do not make an early change own direct atoms simply because later changes depend on their contracts.
-- Preserve artifact projection independently from final owner placement. A direct atom can be implementation-owned by a change while projecting to design, tasks/proof, or spec guard rather than becoming a spec requirement.
+- Preserve artifact projection independently from final owner placement. A direct atom can be implementation-owned by a change while projecting to design, tasks/proof, or spec guard rather than becoming a spec requirement; it cannot remain `contextual-only` in the final direct table.
 - Prefer staged slices such as input preparation -> confirmed domain fact -> async execution -> external integration -> result projection -> hardening/delivery/operations when each slice can be verified truthfully.
 - Preserve directly necessary cross-capability increments inside the same change when they share the same entry, fact, projection, failure path, and verification truth. Do not move identity, privacy, realtime state, versioning, entitlement, export, failure recovery, or observability atoms into artificial standalone changes solely to narrow the matrix row.
 
@@ -287,6 +288,8 @@ Direct atom table:
 
 | Global Atom ID | Source Document | Lines | Atom Type | Source Fact | Normativity | Artifact Projection | Projection Rationale | Owner Capability | Atom Relation | Roles | Propose Use | Evidence Need |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
+
+Direct table rows must use `spec-requirement`, `spec-guard`, `design-obligation`, or `verification-obligation`. `contextual-only` belongs only in the context table or non-direct classifications.
 
 Context table:
 

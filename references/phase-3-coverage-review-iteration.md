@@ -70,6 +70,7 @@ Rules:
 - If a source fact is needed only to keep current design compatible with a later obligation, classify it as contextual future-compatibility and link it to the future or candidate global atom when known.
 - `Owner Change` and `Owner Capability` may remain `phase-4-refit-required` when coverage is complete but final placement depends on sequencing or granularity decisions. Phase 4 must resolve these before final output.
 - `Artifact Projection` must follow source semantics independently from `Coverage Status`: direct architecture/runtime/package/schema/provider/deployment atoms may be `design-obligation`; test strategy, fixture, visual, smoke, and evidence atoms may be `verification-obligation`; preserve and explicit non-goal atoms may be `spec-guard`.
+- `contextual-only` is reserved for non-direct context, reference, future-compatibility, or non-coverage rows. If an atom is still a direct candidate or `phase-4-refit-required`, assign `spec-requirement`, `spec-guard`, `design-obligation`, or `verification-obligation`; if no non-context projection is safe, mark the row `blocked` instead of letting a direct atom proceed as `contextual-only`.
 - `duplicate` is not a complete rationale unless it names the duplicated `Global Atom ID` and explains semantic equivalence.
 
 Artifact projection values:
