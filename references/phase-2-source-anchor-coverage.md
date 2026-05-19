@@ -48,6 +48,8 @@ After writing each Phase 2 artifact, perform the language self-check from the sk
 
 An obligation atom is the smallest source-backed production obligation that should survive into later `openspec-propose` artifacts. A later proposal/spec/design/tasks file should be able to consume an atom directly without reinterpreting a broad source paragraph.
 
+Candidate artifact projection records where the atom is expected to land downstream. It is a candidate only; Phase 3 normalizes it and Phase 4 finalizes it. Do not infer that every `direct-candidate` is a spec requirement. Architecture, runtime, package, provider, deployment, schema, and verification atoms often project to design or tasks/proof rather than to normative specs.
+
 Classify extracted source facts into these buckets:
 
 - Direct candidate atom: source-backed production behavior that appears likely to be implemented, preserved, verified, or explicitly excluded by some change/capability.
@@ -75,6 +77,7 @@ Atom types:
 - `auth-privacy-rule`
 - `failure-path`
 - `responsive`
+- `architecture-runtime`
 - `verification`
 - `acceptance`
 - `preserve-boundary`
@@ -89,6 +92,15 @@ Use stable, readable source-local ids such as:
 - `async-job.failure-no-result`
 
 Phase 3 may rename or globally qualify ids when it builds the normalized global obligation atom index. Do not rely on Phase 2 ids being globally unique.
+
+Candidate artifact projection values:
+
+- `spec-requirement`: normative user/system behavior that should become requirement/scenario content.
+- `spec-guard`: preserve boundary, explicit non-goal, forbidden drift, or must-not scope that specs must protect without turning into new positive behavior.
+- `design-obligation`: architecture/runtime/data/API/module/provider/deployment shape that design must consume.
+- `verification-obligation`: proof, fixture, visual, smoke, or evidence strategy that tasks/proof must consume.
+- `contextual-only`: non-direct context that should constrain interpretation but not become downstream implementation scope.
+- `unsure`: use only when source semantics are insufficient; Phase 3 must resolve or block.
 
 ## Phase 2A: Work Queue Planning
 
@@ -193,16 +205,17 @@ Rules:
 
 Each source atom file must include:
 
-| Source Atom ID | Source Document | Lines | Atom Type | Source Fact | Normativity | Candidate Status | Candidate Owner Change | Candidate Owner Capability | Roles | Rationale | Propose Use | Evidence Need |
-| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| Source Atom ID | Source Document | Lines | Atom Type | Source Fact | Normativity | Candidate Status | Candidate Artifact Projection | Candidate Owner Change | Candidate Owner Capability | Roles | Rationale | Propose Use | Evidence Need |
+| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
 
 Rules:
 
 - `Lines` must be in `L<start>-L<end>` format; for multiple ranges, join them with `; `.
 - `Normativity` must be one of `must`, `must-not`, `should`, `context`.
 - `Candidate Status` must be one of `direct-candidate`, `contextual-candidate`, `unassigned`, `candidate-new-change`, `candidate-new-capability`, `explicit-non-goal`, `reference-only`, `prototype-only-not-production`, `superseded`, `duplicate-candidate`, `no-product-or-system-impact`, `unresolved-conflict`, or `unclassified`.
+- `Candidate Artifact Projection` must be one of `spec-requirement`, `spec-guard`, `design-obligation`, `verification-obligation`, `contextual-only`, or `unsure`.
 - Candidate owner fields may name a Phase 1 change/capability, `unassigned`, `candidate-new-change`, `candidate-new-capability`, `contextual`, or `none`.
-- `Propose Use` must say how the atom should enter proposal, spec, design, tasks, evidence, non-goals, or preserve constraints if it survives Phase 3/4.
+- `Propose Use` must say how the atom should enter proposal, spec, design, tasks, evidence, non-goals, or preserve constraints if it survives Phase 3/4, consistent with its candidate artifact projection.
 - `Evidence Need` must name the proof type expected later, such as `unit`, `contract`, `integration`, `worker`, `browser-e2e`, `visual`, `fixture`, `manual`, or `none`.
 
 ### Source Anchor Table
@@ -239,8 +252,8 @@ This section is owned by the fresh Phase 2 index/report subagent after all sourc
 
 `source-obligation-atoms/index.md` must include:
 
-| Source Document | Work Queue Batch | Canonical Owner | Source Atom File | Read Status | Atom Candidates | Contextual Candidates | Unassigned Atoms | Candidate New Boundaries | Remainder Notes | Blockers |
-| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| Source Document | Work Queue Batch | Canonical Owner | Source Atom File | Read Status | Atom Candidates | Candidate Artifact Projection Summary | Contextual Candidates | Unassigned Atoms | Candidate New Boundaries | Remainder Notes | Blockers |
+| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
 
 `reports/phase-2-agent-report.md` must include:
 
@@ -249,8 +262,8 @@ A short `Index/Report Generation` section naming the fresh aggregation subagent,
 | Batch | Source Documents | Line Counts | Extraction Mode | Canonical Owner | Work Queue Rationale | Extraction Status |
 | --- | --- | --- | --- | --- | --- | --- |
 
-| Batch | Source Documents | Source Atom Files | Subagent Status | Docs Read Full | Atom Candidates | Contextual Candidates | Unassigned Atoms | Duplicate Risks | Candidate New Boundaries | Blockers |
-| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| Batch | Source Documents | Source Atom Files | Subagent Status | Docs Read Full | Atom Candidates | Candidate Artifact Projection Summary | Contextual Candidates | Unassigned Atoms | Duplicate Risks | Candidate New Boundaries | Blockers |
+| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
 
 Do not include global coverage statistics here. Phase 3 owns semantic coverage closure, duplicate resolution, global uniqueness, and final ownership.
 
@@ -266,6 +279,7 @@ Before finishing Phase 2:
 - Confirm the Phase 2 index/report subagent did not edit source atom files, extract new atoms, perform global duplicate resolution, decide final ownership, close semantic coverage, or read Phase 3/Phase 4 outputs.
 - Confirm every source atom file states that the source document was read in full.
 - Confirm every source atom file includes the source section inventory, obligation atom candidate ledger, source anchor table, ownership ambiguity notes, candidate missing plan boundaries, and blockers.
+- Confirm every source atom ledger row has non-empty `Candidate Artifact Projection`, and no direct candidate is assumed to be `spec-requirement` solely because it is direct.
 - Confirm UI and flow documents were decomposed using the mandatory extraction rules above; broad "page detail" compression is not allowed.
 - Confirm every atom and anchor has normalized `Lines` values in `L<start>-L<end>` format.
 - Confirm candidate owner mappings are explicitly marked as candidate, not final.

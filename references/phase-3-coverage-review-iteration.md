@@ -10,6 +10,7 @@ Phase 3 is not a new propose-writing pass and must not invent production require
 4. Are repeated atoms true duplicates, refinements, preserve/dependency/context, or conflicts?
 5. Can each production obligation be assigned exactly one candidate/final owner change/capability, or does it require Phase 4 refit?
 6. Are all source ranges without atoms genuinely non-production, reference-only, formatting, background, or otherwise safe to ignore?
+7. Does each atom have the right artifact projection (`spec-requirement`, `spec-guard`, `design-obligation`, `verification-obligation`, or `contextual-only`) based on source semantics?
 
 Source anchors and line ranges remain useful for navigation and mechanical checks, but semantic obligation coverage is the quality gate.
 
@@ -53,12 +54,12 @@ After writing each Phase 3 artifact, perform the language self-check from the sk
 
 ## Global Atom Index
 
-`change-capability-anchors/obligation-atom-index.md` is the normalized global review registry. It resolves global uniqueness, candidate/final ownership, source traceability, and non-direct relations.
+`change-capability-anchors/obligation-atom-index.md` is the normalized global review registry. It resolves global uniqueness, artifact projection, candidate/final ownership, source traceability, and non-direct relations.
 
 It must include:
 
-| Global Atom ID | Source Document | Lines | Atom Type | Source Fact | Normativity | Coverage Status | Owner Change | Owner Capability | Source Atom Origins | Atom Relation | Propose Use | Evidence Need | Review Judgment |
-| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| Global Atom ID | Source Document | Lines | Atom Type | Source Fact | Normativity | Coverage Status | Artifact Projection | Owner Change | Owner Capability | Source Atom Origins | Atom Relation | Propose Use | Evidence Need | Review Judgment |
+| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
 
 Rules:
 
@@ -68,7 +69,17 @@ Rules:
 - If a source fact only preserves or depends on another atom, use `Atom Relation` such as `preserves:<global-atom-id>` or `depends-on:<global-atom-id>` and do not count it as duplicate direct coverage.
 - If a source fact is needed only to keep current design compatible with a later obligation, classify it as contextual future-compatibility and link it to the future or candidate global atom when known.
 - `Owner Change` and `Owner Capability` may remain `phase-4-refit-required` when coverage is complete but final placement depends on sequencing or granularity decisions. Phase 4 must resolve these before final output.
+- `Artifact Projection` must follow source semantics independently from `Coverage Status`: direct architecture/runtime/package/schema/provider/deployment atoms may be `design-obligation`; test strategy, fixture, visual, smoke, and evidence atoms may be `verification-obligation`; preserve and explicit non-goal atoms may be `spec-guard`.
 - `duplicate` is not a complete rationale unless it names the duplicated `Global Atom ID` and explains semantic equivalence.
+
+Artifact projection values:
+
+- `spec-requirement`
+- `spec-guard`
+- `design-obligation`
+- `verification-obligation`
+- `contextual-only`
+- `blocked`
 
 Coverage statuses:
 
@@ -118,11 +129,11 @@ Evaluate in this order:
 1. Confirm every `read-full` manifest source document appears exactly once in `source-obligation-atoms/work-queue.md` and has one canonical extraction owner.
 2. Confirm every `read-full` manifest source document has one Phase 2 source atom file.
 3. Treat `work-queue.md` only as scheduling trace. Do not use its batching rationale, document name, path, role, or line count as coverage evidence.
-4. Extract every Phase 2 atom candidate with source document, source-local atom id, line range, atom type, source fact, normativity, candidate status, candidate owner change/capability, roles, rationale, propose use, evidence need, and artifact origin.
+4. Extract every Phase 2 atom candidate with source document, source-local atom id, line range, atom type, source fact, normativity, candidate status, candidate artifact projection, candidate owner change/capability, roles, rationale, propose use, evidence need, and artifact origin.
 5. Optionally run `scripts/phase3_line_range_audit.py` to mechanically parse source atom anchors, normalize line ranges, merge ranges, list candidate uncovered intervals, list overlaps, and flag malformed rows or non-canonical line-range formatting warnings. Include a short summary if used.
 6. Build a semantic duplicate review across extracted atoms. Same source document/range, equivalent source facts, equivalent state/action/verification obligations, or identical propose use are duplicate candidates until reviewed.
 7. Split broad atoms when one Phase 2 row covers multiple mandatory UI/flow/data/verification obligations. Each split atom must keep source evidence and a source-local origin or Phase 3 missing-atom finding id.
-8. Build `change-capability-anchors/obligation-atom-index.md` with one global atom per production obligation.
+8. Build `change-capability-anchors/obligation-atom-index.md` with one global atom per production obligation and one normalized artifact projection per global atom.
 9. Write `reviews/phase-3-trace/source-to-global-atom-map.md`, mapping every Phase 2 atom/context row to exactly one global atom id, relation, non-direct status, or blocker.
 10. Write `reviews/phase-3-trace/duplicate-ownership-review.md`, preserving every duplicate, broad-atom, overlap, and ownership candidate considered and its resolution.
 11. For each source document in the manifest, create or update the matching `source-doc-coverage/<source>.coverage.md` file before writing the final global review.
@@ -158,8 +169,8 @@ Each `source-doc-coverage/<source>.coverage.md` file must include:
 
 ### Effective Atom Coverage
 
-| Global Atom ID | Source Atom Origins | Lines | Atom Type | Coverage Status | Candidate / Owner Change | Candidate / Owner Capability | Source Fact |
-| --- | --- | --- | --- | --- | --- | --- | --- |
+| Global Atom ID | Source Atom Origins | Lines | Atom Type | Coverage Status | Artifact Projection | Candidate / Owner Change | Candidate / Owner Capability | Source Fact |
+| --- | --- | --- | --- | --- | --- | --- | --- | --- |
 
 ### Source Obligation Coverage
 
@@ -187,8 +198,8 @@ Each `source-doc-coverage/<source>.coverage.md` file must include:
 
 `reviews/phase-3-trace/source-to-global-atom-map.md` must include one row for every Phase 2 atom/context row:
 
-| Source Document | Source Atom ID | Lines | Candidate Status | Candidate Owner Change | Candidate Owner Capability | Global Atom ID or Relation | Global Coverage Status | Review Decision | Reason |
-| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| Source Document | Source Atom ID | Lines | Candidate Status | Candidate Artifact Projection | Candidate Owner Change | Candidate Owner Capability | Global Atom ID or Relation | Global Coverage Status | Global Artifact Projection | Review Decision | Reason |
+| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
 
 `reviews/phase-3-trace/source-remainder-review.md` must include:
 
@@ -217,8 +228,8 @@ It must also include:
 
 And a Phase 4 handoff table:
 
-| Handoff Item | Source Ranges or Atoms | Current Candidate Owners | Why Phase 4 Must Decide | Required Plan Refit Consideration |
-| --- | --- | --- | --- | --- |
+| Handoff Item | Source Ranges or Atoms | Current Candidate Owners | Current Artifact Projection | Why Phase 4 Must Decide | Required Plan Refit Consideration |
+| --- | --- | --- | --- | --- | --- |
 
 ## Decision Values
 
@@ -247,6 +258,7 @@ Use `blocked` when source documents conflict, source roots are incomplete, sourc
 - duplicate and ownership findings
 - broad atoms split or justified
 - non-coverage classifications
+- artifact projection distribution and any projection uncertainties
 - Phase 4 placement handoffs
 - conflicts resolved or remaining
 - confirmation that every production-meaningful obligation under the specified roots is covered by exactly one global atom or justified
