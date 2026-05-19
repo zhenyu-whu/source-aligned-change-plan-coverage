@@ -85,6 +85,10 @@ This is a lightweight scheduling step. It may read `change-plan.md`, `source-doc
 
 Use this step to preserve context quality and improve parallelism:
 
+- First create an initial semantic split by source family, document role, line count, and expected extraction difficulty.
+- Then perform a merge review before spawning subagents. Merge compatible small or medium candidate batches when they share source family or extraction discipline and their combined context remains reviewable.
+- Default target: no more than five Phase 2 extraction batches total. Exceed five only when the source set is genuinely large, contains multiple very large documents, or a merged batch would create unsafe context pressure or weaken extraction quality. Record the exception rationale in the work queue.
+- Do not optimize for maximum parallelism when it creates many small extraction batches. Prefer fewer coherent canonical owners over loose one-subagent-per-small-cluster scheduling.
 - Small documents may be batched by directory, source role, or doc type.
 - Medium documents may be assigned in small batches when their combined line count remains reasonable.
 - Large documents should normally receive a dedicated extraction subagent.
@@ -102,6 +106,7 @@ Rules:
 - Every manifest source document with `Read Status: read-full` must appear in exactly one batch.
 - `Extraction Mode` should be `single-doc`, `small-doc-batch`, `medium-doc-batch`, or `large-doc-dedicated`.
 - `Assignment Rationale` may cite line count, source role, path domain, doc type, and expected context pressure.
+- The work queue must include a short `Batch Merge Review` section after the table. It should state the initial candidate batch count, final batch count, which candidate batches were merged, and why any final queue exceeds five batches.
 - The work queue is not source coverage evidence and must not include atom counts, coverage judgments, or no-obligation conclusions.
 
 ## Phase 2B: Source-First Subagent Discipline
@@ -110,7 +115,7 @@ Phase 2 must be reviewable as a set of source document extractions.
 
 1. Read `change-plan.md` to understand candidate changes, capabilities, sequencing assumptions, and current planned boundaries.
 2. Read `source-doc-manifest.md` and list every source document with `Read Status: read-full`.
-3. Build `source-obligation-atoms/work-queue.md` using only lightweight scheduling evidence.
+3. Build `source-obligation-atoms/work-queue.md` using only lightweight scheduling evidence: initial semantic split first, then merge review, with a default target of five or fewer final extraction batches unless the source set is genuinely large or context pressure justifies more.
 4. Spawn one fresh source-extraction subagent per work queue batch.
 5. Each source-extraction subagent must read its assigned source document bodies in full.
 6. Each subagent extracts atom candidates from the source first, then assigns candidate ownership only after the source-backed atom list is clear.
