@@ -65,7 +65,7 @@ Phase 4 must not:
 - use raw uncovered line counts as a plan-adjustment driver without semantic review
 - leave any direct global atom without exactly one final owner change/capability unless it is non-direct, non-coverage, or blocked
 - leave duplicated direct ownership unresolved
-- create one capability per page, table, SDK, queue, provider, component, or source document section
+- create one capability per page, table, SDK, queue, external service, component, or source document section
 - hide future obligations inside early changes unless they affect current design as contextual or preserve constraints
 
 If an adjustment cannot be made from Phase 3 findings plus targeted source context, return `blocked` or `needs-coverage-recheck` and explain which phase must run next.
@@ -80,6 +80,7 @@ Phase 4 must first build an atom-driven planning graph:
 Use these rules:
 
 - A final change should represent a reviewable, implementable, verifiable user/system loop or a valid foundation exception.
+- A final change is also the unit a later AI agent will implement in one focused `openspec-apply-change` pass. Closed-loop coherence alone does not justify a large change.
 - Attach an atom to an existing change only when that change owns the same coherent loop: entry, fact, projection, failure path, and verification surface.
 - Add or split a change when atom groups reveal an independently verifiable loop that can be implemented, verified, reviewed, and archived separately.
 - Merge changes only when atoms show they split one indivisible closed loop and neither side can be archived truthfully without the other.
@@ -89,6 +90,8 @@ Use these rules:
 - Resolve duplicate direct atoms by choosing the owner change that first implements the production obligation. Later changes may only keep a direct atom when they add a source-backed delta; otherwise they become preserve/dependency/reference/context.
 - Represent staged maturity as distinct atoms. Do not repeat the same atom across changes to simulate progression.
 - Treat earlier changes as realized baseline providers, not global-context catchalls.
+- Treat future domain behavior as contextual or downstream constraints until the first change that directly implements it. Do not make an early change own direct atoms simply because later changes depend on their contracts.
+- Prefer staged slices such as input preparation -> confirmed domain fact -> async execution -> external integration -> result projection -> hardening/delivery/operations when each slice can be verified truthfully.
 
 ## Capability Progression Review
 
@@ -109,16 +112,52 @@ Rules:
 
 Evaluate change complexity before finalizing:
 
-| Change | Atom Groups | Capabilities Advanced | Entry/Fact/Projection Count | Failure/Recovery Count | Evidence Types | UI/Data/Worker/API Surfaces | Complexity Decision |
-| --- | --- | --- | --- | --- | --- | --- | --- |
+| Change | Direct Atom Count | Atom Groups | New Capabilities | Modified Capabilities | Primary Functional Points | Entry/Fact/Projection Count | Failure/Recovery Count | Evidence Types | Surface Families | Budget Status | Complexity Decision |
+| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
+
+Use direct atom count as a complexity signal, not as a source coverage goal. Fine-grained atoms are expected, but a final change with many direct atoms still creates implementation, review, and archival risk.
 
 Rules:
 
+- Target budget: 20-60 direct atoms, one primary functional point, at most one new capability, a small number of directly necessary modified capabilities, at most two primary surface families, and a compact evidence burden.
+- Over-budget trigger: any change with more than 80 direct atoms, more than 4 directly advanced capabilities, more than 12 failure/recovery atoms, more than 2 primary entry points, more than 2 fact families, more than 2 projection families, more than 3 evidence types, or more than 3 surface families must be split, deferred, or justified with concrete indivisibility evidence.
+- Hard split/blocker trigger: any change with more than 120 direct atoms or more than 6 directly advanced capabilities must not be marked `accepted` or `adjusted` as-is. Phase 4 must split it, move atoms to later changes/context, or return `blocked` for a user slicing decision.
+- A `Keep` decision for an over-budget change must list rejected split candidates and explain why each would break truthfulness. "One coherent loop", "shared infrastructure", or "packet-level evidence grouping" is not sufficient.
 - Split a change when it contains multiple atom groups that can pass the Closed-loop Test independently.
 - Split a change when it advances many capabilities only because shared infrastructure made grouping convenient.
 - Split a change when the evidence burden spans many unrelated proof surfaces and would make review/archival ambiguous.
 - Keep a change together when splitting would force fake stubs, break one user/system loop, or make either side unverifiable.
 - Prefer the earliest minimal runnable loop after a foundation change; defer only atoms that are not required for that loop's production truth.
+- Split input preparation from downstream execution when the preparation state can be saved, revisited, validated, and verified without executing the downstream job.
+- Split external integration from command/job/result semantics when an adapter contract, deterministic sandbox, or integration-disabled path can be verified truthfully and the concrete integration can be added as a later direct change.
+- Split result projection, history, or interaction surfaces from upstream execution when the durable result fact can be verified independently of the richer projection loop.
+- Split access/quota enforcement, delivery, observability, and operations atoms out of a feature change unless they are required to make the current feature's behavior truthful rather than merely production-complete in a future sense.
+
+### Foundation Scope Gate
+
+Foundation changes are valid only as minimal enabling scaffolds. Evaluate them with a stricter budget:
+
+- A foundation change should directly own only runtime/repository skeleton, package/app boundaries, configuration loading, migration/test harnesses, empty adapter seams, environment/deploy conventions, and smoke proof.
+- A foundation change should not directly advance user/domain capabilities such as access/session flows, input preparation, domain-work execution, interactive state projection, result history, collection management, quota/accounting, delivery, privacy workflows, or operational observability. Those are direct scope in the first feature change that needs them.
+- Direct domain atoms in a foundation change must be moved to later changes or reclassified as contextual/downstream constraints unless Phase 4 proves no later closed-loop change can start without implementing them now.
+- A foundation change with more than 40 direct atoms, more than 2 capabilities advanced, or any direct domain behavior requires split/defer analysis. If it remains over budget, return `blocked` or record a user-facing exception with rejected split options.
+
+### Required Split Analysis
+
+For every over-budget trigger, write a split analysis before the final decision:
+
+| Change | Trigger | Candidate Split | Atoms / Capabilities Moved | New Closed-loop Outcome | Verification Surface | Decision | Reason |
+| --- | --- | --- | --- | --- | --- | --- | --- |
+
+Candidate split patterns include:
+
+- scaffold-only foundation -> first behavior slice
+- input capture/validation/preparation -> downstream execution
+- command/job contract -> concrete executor or external integration
+- durable result fact creation -> result projection/history/interaction surface
+- core feature loop -> access control, quota, delivery, observability, or hardening
+- user-facing workflow -> admin, reconciliation, maintenance, or operations loop
+- synchronous happy path -> async processing, retry, recovery, or audit trail
 
 ## Effective Change Plan Requirements
 
@@ -176,6 +215,12 @@ For each final change:
 - Contextual atoms / downstream design constraints:
 - Non-goals:
 - Complexity budget:
+  - Direct atom count:
+  - Capabilities advanced:
+  - Surface families:
+  - Evidence types:
+  - Budget status:
+  - Split/defer analysis:
 - Archive readiness:
 
 ## Final Change Packets
@@ -189,6 +234,7 @@ Each `change-capability-anchors/<change-slug>/<change-slug>.md` final packet mus
 - upstream realized baseline atoms from earlier changes
 - downstream constraints that must not be designed out
 - explicit non-goals
+- complexity budget status, over-budget triggers, and split/defer decisions
 - evidence burden
 - source atom and global atom index links
 - blockers, or `None`
@@ -222,16 +268,17 @@ Derived-view invariants:
 2. Read Phase 3 handoff items, especially atoms marked `phase-4-refit-required`, ownership ambiguities, and source-backed non-direct constraints.
 3. Create the next `phase-4-plan-refit/pass-<NN>/` directory and write `input-change-plan.md`.
 4. Build the atom-driven planning graph.
-5. Decide whether the Phase 1 framework is accepted, adjusted, needs coverage recheck, or blocked.
-6. If accepted or adjusted, write `phase-4-plan-refit/pass-<NN>/change-plan.md` and `atom-plan-mapping.md`.
-7. If adjusted, update root `openspec/orchestrate/change-plan.md` to the latest effective plan after the pass snapshot and mapping are written.
-8. Write `reviews/phase-4-trace/capability-progression-review.md`, `change-complexity-review.md`, and `plan-refit-decision-log.md`.
-9. If the status is `adjusted`, `needs-coverage-recheck`, or `blocked`, write `reviews/change-plan-adjustments.md` with the plan-impact and next-action summary.
-10. Derive final `change-capability-anchors/<change-slug>/` packets and capability views from the global atom index and final plan when the status is `accepted` or `adjusted`.
-11. Write `change-capability-anchors/index.md`.
-12. Write `reports/change-capability-human-plan.md` as a readable synthesis of final change packets and capability progression when the status is `accepted` or `adjusted`.
-13. Write `reports/phase-4-agent-report.md` and `reports/alignment-final-report.md`.
-14. Run a local artifact consistency check by inspection or deterministic parsing before finishing.
+5. Apply the implementation-ready complexity gate, foundation scope gate, and required split analysis to every candidate final change.
+6. Decide whether the Phase 1 framework is accepted, adjusted, needs coverage recheck, or blocked.
+7. If accepted or adjusted, write `phase-4-plan-refit/pass-<NN>/change-plan.md` and `atom-plan-mapping.md`.
+8. If adjusted, update root `openspec/orchestrate/change-plan.md` to the latest effective plan after the pass snapshot and mapping are written.
+9. Write `reviews/phase-4-trace/capability-progression-review.md`, `change-complexity-review.md`, and `plan-refit-decision-log.md`.
+10. If the status is `adjusted`, `needs-coverage-recheck`, or `blocked`, write `reviews/change-plan-adjustments.md` with the plan-impact and next-action summary.
+11. Derive final `change-capability-anchors/<change-slug>/` packets and capability views from the global atom index and final plan when the status is `accepted` or `adjusted`.
+12. Write `change-capability-anchors/index.md`.
+13. Write `reports/change-capability-human-plan.md` as a readable synthesis of final change packets and capability progression when the status is `accepted` or `adjusted`.
+14. Write `reports/phase-4-agent-report.md` and `reports/alignment-final-report.md`.
+15. Run a local artifact consistency check by inspection or deterministic parsing before finishing.
 
 ## Required Mapping Tables
 
@@ -247,13 +294,13 @@ Derived-view invariants:
 
 `change-capability-anchors/index.md` must include:
 
-| Change | Change Packet | Capability Views | Direct Atoms | Contextual Atoms | Capabilities Advanced | Evidence Burden | Blockers |
-| --- | --- | --- | --- | --- | --- | --- | --- |
+| Change | Change Packet | Capability Views | Direct Atoms | Contextual Atoms | Capabilities Advanced | Complexity Budget | Evidence Burden | Blockers |
+| --- | --- | --- | --- | --- | --- | --- | --- | --- |
 
 `reports/change-capability-human-plan.md` must include readable change packets:
 
-| Change | Closed-loop Outcome | Direct Atom Groups | Contextual Atoms / Future Constraints | Upstream Realized Baseline | Downstream Constraints | Non-Goals | Evidence Burden | Ledger Links |
-| --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| Change | Closed-loop Outcome | Direct Atom Groups | Complexity Budget | Contextual Atoms / Future Constraints | Upstream Realized Baseline | Downstream Constraints | Non-Goals | Evidence Burden | Ledger Links |
+| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
 
 It must also include a capability progression narrative:
 
@@ -279,7 +326,9 @@ It must also include:
 - confirmation that every direct global atom has exactly one final owner change/capability
 - confirmation that final capability relations are direct `New` or `Modified` advancement only
 - confirmation that change packets contain upstream baseline and downstream design context without pulling future scope into current direct ownership
-- confirmation that final change complexity is reviewable
+- confirmation that final change complexity is implementation-ready or explicitly blocked with split options
+- confirmation that every over-budget trigger was split, deferred, or justified with concrete indivisibility analysis
+- confirmation that foundation changes do not directly own deferrable domain behavior
 - confirmation that source atom files and the Phase 3 global atom index were not modified
 - next required step: `Start openspec-propose`, `Run Phase 3 again`, or `Blocked`
 
@@ -292,9 +341,9 @@ Phase 4 ends with exactly one status in `reports/phase-4-agent-report.md`:
 - `Phase 4 Status: needs-coverage-recheck`
 - `Phase 4 Status: blocked`
 
-Use `accepted` when the Phase 1 framework remains coherent after atom-level review, final packets were derived, every capability atom sequence is coherent, and every change remains reviewably scoped.
+Use `accepted` when the Phase 1 framework remains coherent after atom-level review, final packets were derived, every capability atom sequence is coherent, and every change satisfies the implementation-ready complexity gate.
 
-Use `adjusted` when the framework was refit, all final atom mappings are traceable, every capability atom sequence is coherent, every change remains reviewably scoped, and final packets were derived.
+Use `adjusted` when the framework was refit, all final atom mappings are traceable, every capability atom sequence is coherent, every change satisfies the implementation-ready complexity gate, and final packets were derived.
 
 Use `needs-coverage-recheck` when Phase 4 exposes missing, over-broad, conflicting, or semantically unclear source obligations that Phase 3 must normalize before the plan can be final.
 

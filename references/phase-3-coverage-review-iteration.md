@@ -101,7 +101,7 @@ Use Phase 2 source atom files, Phase 2 source remainder notes, Phase 1 source hi
 - a broad atom appears to cover a page/object/flow section without decomposing its obligations
 - path/name/Phase 2 traces are insufficient to justify a non-source or reference-only classification
 
-For UI, object, flow, interaction, state, fixture, scene, verification, and design-system documents, targeted semantic reading must cover obligation-bearing sections, not only lines outside Phase 2 ranges.
+For UI, object/component, flow, interaction, state, fixture, scenario, verification, and design-system documents, targeted semantic reading must cover obligation-bearing sections, not only lines outside Phase 2 ranges.
 
 ## Audit Workflow
 
@@ -120,8 +120,8 @@ Evaluate in this order:
 11. For each source document in the manifest, create or update the matching `source-doc-coverage/<source>.coverage.md` file before writing the final global review.
 12. For each source document, inspect obligation-bearing sections and verify atom completeness:
     - For pages/objects: page role, route, entry, exit, layout constraints with behavior impact, every named state, state triggers, display, primary actions, disabled actions, recovery, interaction rules, object dependencies, action labels that define behavior, acceptance criteria, responsive behavior, and non-goals.
-    - For flow/state/system docs: lifecycle stages, allowed transitions, overlay/blocking rules, fixture fields, scene ids, verification matrix rows, interaction outcomes, and preserve boundaries.
-    - For architecture/product docs: data facts, auth/privacy rules, runtime/deployment requirements, worker/job rules, provider boundaries, failure/recovery rules, observability/audit rules, and verification requirements.
+    - For flow/state/system docs: lifecycle stages, allowed transitions, overlay/blocking rules, fixture fields, scenario ids, verification matrix rows, interaction outcomes, and preserve boundaries.
+    - For architecture/product docs: data facts, access/privacy rules, runtime/deployment requirements, background execution rules, external integration boundaries, failure/recovery rules, observability/audit rules, and verification requirements.
 13. Identify source ranges outside every Phase 2 atom or source anchor range. Read those candidate ranges plus necessary local context and classify them:
     - ignore blank lines, table separators, decorative separators, generated table-of-contents lines, and pure formatting
     - ignore background prose, repeated summaries, discarded options, and purely explanatory text unless it defines a production behavior, boundary, data fact, verification obligation, deployment requirement, auth/privacy rule, failure path, or preserve constraint

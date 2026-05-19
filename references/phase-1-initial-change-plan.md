@@ -24,7 +24,7 @@ openspec/orchestrate/reports/phase-1-agent-report.md
 
 Plan a set of scientific, verifiable, iterative OpenSpec changes from a full reading of the user-specified source documents.
 
-Each change should represent a reviewable, implementable, verifiable, archivable system behavior change. Do not mechanically split by technical module, database table, page, component, SDK, queue, or prototype scene.
+Each change should represent a reviewable, implementable, verifiable, archivable system behavior change. Do not mechanically split by technical module, database table, page, component, SDK, queue, or prototype scenario.
 
 Use only the documents or directories the user specifies. For every specified source root, enumerate all source documents and read every source document body before producing the initial framework. Do not read or rely on the current `openspec/` directory, existing specs, existing changes, archive history, or custom artifacts unless the user explicitly includes them as input.
 
@@ -45,7 +45,7 @@ Use this model throughout the plan:
   - `New`: the change first creates that capability/spec boundary.
   - `Modified`: the change changes requirements or scenarios for an existing capability/spec boundary.
 - Do not model consumed, preserved, reused, or dependency-only capabilities as change-capability relations. Mention them in dependencies or notes only when useful, not in the capability progression matrix.
-- Name capabilities as stable English kebab-case ids, such as `identity-session-continuity` or `async-work-execution-recovery`. Do not use module names, table names, page names, provider names, or localized display names as capability ids.
+- Name capabilities as stable English kebab-case ids, such as `account-access-continuity` or `async-work-execution-recovery`. Do not use module names, table names, page names, external-service names, or localized display names as capability ids.
 
 ## Change Complexity Calibration
 

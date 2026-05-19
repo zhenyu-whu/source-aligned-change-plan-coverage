@@ -63,9 +63,9 @@ Atom types:
 
 Use stable, readable source-local ids such as:
 
-- `figure-new.state.filled.continue-enabled`
-- `figure-brief.interaction.item-edit-overwrites-brief`
-- `first-draft.worker.failure-no-version`
+- `intake-form.state.valid.submit-enabled`
+- `approval-flow.interaction.edit-overwrites-pending-state`
+- `async-job.failure-no-result`
 
 Phase 3 may rename or globally qualify ids when it builds the normalized global obligation atom index. Do not rely on Phase 2 ids being globally unique.
 
@@ -112,19 +112,19 @@ Phase 2 must be reviewable as a set of source document extractions.
 
 Use deterministic source filenames:
 
-- source `docs/prototype/pages/editor.md` -> `docs--prototype--pages--editor.atoms.md`
-- source `docs/2026-02-26-biopower-product-design.md` -> `docs--2026-02-26-biopower-product-design.atoms.md`
+- source `docs/product/pages/settings.md` -> `docs--product--pages--settings.atoms.md`
+- source `docs/architecture/runtime-design.md` -> `docs--architecture--runtime-design.atoms.md`
 
 ## UI and Flow Atom Extraction Rules
 
-For `docs/prototype/pages/*`, `docs/prototype/objects/*`, flow contracts, interaction maps, state vocabulary, fixture contracts, scene registry, verification matrix, and design-system documents, do not compress page or object details into a single broad atom.
+For page docs, object/component docs, flow contracts, interaction maps, state vocabularies, fixture contracts, scenario registries, verification matrices, and design-system documents, do not compress page or object details into a single broad atom.
 
 Mandatory extraction rules:
 
 - Each page or object route/duty/entry/exit with production effect must have an atom.
 - Each named state must have at least one `state` atom.
 - Each state trigger, display content, primary action, disabled action, and recovery rule must be represented by an atom or explicitly classified as non-production/no-impact.
-- Each interaction rule that changes persistence, navigation, action submission, blocking, recovery, language, entitlement, privacy, or state derivation must have an atom.
+- Each interaction rule that changes persistence, navigation, action submission, blocking, recovery, language, access/quota behavior, privacy, or state derivation must have an atom.
 - Each responsive requirement must have a `responsive` atom when it affects a user's ability to complete the workflow or inspect a required state.
 - Each acceptance criterion must have an `acceptance` or `verification` atom, or must cite the atom id it duplicates.
 - Each `do not`, `non-goal`, or `out of scope` item must be retained as an `explicit-non-goal` atom when it prevents scope creep in later changes.
