@@ -23,6 +23,14 @@ Use single-level filenames under `source-obligation-atoms/`: derive the name fro
 
 These files are immutable after Phase 2 completes. If later phases discover missing atoms, duplicate facts, or ownership changes, they record them in the Phase 3 global atom index and Phase 4 refit artifacts; they must not rewrite the original Phase 2 source atom files.
 
+## Artifact Language Gate
+
+Apply the skill-level Artifact Language Gate to every Phase 2 output. Keep fixed table headers, field names, enum/status values, atom ids, paths, line ranges, capability ids, change slugs, proof-type tokens, and exact source phrases as required, but write all agent-authored explanatory content in Simplified Chinese.
+
+In particular, `Source Fact`, `Rationale`, `Propose Use`, `Reason`, ownership ambiguity notes, candidate missing boundary notes, blockers, report summaries, and any explanation inside table cells must be Chinese unless the entire value is only a fixed enum, ID, path, command, proof-type token, or exact source term. `Source Phrase` may preserve the original wording.
+
+After writing each Phase 2 artifact, perform the language self-check from the skill gate. If any explanation sentence remains English-dominant after ignoring IDs, paths, commands, code, fixed enum/status values, and exact source phrases, rewrite it before finishing Phase 2.
+
 ## Obligation Atom Model
 
 An obligation atom is the smallest source-backed production obligation that should survive into later `openspec-propose` artifacts. A later proposal/spec/design/tasks file should be able to consume an atom directly without reinterpreting a broad source paragraph.
@@ -237,5 +245,6 @@ Before finishing Phase 2:
 - Confirm candidate owner mappings are explicitly marked as candidate, not final.
 - Confirm unassigned, candidate-new-change, candidate-new-capability, duplicate-candidate, unresolved-conflict, and unclassified rows are listed in the Phase 2 report.
 - Confirm Phase 2 generated or rewrote only current Phase 2 outputs.
+- Confirm every Phase 2 artifact passed the Artifact Language Gate.
 
-Final reply should be a short report: work queue batches, source documents extracted, source atom files written, atom candidates found, unassigned atoms, candidate new boundaries, duplicate risks, unresolved conflicts, and blockers.
+Final reply should be a short Chinese report: work queue batches, source documents extracted, source atom files written, atom candidates found, unassigned atoms, candidate new boundaries, duplicate risks, unresolved conflicts, language-gate result, and blockers.

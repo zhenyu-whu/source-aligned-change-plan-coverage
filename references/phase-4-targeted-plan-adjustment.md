@@ -42,6 +42,14 @@ If Phase 4 accepts the input plan unchanged, still write the pass directory and 
 
 `source-obligation-atoms/` and `change-capability-anchors/obligation-atom-index.md` are upstream evidence. Do not edit them in Phase 4.
 
+## Artifact Language Gate
+
+Apply the skill-level Artifact Language Gate to every Phase 4 output. Keep fixed table headers, field names, enum/status values, atom ids, paths, line ranges, capability ids, change slugs, relation tokens, and exact source phrases as required, but write all agent-authored explanatory content in Simplified Chinese.
+
+In particular, closed-loop outcomes, behavior-boundary descriptions, roadmap values, capability progression narratives, complexity decisions, split/defer analyses, context handling, blockers, plan-decision reasons, evidence-burden descriptions, human review notes, and report summaries must be Chinese unless the entire value is only a fixed enum, ID, path, command, relation token, proof-type token, or exact source term.
+
+After writing each Phase 4 artifact, perform the language self-check from the skill gate. If any explanation sentence remains English-dominant after ignoring IDs, paths, commands, code, fixed enum/status values, relation tokens, proof-type tokens, and exact source phrases, rewrite it before finishing Phase 4.
+
 ## Scope Rules
 
 Phase 4 may:
@@ -330,6 +338,7 @@ It must also include:
 - confirmation that every over-budget trigger was split, deferred, or justified with concrete indivisibility analysis
 - confirmation that foundation changes do not directly own deferrable domain behavior
 - confirmation that source atom files and the Phase 3 global atom index were not modified
+- confirmation that every Phase 4 artifact passed the Artifact Language Gate
 - next required step: `Start openspec-propose`, `Run Phase 3 again`, or `Blocked`
 
 ## Completion

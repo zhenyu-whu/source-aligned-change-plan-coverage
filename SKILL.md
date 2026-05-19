@@ -21,6 +21,17 @@ Final changes are implementation units for later `openspec-propose` and `openspe
 
 Later `openspec-propose` and `openspec-apply-change` work must not consume isolated source atom rows alone. A completed workflow provides a change packet for each final change: direct owning atoms, contextual atoms, capability progression notes, upstream realized baseline from earlier changes, downstream constraints that affect current design, non-goals, and links to the global atom index. Earlier changes provide baseline contracts for later changes, but they must not absorb all future global obligations. Future obligations belong in an earlier change only as contextual or preserve constraints when they affect current data model, API contract, state machine, auth/privacy boundary, worker boundary, persistence format, or verification truthfulness.
 
+## Artifact Language Gate
+
+All artifacts written by this workflow under `openspec/orchestrate/**` must be readable by Chinese reviewers.
+
+- Fixed artifact structure may stay English: headings, table headers, field labels, trace field names, enum/status values, IDs, paths, commands, code/API/DB/package symbols, filenames, module/function/type names, capability ids, change slugs, and exact source-document terms or quotes.
+- The exemption above does not apply to agent-authored explanatory content. Sentences, table-cell explanations, reasons, judgments, rationale, notes, proof/evidence descriptions, risk descriptions, split analyses, handoff explanations, and report summaries must be written in Simplified Chinese.
+- English instructional wording in this skill or its phase references is not fixed artifact structure. Do not copy those English bullets or prose into generated artifacts as agent-authored content; translate or rewrite them as Chinese reviewer-facing content.
+- Technical English can remain as identifiers or noun phrases, but the surrounding semantic sentence must be Chinese. For example, `browser-e2e` is allowed as an evidence type; an evidence explanation must say why that proof is needed in Chinese.
+- `Source Phrase` values and exact quotations may preserve the original source wording. Interpretation, `Source Fact`, `Rationale`, `Propose Use`, `Review Judgment`, and similar explanation fields must be Chinese unless the entire value is only a fixed enum, ID, path, command, or exact source term.
+- After writing or revising each artifact, the writing agent must perform a language self-check: temporarily ignore backticked IDs/paths/commands/code and fixed enum/status values; any remaining natural-language sentence that is English-dominant fails the gate and must be rewritten before the phase can finish.
+
 ## Required Inputs
 
 - Source document roots or exact source document paths.
@@ -104,6 +115,7 @@ This workflow is subagent-based.
 - Phase 2: first build a lightweight `source-obligation-atoms/work-queue.md` from the manifest, source roles, paths, document names, and line counts. This overview is only for batching and parallelization; it must not extract atoms, decide coverage, or classify source obligations. Then use fresh source-extraction subagents partitioned by source document or source-document batch. Each source document must have one canonical Phase 2 extraction owner. Do not spawn one Phase 2 subagent per planned change, and do not ask multiple subagents to independently extract the same source document unless Phase 3 explicitly requests targeted validation.
 - Phase 3: use a fresh independent subagent for source coverage normalization, gap audit, duplicate review, and global atom index generation.
 - Phase 4: use a fresh independent subagent for atom-driven change/capability plan refit, capability progression review, change complexity review, and final change packet generation.
+- Every phase subagent prompt must include the Artifact Language Gate or an explicit instruction to follow it. If the phase reference uses English table headers or field labels, the subagent may keep that structure but must fill explanation content in Simplified Chinese.
 
 If Phase 4 returns `needs-coverage-recheck`, spawn a fresh Phase 3 subagent, then a fresh Phase 4 subagent. Do not rerun Phase 2 unless Phase 3 or Phase 4 reports that targeted review is insufficient and the user explicitly requests a full source extraction rerun.
 
@@ -134,6 +146,7 @@ After each phase, check only interface facts:
 
 - Required directories and reports exist under `openspec/orchestrate/`.
 - Phase reports state the input docs, output files, and blockers.
+- Generated artifacts pass the Artifact Language Gate. If a phase output fails only the language gate, treat the phase as interface-incomplete and run a targeted language repair that preserves IDs, paths, enum/status values, line ranges, atom mappings, ownership decisions, and source quotes.
 - Phase 1 outputs contain `change-plan.md`, `source-doc-manifest.md`, and `reports/phase-1-agent-report.md`; the manifest lists every source document under the specified roots with full-read status, or Phase 1 reports a blocker.
 - Phase 2 outputs contain `source-obligation-atoms/work-queue.md`, `source-obligation-atoms/index.md`, one `source-obligation-atoms/<source>.atoms.md` file for every source document listed as `read-full`, and `reports/phase-2-agent-report.md`.
 - Phase 2 reports include a work queue summary and a source-extraction trace showing every manifest source document was assigned exactly one canonical extraction owner, read in full by that owner, atom candidates found, source remainders recorded, candidate ownership mappings, unassigned atoms, gaps, duplicate-risk notes, and blockers.

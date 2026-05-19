@@ -43,6 +43,14 @@ Phase 3 may add precise missing source-backed atoms to `obligation-atom-index.md
 
 `reviews/phase-3-trace/` records the current Phase 3 pass's intermediate audit trail. These files are review aids, not source of truth. They must be overwritten on each fresh Phase 3 pass and must be consistent with the final `obligation-atom-index.md`, per-source coverage files, and `coverage-review.md`.
 
+## Artifact Language Gate
+
+Apply the skill-level Artifact Language Gate to every Phase 3 output. Keep fixed table headers, field names, enum/status values, atom ids, paths, line ranges, capability ids, change slugs, relation tokens, and exact source phrases as required, but write all agent-authored explanatory content in Simplified Chinese.
+
+In particular, `Source Fact`, `Review Judgment`, `Reason`, `Interpretation`, semantic classifications that are not fixed enum values, duplicate/ownership resolutions, non-atom range reasons, handoff explanations, metric interpretations, and report summaries must be Chinese unless the entire value is only a fixed enum, ID, path, command, relation token, or exact source term.
+
+After writing each Phase 3 artifact, perform the language self-check from the skill gate. If any explanation sentence remains English-dominant after ignoring IDs, paths, commands, code, fixed enum/status values, relation tokens, and exact source phrases, rewrite it before finishing Phase 3.
+
 ## Global Atom Index
 
 `change-capability-anchors/obligation-atom-index.md` is the normalized global review registry. It resolves global uniqueness, candidate/final ownership, source traceability, and non-direct relations.
@@ -244,5 +252,6 @@ Use `blocked` when source documents conflict, source roots are incomplete, sourc
 - confirmation that every production-meaningful obligation under the specified roots is covered by exactly one global atom or justified
 - confirmation that no raw helper output was used as a gate
 - confirmation that any line-range helper output, if used, was treated only as mechanical candidate input
+- confirmation that every Phase 3 artifact passed the Artifact Language Gate
 
-The final agent reply should be short and include the decision, changed files, missing atoms, duplicate/ownership findings, remaining blockers, and whether Phase 4 may proceed.
+The final agent reply should be short and in Chinese. Include the decision, changed files, missing atoms, duplicate/ownership findings, language-gate result, remaining blockers, and whether Phase 4 may proceed.

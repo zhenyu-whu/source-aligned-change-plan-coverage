@@ -20,6 +20,12 @@ Write the Phase 1 report to:
 openspec/orchestrate/reports/phase-1-agent-report.md
 ```
 
+## Artifact Language Gate
+
+Apply the skill-level Artifact Language Gate to every Phase 1 output. Keep fixed headings, table headers, field labels, capability ids, change slugs, paths, commands, and exact source terms as required, but write all agent-authored explanations in Simplified Chinese. This includes assumptions, conflicts, behavior-boundary descriptions, capability increment cells, roadmap field values, risk-check answers, source-evidence hint explanations, archive-readiness notes, and the Phase 1 report.
+
+After writing each Phase 1 artifact, perform the language self-check from the skill gate. If any explanation sentence remains English-dominant after ignoring IDs, paths, commands, code, and fixed terms, rewrite it before finishing Phase 1.
+
 ## Goal
 
 Plan a set of scientific, verifiable, iterative OpenSpec changes from a full reading of the user-specified source documents.
@@ -217,4 +223,5 @@ Answer:
 - notable assumptions or conflicts
 - whether any change lacks useful source hints; do not enumerate every pending evidence item
 - confirmation that every source document in the manifest was read in full
+- confirmation that the Phase 1 artifacts passed the Artifact Language Gate
 - blockers, or `无`
