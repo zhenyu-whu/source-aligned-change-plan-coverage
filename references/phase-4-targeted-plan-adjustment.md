@@ -56,6 +56,7 @@ Phase 4 may:
 
 - accept the Phase 1 framework when global atoms prove it is coherent
 - add, remove, split, merge, reorder, or rename changes when atom groups and dependencies require it
+- keep one narrow pre-business foundation change when the first production business workflow cannot run without minimal runtime scaffolding
 - add, remove, split, merge, or rename capabilities when atoms reveal a durable behavior boundary gap
 - move a global atom to a different owner change/capability when Phase 3 left placement to refit or when sequencing proves the initial candidate owner was wrong
 - reclassify a global atom as contextual future-compatibility, dependency, preserve, reference, later-change, or explicit non-goal when it constrains design but is not current direct scope
@@ -71,6 +72,8 @@ Phase 4 must not:
 - edit Phase 2 source atom files
 - edit Phase 3 coverage outputs or the global atom index
 - invent new atoms without Phase 3 normalization
+- create a sequence of pre-business foundation, governance, state-contract, design-system, harness, or platform-hardening changes before the first production business/user workflow
+- keep a standalone post-foundation technical change unless it has an independently runnable user/system or operational loop with concrete failure paths and archive-ready evidence
 - use raw uncovered line counts as a plan-adjustment driver without semantic review
 - leave any direct global atom without exactly one final owner change/capability unless it is non-direct, non-coverage, or blocked
 - leave any direct global atom without final artifact projection
@@ -93,6 +96,9 @@ Use these rules:
 
 - A final change should represent a reviewable, implementable, verifiable user/system loop or a valid foundation exception.
 - A final change is also the unit a later AI agent will implement in one focused `openspec-apply-change` pass. Closed-loop coherence alone does not justify a large change.
+- A valid foundation exception is normally only the first final change. It establishes the minimum scaffolding required for the first production business workflow to run, then stops.
+- After the first foundation, prefer business-first sequencing: advance runtime, async, UI state, object state, design-system, responsive, observability, entitlement, privacy, recovery, and verification capabilities inside the first production workflow that directly needs them.
+- Do not split a reusable contract, UI state vocabulary, object specimen, design token system, visual harness, or async scaffold into its own change merely because it can be unit-tested. It needs a real business/user/system loop or must become part of a business change's design/tasks/evidence burden.
 - Attach an atom to an existing change only when that change owns the same coherent loop: entry, fact, projection, failure path, and verification surface.
 - Add or split a change when atom groups reveal an independently verifiable loop that can be implemented, verified, reviewed, and archived separately.
 - Merge changes only when atoms show they split one indivisible closed loop and neither side can be archived truthfully without the other.
@@ -107,6 +113,9 @@ Use these rules:
 - Preserve artifact projection independently from final owner placement. A direct atom can be implementation-owned by a change while projecting to design, tasks/proof, or spec guard rather than becoming a spec requirement; it cannot remain `contextual-only` in the final direct table.
 - Prefer staged slices such as input preparation -> confirmed domain fact -> async execution -> external integration -> result projection -> hardening/delivery/operations when each slice can be verified truthfully.
 - Preserve directly necessary cross-capability increments inside the same change when they share the same entry, fact, projection, failure path, and verification truth. Do not move identity, privacy, realtime state, versioning, entitlement, export, failure recovery, or observability atoms into artificial standalone changes solely to narrow the matrix row.
+- After the final change/capability refit, discard Phase 1 `New`/`Modified` labels and rebuild them from final direct atom ownership. The first final change in roadmap order that directly owns at least one non-contextual atom for a capability is `New`; every later final change that directly owns a source-backed delta for that capability is `Modified`.
+- A capability cannot be `Modified` before it is `New`. If an earlier change appears to modify a capability that is declared as first created later, either move the `First change` to the earlier direct owner, move those atoms to the later owner, or reclassify the earlier relation as contextual/dependency/preserve-only. Do not finish Phase 4 with a "pre-baseline Modified" relation.
+- Capability relations must be derived from final packets, not from dependency notes. If a change only consumes, preserves, depends on, or evidences a capability without directly owning a source-backed atom for that capability, it must not appear as advancing that capability in the matrix, roadmap `New`/`Modified` lists, final anchors index, or human plan.
 
 ## Capability Progression Review
 
@@ -122,13 +131,17 @@ Rules:
 - Later changes may refine or harden prior atoms only with a source-backed delta.
 - Later changes that only preserve or depend on prior atoms must not list that capability as advanced.
 - If a capability has multiple unrelated atom families, split the capability only when they are durable behavior boundaries rather than temporary implementation areas.
+- `Current Change Sequence` must be computed from final direct ownership in roadmap order: include every final change whose packet directly owns at least one atom for the capability, and exclude dependency-only or contextual mentions.
+- `Required Order` must name the first direct owner as the capability baseline. The same first direct owner must match the Capability Map `First change`, the first non-empty matrix cell for that capability, the first `New` entry in the Change Roadmap, and the first occurrence of that capability in `change-capability-anchors/index.md`.
+- If those five surfaces disagree, Phase 4 must repair the plan artifacts before returning `accepted` or `adjusted`. If the disagreement reflects unclear atom ownership rather than stale labels, return `needs-coverage-recheck` or `blocked`.
+- `New`/`Modified` labels are final-plan labels, not historical labels from Phase 1. Renaming, splitting, or moving changes/capabilities requires recomputing all labels and rewriting affected capability views.
 
 ## Change Complexity Review
 
 Evaluate change complexity before finalizing:
 
-| Change | Direct Atom Count | Artifact Projection Mix | Atom Groups | New Capabilities | Modified Capabilities | Primary Functional Points | Entry/Fact/Projection Count | Failure/Recovery Count | Evidence Types | Surface Families | Budget Status | Complexity Decision |
-| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| Change | Direct Atom Count | Artifact Projection Mix | Atom Groups | New Capabilities | Modified Capabilities | Primary Functional Points | Entry/Fact/Projection Count | Failure/Recovery Count | Evidence Types | Surface Families | Foundation/Business Gate Status | Budget Status | Complexity Decision |
+| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
 
 Use direct atom count as a complexity signal, not as a source coverage goal. Fine-grained atoms are expected, but a final change with many direct atoms still creates implementation, review, and archival risk.
 
@@ -142,22 +155,27 @@ Rules:
 - Split a change when it advances many capabilities only because shared infrastructure made grouping convenient.
 - Split a change when the evidence burden spans many unrelated proof surfaces and would make review/archival ambiguous.
 - Keep a change together when splitting would force fake stubs, break one user/system loop, or make either side unverifiable.
-- Prefer the earliest minimal runnable loop after a foundation change; defer only atoms that are not required for that loop's production truth.
+- Prefer the earliest minimal runnable production business loop immediately after the single foundation change; defer only atoms that are not required for that loop's production truth.
 - Split input preparation from downstream execution when the preparation state can be saved, revisited, validated, and verified without executing the downstream job.
 - Split external integration from command/job/result semantics when an adapter contract, deterministic sandbox, or integration-disabled path can be verified truthfully and the concrete integration can be added as a later direct change.
 - Split result projection, history, or interaction surfaces from upstream execution when the durable result fact can be verified independently of the richer projection loop.
 - Split access/quota enforcement, delivery, observability, and operations atoms out of a feature change unless they are required to make the current feature's behavior truthful rather than merely production-complete in a future sense.
 - Do not split a change solely because it advances several capabilities. If the split would create a diagonal matrix where each new change mostly owns one capability with a similar name, keep or redesign the vertical loop instead and record the reason.
 
-### Foundation Scope Gate
+### Single Foundation and Business-First Gate
 
-Foundation changes are valid only as minimal enabling scaffolds. Evaluate them with a stricter budget:
+Foundation changes are valid only as minimal enabling scaffolds. Treat this as a hard gate for Phase 4 plan acceptance:
 
-- A foundation change should directly own only runtime/repository skeleton, package/app boundaries, configuration loading, migration/test harnesses, empty adapter seams, environment/deploy conventions, and smoke proof.
+- A final plan should have at most one foundation change before the first production business/user workflow. The default valid foundation is the first final change.
+- A foundation change should directly own only runtime/repository skeleton, package/app boundaries, configuration loading, migration/test harnesses, local dependency startup, empty adapter seams, environment/deploy conventions, and smoke proof.
 - These foundation direct atoms often project to `design-obligation`, `verification-obligation`, or `spec-guard`; only externally meaningful runtime contracts should project to `spec-requirement`.
-- A foundation change should not directly advance user/domain capabilities such as access/session flows, input preparation, domain-work execution, interactive state projection, result history, collection management, quota/accounting, delivery, privacy workflows, or operational observability. Those are direct scope in the first feature change that needs them.
+- A foundation change must prove itself with executable checks such as dependency startup, migration smoke, env schema validation, package/build/typecheck, storage/auth adapter smoke, or a minimal health/API probe. "Types exist", "contract exists", "specimen renders", or "visual harness exists" is not sufficient by itself.
+- A foundation change should not directly advance user/domain capabilities such as access/session flows, input preparation, domain-work execution, interactive state projection, object state governance, result history, collection management, quota/accounting, delivery, privacy workflows, operational observability, responsive behavior, or visual quality. Those are direct scope in the first business change that needs them.
 - Direct domain atoms in a foundation change must be moved to later changes or reclassified as contextual/downstream constraints unless Phase 4 proves no later closed-loop change can start without implementing them now.
-- A foundation change with more than 40 direct atoms, more than 2 capabilities advanced, or any direct domain behavior requires split/defer analysis. If it remains over budget, return `blocked` or record a user-facing exception with rejected split options.
+- Low-level or governance-heavy atom groups that appear after the foundation, such as action/job runtime, UI stage/overlay contracts, object disabled-state governance, design tokens, responsive proof, observability, privacy, or quota policy, must normally be attached to the first business workflow that directly needs them as direct deltas, design obligations, task obligations, or evidence burden.
+- A standalone post-foundation non-business change is allowed only when source evidence requires an independently runnable user/system or operational loop whose entry, fact, projection, failure path, and evidence can be archived without waiting for a later business workflow. The Phase 4 report must name that loop and explain why embedding it in the first dependent business change would be less truthful.
+- A foundation change with more than 35 direct atoms, more than 2 capabilities advanced, or any direct domain behavior requires split/defer analysis. If it remains over budget, return `blocked` or record a user-facing exception with rejected split options.
+- A plan with multiple pre-business foundation/governance changes must not return `accepted` or `adjusted`; Phase 4 must merge them into the single foundation, move them into the first dependent business change, defer them as contextual/evidence burden, or return `blocked`.
 
 ### Required Split Analysis
 
@@ -168,7 +186,7 @@ For every over-budget trigger, write a split analysis before the final decision:
 
 Candidate split patterns include:
 
-- scaffold-only foundation -> first behavior slice
+- scaffold-only foundation -> first production business workflow
 - input capture/validation/preparation -> downstream execution
 - command/job contract -> concrete executor or external integration
 - durable result fact creation -> result projection/history/interaction surface
@@ -221,7 +239,9 @@ Rules:
 
 - Capability ids must be stable English kebab-case ids.
 - Behavior boundary explains durable behavior, not implementation module.
-- First and later changes must be backed by direct global atoms.
+- `First change` must be the earliest final roadmap change that directly owns at least one non-contextual global atom for the capability in its final change packet.
+- `Later expansion` must summarize later final changes that directly own source-backed deltas for the same capability, or record a source-backed terminal-boundary reason when no later direct owner exists.
+- First and later changes must be backed by direct global atoms. Dependency-only, preserve-only, contextual, or upstream-baseline references do not count as first or later capability advancement.
 - Capability ids must not merely paraphrase final change slugs. When a capability has only one final direct change, record why it is a durable terminal boundary or refit it.
 
 ### Capability Progression Matrix
@@ -235,6 +255,8 @@ Rules:
 - Only direct `New` or `Modified` advancement belongs in matrix cells.
 - Dependency, preserve, reference-only, and contextual relations belong in notes, not matrix cells.
 - Each non-empty cell must be backed by one or more global atom ids.
+- The first non-empty cell in each capability column must be the same change listed as that capability's `First change`; its roadmap `Capability changes` entry must list that capability under `New`.
+- Every later non-empty cell in that capability column must have a matching roadmap `Modified` entry and at least one matching direct atom in that change packet's capability ownership table.
 - The matrix must pass the Change/Capability Coupling Gate. A mostly diagonal matrix requires source-backed exceptions, not silence.
 
 ### Change Roadmap
@@ -263,9 +285,18 @@ For each final change:
   - Capabilities advanced:
   - Surface families:
   - Evidence types:
+  - Foundation/business gate status:
   - Budget status:
   - Split/defer analysis:
 - Archive readiness:
+
+Roadmap relation rules:
+
+- `New` must list only capabilities whose earliest final direct owner is the current change.
+- `Modified` must list only capabilities that already have an earlier final direct owner and for which the current change directly owns at least one additional source-backed atom.
+- A capability listed under `New` or `Modified` must also appear in this change's final packet capability ownership table and in `change-capability-anchors/index.md`.
+- A capability present only as dependency, preserve-only relation, upstream realized baseline, downstream constraint, contextual atom, evidence burden, or non-goal must not appear under `New` or `Modified`.
+- When Phase 4 splits, merges, renames, reorders, or remaps atom ownership, it must regenerate all roadmap relation labels after final packets are derived. Do not carry forward Phase 1 labels.
 
 ## Final Change Packets
 
@@ -280,6 +311,7 @@ Each `change-capability-anchors/<change-slug>/<change-slug>.md` final packet mus
 - downstream constraints that must not be designed out
 - explicit non-goals
 - complexity budget status, over-budget triggers, and split/defer decisions
+- foundation/business gate status and any exception rationale
 - evidence burden
 - source atom and global atom index links
 - blockers, or `None`
@@ -308,6 +340,25 @@ Derived-view invariants:
 - Every capability row must have a matching row or context relation in the final change packet.
 - Every direct atom whose owner capability is this capability must appear in the capability file.
 - Capability files must not rename atoms, change source line ranges, change artifact projection, or independently split/merge source facts.
+- The set of capability files under a change must exactly match the direct capabilities advanced by that change. Extra files for dependency-only, preserve-only, or contextual-only capabilities are not allowed.
+
+## Final Capability Relation Consistency Check
+
+Before writing final reports, Phase 4 must run a consistency check across the final plan and derived anchors. Write the result into `reports/alignment-final-report.md` and summarize it in `reports/phase-4-agent-report.md`.
+
+Required comparison:
+
+| Capability | Capability Map First Change | First Direct Owner From Packets | First Matrix Cell | First Roadmap `New` | First Anchor Index Occurrence | Later Direct Owners | Result | Repair If Failed |
+| --- | --- | --- | --- | --- | --- | --- | --- | --- |
+
+Rules:
+
+- All first-change columns must name the same final change for each capability.
+- `Later Direct Owners` must match later non-empty matrix cells, later roadmap `Modified` entries, final packet capability ownership, and capability views.
+- No capability may have a roadmap `Modified` entry, matrix `Modified` narrative, or anchor-index occurrence before its first roadmap `New`.
+- No capability may appear in `change-capability-anchors/index.md` unless at least one direct atom in that change packet has that capability as final owner.
+- If stale labels are the only problem, repair the Phase 4 artifacts without changing Phase 2 or Phase 3 evidence.
+- If the mismatch shows that final direct atom ownership itself is ambiguous or contradictory, return `needs-coverage-recheck` or `blocked`; do not mark Phase 4 `accepted` or `adjusted`.
 
 ## Workflow
 
@@ -315,7 +366,7 @@ Derived-view invariants:
 2. Read Phase 3 handoff items, especially atoms marked `phase-4-refit-required`, ownership ambiguities, and source-backed non-direct constraints.
 3. Create the next `phase-4-plan-refit/pass-<NN>/` directory and write `input-change-plan.md`.
 4. Build the atom-driven planning graph.
-5. Apply the implementation-ready complexity gate, foundation scope gate, required split analysis, and Change/Capability Coupling Gate to every candidate final change.
+5. Apply the implementation-ready complexity gate, Single Foundation and Business-First Gate, required split analysis, and Change/Capability Coupling Gate to every candidate final change.
 6. Decide whether the Phase 1 framework is accepted, adjusted, needs coverage recheck, or blocked.
 7. If accepted or adjusted, write `phase-4-plan-refit/pass-<NN>/change-plan.md` and `atom-plan-mapping.md`.
 8. If adjusted, update root `openspec/orchestrate/change-plan.md` to the latest effective plan after the pass snapshot and mapping are written.
@@ -323,9 +374,10 @@ Derived-view invariants:
 10. If the status is `adjusted`, `needs-coverage-recheck`, or `blocked`, write `reviews/change-plan-adjustments.md` with the plan-impact and next-action summary.
 11. Derive final `change-capability-anchors/<change-slug>/` packets and capability views from the global atom index and final plan when the status is `accepted` or `adjusted`.
 12. Write `change-capability-anchors/index.md`.
-13. Write `reports/change-capability-human-plan.md` as a readable synthesis of final change packets and capability progression when the status is `accepted` or `adjusted`.
-14. Write `reports/phase-4-agent-report.md` and `reports/alignment-final-report.md`.
-15. Run a local artifact consistency check by inspection or deterministic parsing before finishing.
+13. Run the Final Capability Relation Consistency Check. Repair stale `First change`, matrix cells, roadmap `New`/`Modified` labels, final anchors index rows, capability views, and human-plan summaries before proceeding.
+14. Write `reports/change-capability-human-plan.md` as a readable synthesis of final change packets and capability progression when the status is `accepted` or `adjusted`.
+15. Write `reports/phase-4-agent-report.md` and `reports/alignment-final-report.md`.
+16. Run a local artifact consistency check by inspection or deterministic parsing before finishing.
 
 ## Required Mapping Tables
 
@@ -375,11 +427,13 @@ It must also include:
 - confirmation that every direct global atom has final artifact projection
 - confirmation that `design-obligation` and `verification-obligation` atoms were not forced into `spec-requirement`
 - confirmation that final capability relations are direct `New` or `Modified` advancement only
+- confirmation that Capability Map `First change`, progression matrix first cells, roadmap `New`/`Modified` labels, final packet capability ownership, capability views, anchor index, and human plan all agree after the refit
 - confirmation that the final plan is not a diagonal or same-name change/capability roadmap unless every exception is source-backed and recorded
 - confirmation that change packets contain upstream baseline and downstream design context without pulling future scope into current direct ownership
 - confirmation that final change complexity is implementation-ready or explicitly blocked with split options
 - confirmation that every over-budget trigger was split, deferred, or justified with concrete indivisibility analysis
-- confirmation that foundation changes do not directly own deferrable domain behavior
+- confirmation that the final plan has at most one pre-business foundation change, or records a blocker/explicit exception with an independently runnable loop
+- confirmation that foundation changes do not directly own deferrable domain behavior and that post-foundation low-level capability deltas are advanced inside the first business workflow that needs them
 - confirmation that source atom files and the Phase 3 global atom index were not modified
 - confirmation that every Phase 4 artifact passed the Artifact Language Gate
 - next required step: `Start openspec-propose`, `Run Phase 3 again`, or `Blocked`
@@ -393,9 +447,9 @@ Phase 4 ends with exactly one status in `reports/phase-4-agent-report.md`:
 - `Phase 4 Status: needs-coverage-recheck`
 - `Phase 4 Status: blocked`
 
-Use `accepted` when the Phase 1 framework remains coherent after atom-level review, final packets were derived, every capability atom sequence is coherent, every change satisfies the implementation-ready complexity gate, and the final matrix passes the Change/Capability Coupling Gate.
+Use `accepted` when the Phase 1 framework remains coherent after atom-level review, final packets were derived, every capability atom sequence is coherent, every change satisfies the implementation-ready complexity gate, the final plan passes the Single Foundation and Business-First Gate, and the final matrix passes the Change/Capability Coupling Gate.
 
-Use `adjusted` when the framework was refit, all final atom mappings are traceable, every capability atom sequence is coherent, every change satisfies the implementation-ready complexity gate, the final matrix passes the Change/Capability Coupling Gate, and final packets were derived.
+Use `adjusted` when the framework was refit, all final atom mappings are traceable, every capability atom sequence is coherent, every change satisfies the implementation-ready complexity gate, the final plan passes the Single Foundation and Business-First Gate, the final matrix passes the Change/Capability Coupling Gate, and final packets were derived.
 
 Use `needs-coverage-recheck` when Phase 4 exposes missing, over-broad, conflicting, or semantically unclear source obligations that Phase 3 must normalize before the plan can be final.
 
