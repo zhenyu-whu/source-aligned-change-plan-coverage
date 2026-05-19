@@ -2,7 +2,7 @@
 
 Phase 2 extracts source-backed obligation atom candidates from the source documents themselves. The analysis unit is a source document, not a planned change. The Phase 1 change/capability framework is only candidate ownership context; it must not prevent discovery of atoms that are unassigned, cross-cutting, or evidence for a new/refit change.
 
-Phase 2 produces immutable raw extraction evidence. Phase 3 owns normalization, missing-atom gap closure, duplicate resolution, and final global ownership. Phase 4 owns final change/capability refit and per-change packet generation.
+Phase 2 produces immutable raw extraction evidence and a separate Phase 2 aggregate inventory. Phase 3 owns normalization, missing-atom gap closure, duplicate resolution, and final global ownership. Phase 4 owns final change/capability refit and per-change packet generation.
 
 ## Inputs
 
@@ -22,6 +22,19 @@ Write Phase 2 artifacts only:
 Use single-level filenames under `source-obligation-atoms/`: derive the name from the source document path as listed in the manifest, remove the extension, replace path separators with `--`, and add `.atoms.md`.
 
 These files are immutable after Phase 2 completes. If later phases discover missing atoms, duplicate facts, or ownership changes, they record them in the Phase 3 global atom index and Phase 4 refit artifacts; they must not rewrite the original Phase 2 source atom files.
+
+## Output Ownership
+
+Phase 2 output responsibility is split across orchestration, source extraction, and aggregation:
+
+- The main orchestrating agent may write `source-obligation-atoms/work-queue.md` during Phase 2A, because this is lightweight scheduling rather than source obligation extraction.
+- Source-extraction subagents write only their assigned `source-obligation-atoms/<source>.atoms.md` files.
+- After every extraction subagent finishes, spawn a fresh independent Phase 2 index/report subagent. This subagent writes only `source-obligation-atoms/index.md` and `reports/phase-2-agent-report.md`.
+- The Phase 2 index/report subagent may read `change-plan.md`, `source-doc-manifest.md`, `source-obligation-atoms/work-queue.md`, and all generated `source-obligation-atoms/*.atoms.md` files. It may run read-only commands to count ledger rows, status distributions, required sections, line-range formats, and missing outputs.
+- The Phase 2 index/report subagent must not extract new atoms, edit source atom files, reread source bodies to create new evidence, perform global duplicate resolution, decide final atom ownership, close semantic coverage, or read Phase 3/Phase 4 outputs.
+- If the aggregation pass finds missing, malformed, or incomplete extraction outputs, it must record blockers in `reports/phase-2-agent-report.md` and still keep the aggregate strictly Phase 2-scoped.
+
+`source-obligation-atoms/index.md` and `reports/phase-2-agent-report.md` are Phase 2 summaries only. They must not become the normalized global atom index or final plan ownership map.
 
 ## Artifact Language Gate
 
@@ -121,7 +134,9 @@ Phase 2 must be reviewable as a set of source document extractions.
 6. Each subagent extracts atom candidates from the source first, then assigns candidate ownership only after the source-backed atom list is clear.
 7. Candidate ownership may name a planned change/capability, `unassigned`, `candidate-new-change`, `candidate-new-capability`, `contextual`, or `non-direct`.
 8. Do not ask a subagent to simulate one planned change across all source documents. Do not produce per-change canonical atom ledgers in Phase 2.
-9. Do not read Phase 3 or Phase 4 outputs while performing Phase 2 extraction.
+9. After all source-extraction subagents finish, spawn one fresh Phase 2 index/report subagent to aggregate the Phase 2 extraction outputs into `source-obligation-atoms/index.md` and `reports/phase-2-agent-report.md`.
+10. The index/report subagent must treat existing `.atoms.md` files as raw extraction evidence. It may report blockers for missing or malformed files, but it must not repair, reinterpret, or extend their atom content.
+11. Do not read Phase 3 or Phase 4 outputs while performing Phase 2 extraction or aggregation.
 
 Use deterministic source filenames:
 
@@ -220,12 +235,16 @@ Do not treat `preserve`, `dependency`, `future-compatibility`, or `reference` as
 
 ## Phase 2 Index and Report
 
+This section is owned by the fresh Phase 2 index/report subagent after all source-extraction subagents have returned. The main agent should interface-check these outputs, not synthesize them.
+
 `source-obligation-atoms/index.md` must include:
 
 | Source Document | Work Queue Batch | Canonical Owner | Source Atom File | Read Status | Atom Candidates | Contextual Candidates | Unassigned Atoms | Candidate New Boundaries | Remainder Notes | Blockers |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
 
 `reports/phase-2-agent-report.md` must include:
+
+A short `Index/Report Generation` section naming the fresh aggregation subagent, the inputs it read, the read-only checks it ran, outputs it wrote, and any blockers.
 
 | Batch | Source Documents | Line Counts | Extraction Mode | Canonical Owner | Work Queue Rationale | Extraction Status |
 | --- | --- | --- | --- | --- | --- | --- |
@@ -243,6 +262,8 @@ Before finishing Phase 2:
 - Confirm the work queue contains only batching rationale, not atom extraction, coverage judgments, or no-obligation conclusions.
 - Confirm every manifest source document with `Read Status: read-full` has exactly one `source-obligation-atoms/<source>.atoms.md` file.
 - Confirm every source document has exactly one canonical extraction owner named in the work queue and Phase 2 report.
+- Confirm `source-obligation-atoms/index.md` and `reports/phase-2-agent-report.md` were generated by a fresh Phase 2 index/report subagent after extraction subagents finished.
+- Confirm the Phase 2 index/report subagent did not edit source atom files, extract new atoms, perform global duplicate resolution, decide final ownership, close semantic coverage, or read Phase 3/Phase 4 outputs.
 - Confirm every source atom file states that the source document was read in full.
 - Confirm every source atom file includes the source section inventory, obligation atom candidate ledger, source anchor table, ownership ambiguity notes, candidate missing plan boundaries, and blockers.
 - Confirm UI and flow documents were decomposed using the mandatory extraction rules above; broad "page detail" compression is not allowed.
@@ -252,4 +273,4 @@ Before finishing Phase 2:
 - Confirm Phase 2 generated or rewrote only current Phase 2 outputs.
 - Confirm every Phase 2 artifact passed the Artifact Language Gate.
 
-Final reply should be a short Chinese report: work queue batches, source documents extracted, source atom files written, atom candidates found, unassigned atoms, candidate new boundaries, duplicate risks, unresolved conflicts, language-gate result, and blockers.
+Final reply should be a short Chinese report: work queue batches, source documents extracted, source atom files written, Phase 2 index/report subagent status, atom candidates found, unassigned atoms, candidate new boundaries, duplicate risks, unresolved conflicts, language-gate result, and blockers.
