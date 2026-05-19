@@ -46,6 +46,8 @@ Use this model throughout the plan:
 - A capability is usually advanced by multiple changes over time.
 - Do not create a one-to-one roadmap where each change merely implements one capability. If a candidate roadmap trends that way, reslice changes around user/system loops and keep capabilities as cross-cutting behavior boundaries.
 - The anti one-to-one rule prevents capability-driven roadmaps. It does not forbid small focused vertical changes that primarily advance one capability when they are derived from a real user or system loop.
+- A capability id must not merely restate a single change outcome. If a capability is advanced by only one change and its id shares the dominant nouns or verbs of that change slug, treat it as a boundary smell: merge it into a broader durable capability, rename it around a long-lived behavior boundary, or record a source-backed reason why it is genuinely terminal.
+- Do not split or rename capabilities to make each change advance only one capability. Cross-cutting capabilities such as identity, privacy, realtime state, version history, entitlement, failure recovery, export delivery, or observability should remain visible across multiple loops when the same loop directly changes them.
 - Each change implements only the capability increments needed for that change's closed loop. Later changes may strengthen, broaden, or harden the same capability.
 - A change-capability relation has only two allowed values:
   - `New`: the change first creates that capability/spec boundary.
@@ -57,7 +59,7 @@ Use this model throughout the plan:
 
 Do not optimize for either the fewest changes or the most changes. Optimize for reviewable implementation complexity.
 
-A change should deliver one clear, verifiable functional point or system behavior point. It may touch multiple capabilities only when those capability increments are directly necessary for that functional point.
+A change should deliver one clear, verifiable functional point or system behavior point. It may touch multiple capabilities only when those capability increments are directly necessary for that functional point. Do not treat the number of capability columns touched by a change as implementation cost by itself; split by independently verifiable functional points, not by capability columns.
 
 Split a candidate change when it contains multiple functional points that can each be implemented, verified, reviewed, and archived independently while still satisfying the Closed-loop Test.
 
@@ -78,6 +80,16 @@ Before accepting each candidate change, ask:
 5. Is the change introducing infrastructure-heavy concerns before the functional point actually needs their full behavior?
 
 If the answer to 2, 3, 4, or 5 is yes, split the change unless the plan explains why the combined scope is necessary for one coherent closed loop.
+
+### Capability Shape Challenge
+
+Before accepting the initial framework, review the capability map and progression matrix as a whole:
+
+1. Does each capability describe a durable behavior boundary that can plausibly mature across multiple changes?
+2. Do more than half of the planned changes have exactly one non-empty capability cell? If yes, inspect whether the roadmap has become capability-driven and reslice unless each exception is source-backed.
+3. Do many capabilities have exactly one owning change, or does a capability slug paraphrase its first change slug? If yes, merge, rename, or broaden those capabilities unless they are genuinely terminal source-backed boundaries.
+4. Did any user/system loop lose directly necessary identity, privacy, realtime, versioning, entitlement, failure recovery, export, or observability increments only to make the row narrower? If yes, restore those direct increments to the loop.
+5. Would the same source obligation be easier for a later `openspec-propose` agent to understand as one vertical loop with several capability deltas? If yes, keep the loop and document the cross-capability coupling.
 
 ## Change Slicing
 
@@ -110,10 +122,10 @@ A foundation change is allowed only when all conditions hold:
 3. Write `source-doc-manifest.md` with every source document, read status, high-level source role, and coarse topic/path hints.
 4. Extract core user or system paths.
 5. Express each path as: entry -> behavior -> system fact -> visible result -> failure recovery.
-6. Identify long-lived behavior capabilities with English kebab-case ids.
+6. Identify long-lived behavior capabilities with English kebab-case ids. Capabilities should be broader than one implementation unit unless the source set proves a terminal boundary.
 7. Generate candidate vertical changes from user/system loops, not from the capability list.
 8. For each candidate change, identify the direct increment it contributes to each involved capability, and classify that relation as `New` or `Modified`.
-9. Filter, merge, or reslice candidates using the Closed-loop Test, Change Complexity Calibration, the Split Challenge, and the anti one-to-one mapping rule.
+9. Filter, merge, or reslice candidates using the Closed-loop Test, Change Complexity Calibration, the Split Challenge, the Capability Shape Challenge, and the anti one-to-one mapping rule.
 10. Order changes by real behavior dependencies, prioritizing the earliest minimal runnable loop.
 11. Build a capability progression matrix that shows how each change advances each capability.
 12. Mark key scenarios, non-goals, risks, conflicts, and deferred content from the input documents.
@@ -158,6 +170,7 @@ Rules:
 - Capability values must be English kebab-case ids in backticks.
 - Behavior boundary explains the durable behavior, not the implementation module.
 - Later expansion should show that the capability can mature across later changes.
+- If `Later expansion` is `None` or only repeats the first change for many capabilities, the plan must explain why those capabilities are genuinely terminal instead of one-change aliases.
 
 ### Capability Progression Matrix
 
@@ -176,6 +189,7 @@ Rules:
 - Do not fill cells with generic reuse, generic test coverage, or "uses existing capability"; only direct capability advancement belongs in the matrix.
 - Do not prefix matrix cells with `New:` or `Modified:`; first appearance of a capability in the ordered roadmap is implicitly `New`, later appearances are implicitly `Modified`.
 - Keep cell text concise enough for review.
+- If the matrix is mostly diagonal, has many single-cell rows paired with single-change capabilities, or visually resembles a change list duplicated as capabilities, revise the change/capability model before Phase 1 finishes.
 
 ### Change Roadmap
 
@@ -213,6 +227,9 @@ Answer:
 9. Does the first feature change after a foundation change introduce infrastructure-heavy concerns before its functional point needs their full behavior?
 10. Does the plan merge behavior only to avoid a one-to-one appearance in the capability matrix?
 11. Are any initial change/capability boundaries marked as hypotheses that may need Phase 4 refit after atom extraction?
+12. Do many capability ids paraphrase the change slug that first owns them?
+13. Are cross-cutting production concerns being moved into separate capability-shaped changes even though they directly affect the same user/system loop?
+14. If more than half of non-foundation changes advance only one capability, is there source-backed evidence that those are genuinely separate loops rather than a diagonalized roadmap?
 
 ## Phase Report
 

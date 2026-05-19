@@ -95,11 +95,13 @@ Use these rules:
 - Reorder changes when atom dependencies show a later change depends on prerequisites currently introduced too late.
 - Keep an atom in the existing capability when it strengthens the same durable behavior boundary.
 - Add, split, merge, or rename a capability when atoms reveal a durable behavior boundary that is missing, conflated, too technical, or assigned to the wrong long-lived behavior boundary.
+- Do not add, split, merge, or rename capabilities merely to reduce how many capability columns a change touches. A refit that turns durable behavior boundaries into one-change aliases is invalid even when each individual change remains small.
 - Resolve duplicate direct atoms by choosing the owner change that first implements the production obligation. Later changes may only keep a direct atom when they add a source-backed delta; otherwise they become preserve/dependency/reference/context.
 - Represent staged maturity as distinct atoms. Do not repeat the same atom across changes to simulate progression.
 - Treat earlier changes as realized baseline providers, not global-context catchalls.
 - Treat future domain behavior as contextual or downstream constraints until the first change that directly implements it. Do not make an early change own direct atoms simply because later changes depend on their contracts.
 - Prefer staged slices such as input preparation -> confirmed domain fact -> async execution -> external integration -> result projection -> hardening/delivery/operations when each slice can be verified truthfully.
+- Preserve directly necessary cross-capability increments inside the same change when they share the same entry, fact, projection, failure path, and verification truth. Do not move identity, privacy, realtime state, versioning, entitlement, export, failure recovery, or observability atoms into artificial standalone changes solely to narrow the matrix row.
 
 ## Capability Progression Review
 
@@ -127,9 +129,9 @@ Use direct atom count as a complexity signal, not as a source coverage goal. Fin
 
 Rules:
 
-- Target budget: 20-60 direct atoms, one primary functional point, at most one new capability, a small number of directly necessary modified capabilities, at most two primary surface families, and a compact evidence burden.
-- Over-budget trigger: any change with more than 80 direct atoms, more than 4 directly advanced capabilities, more than 12 failure/recovery atoms, more than 2 primary entry points, more than 2 fact families, more than 2 projection families, more than 3 evidence types, or more than 3 surface families must be split, deferred, or justified with concrete indivisibility evidence.
-- Hard split/blocker trigger: any change with more than 120 direct atoms or more than 6 directly advanced capabilities must not be marked `accepted` or `adjusted` as-is. Phase 4 must split it, move atoms to later changes/context, or return `blocked` for a user slicing decision.
+- Target budget: 20-60 direct atoms, one primary functional point, directly necessary capability deltas only, at most two primary surface families, and a compact evidence burden. More than one new or modified capability is acceptable when those deltas are required for the same truthful loop.
+- Over-budget trigger: any change with more than 80 direct atoms, more than 4 unrelated directly advanced capabilities, more than 12 failure/recovery atoms, more than 2 primary entry points, more than 2 fact families, more than 2 projection families, more than 3 evidence types, or more than 3 surface families must be split, deferred, or justified with concrete indivisibility evidence. Related cross-cutting capability deltas are not an over-budget trigger by count alone.
+- Hard split/blocker trigger: any change with more than 120 direct atoms or more than 6 unrelated directly advanced capabilities that do not share the same entry/fact/projection/failure truth must not be marked `accepted` or `adjusted` as-is. Phase 4 must split it, move atoms to later changes/context, or return `blocked` for a user slicing decision.
 - A `Keep` decision for an over-budget change must list rejected split candidates and explain why each would break truthfulness. "One coherent loop", "shared infrastructure", or "packet-level evidence grouping" is not sufficient.
 - Split a change when it contains multiple atom groups that can pass the Closed-loop Test independently.
 - Split a change when it advances many capabilities only because shared infrastructure made grouping convenient.
@@ -140,6 +142,7 @@ Rules:
 - Split external integration from command/job/result semantics when an adapter contract, deterministic sandbox, or integration-disabled path can be verified truthfully and the concrete integration can be added as a later direct change.
 - Split result projection, history, or interaction surfaces from upstream execution when the durable result fact can be verified independently of the richer projection loop.
 - Split access/quota enforcement, delivery, observability, and operations atoms out of a feature change unless they are required to make the current feature's behavior truthful rather than merely production-complete in a future sense.
+- Do not split a change solely because it advances several capabilities. If the split would create a diagonal matrix where each new change mostly owns one capability with a similar name, keep or redesign the vertical loop instead and record the reason.
 
 ### Foundation Scope Gate
 
@@ -167,6 +170,31 @@ Candidate split patterns include:
 - user-facing workflow -> admin, reconciliation, maintenance, or operations loop
 - synchronous happy path -> async processing, retry, recovery, or audit trail
 
+Forbidden split patterns include:
+
+- capability-column split: one vertical loop is divided into separate changes only because its atoms belong to multiple capabilities
+- same-name alias split: a new change and a new capability are created as semantic paraphrases of each other
+- cross-cutting concern evacuation: identity, privacy, realtime state, versioning, entitlement, export, failure recovery, or observability atoms are moved away from the loop that directly needs them only to reduce capability count
+
+## Change/Capability Coupling Gate
+
+Before finalizing `accepted` or `adjusted`, audit the final matrix shape:
+
+| Check | Signal | Required Action |
+| --- | --- | --- |
+| Diagonal roadmap | Most change rows have exactly one non-empty capability cell | Re-evaluate whether changes were sliced by capability instead of user/system loop; reslice or justify each focused loop. |
+| Single-change capabilities | Many capabilities are advanced by exactly one change | Merge, broaden, or rename capabilities unless source evidence proves terminal behavior boundaries. |
+| Name aliasing | A capability id paraphrases the only or first change that advances it | Rename around a durable behavior boundary, merge into a broader capability, or record a blocker. |
+| Lost cross-cutting deltas | A loop no longer directly advances necessary auth/privacy/realtime/versioning/entitlement/failure/export/observability behavior | Move those atoms back into the loop as direct deltas unless they are only contextual or preserve constraints. |
+| Budget-induced diagonalization | Split decisions reduce capability count but make the matrix less source-faithful | Reject the split and keep the cross-capability loop with concrete indivisibility analysis. |
+
+Rules:
+
+- A single-capability change is allowed only when its entry, fact, projection, failure path, and verification truly do not directly change another durable capability.
+- A capability advanced by one change is allowed only when the source set makes it a terminal first-version boundary or later expansion is explicitly out of scope; this must be stated in the progression review.
+- If the final plan has a mostly diagonal matrix and the coupling gate cannot justify it from source evidence, return `blocked` instead of `accepted` or `adjusted`.
+- The Phase 4 report must summarize this audit with counts or qualitative findings sufficient for a reviewer to see why the plan did not collapse into change/capability one-to-one mapping.
+
 ## Effective Change Plan Requirements
 
 The final `change-plan.md` must include:
@@ -188,6 +216,7 @@ Rules:
 - Capability ids must be stable English kebab-case ids.
 - Behavior boundary explains durable behavior, not implementation module.
 - First and later changes must be backed by direct global atoms.
+- Capability ids must not merely paraphrase final change slugs. When a capability has only one final direct change, record why it is a durable terminal boundary or refit it.
 
 ### Capability Progression Matrix
 
@@ -200,6 +229,7 @@ Rules:
 - Only direct `New` or `Modified` advancement belongs in matrix cells.
 - Dependency, preserve, reference-only, and contextual relations belong in notes, not matrix cells.
 - Each non-empty cell must be backed by one or more global atom ids.
+- The matrix must pass the Change/Capability Coupling Gate. A mostly diagonal matrix requires source-backed exceptions, not silence.
 
 ### Change Roadmap
 
@@ -276,7 +306,7 @@ Derived-view invariants:
 2. Read Phase 3 handoff items, especially atoms marked `phase-4-refit-required`, ownership ambiguities, and source-backed non-direct constraints.
 3. Create the next `phase-4-plan-refit/pass-<NN>/` directory and write `input-change-plan.md`.
 4. Build the atom-driven planning graph.
-5. Apply the implementation-ready complexity gate, foundation scope gate, and required split analysis to every candidate final change.
+5. Apply the implementation-ready complexity gate, foundation scope gate, required split analysis, and Change/Capability Coupling Gate to every candidate final change.
 6. Decide whether the Phase 1 framework is accepted, adjusted, needs coverage recheck, or blocked.
 7. If accepted or adjusted, write `phase-4-plan-refit/pass-<NN>/change-plan.md` and `atom-plan-mapping.md`.
 8. If adjusted, update root `openspec/orchestrate/change-plan.md` to the latest effective plan after the pass snapshot and mapping are written.
@@ -328,11 +358,13 @@ It must also include:
 - atom-driven planning graph summary
 - capability progression recalibration summary
 - change complexity recalibration summary
+- change/capability coupling gate summary, including whether the final matrix avoided capability-driven one-to-one slicing
 - new, split, merged, removed, reordered, or renamed changes
 - new, split, merged, removed, or renamed capabilities
 - atoms moved, reclassified, or left as contextual
 - confirmation that every direct global atom has exactly one final owner change/capability
 - confirmation that final capability relations are direct `New` or `Modified` advancement only
+- confirmation that the final plan is not a diagonal or same-name change/capability roadmap unless every exception is source-backed and recorded
 - confirmation that change packets contain upstream baseline and downstream design context without pulling future scope into current direct ownership
 - confirmation that final change complexity is implementation-ready or explicitly blocked with split options
 - confirmation that every over-budget trigger was split, deferred, or justified with concrete indivisibility analysis
@@ -350,9 +382,9 @@ Phase 4 ends with exactly one status in `reports/phase-4-agent-report.md`:
 - `Phase 4 Status: needs-coverage-recheck`
 - `Phase 4 Status: blocked`
 
-Use `accepted` when the Phase 1 framework remains coherent after atom-level review, final packets were derived, every capability atom sequence is coherent, and every change satisfies the implementation-ready complexity gate.
+Use `accepted` when the Phase 1 framework remains coherent after atom-level review, final packets were derived, every capability atom sequence is coherent, every change satisfies the implementation-ready complexity gate, and the final matrix passes the Change/Capability Coupling Gate.
 
-Use `adjusted` when the framework was refit, all final atom mappings are traceable, every capability atom sequence is coherent, every change satisfies the implementation-ready complexity gate, and final packets were derived.
+Use `adjusted` when the framework was refit, all final atom mappings are traceable, every capability atom sequence is coherent, every change satisfies the implementation-ready complexity gate, the final matrix passes the Change/Capability Coupling Gate, and final packets were derived.
 
 Use `needs-coverage-recheck` when Phase 4 exposes missing, over-broad, conflicting, or semantically unclear source obligations that Phase 3 must normalize before the plan can be final.
 
