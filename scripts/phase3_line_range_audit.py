@@ -174,7 +174,7 @@ def parse_line_ranges(row: EvidenceRow) -> Tuple[List[Tuple[int, int]], List[str
 
 
 def iter_source_atom_files(orchestrate_dir: Path) -> Iterable[Path]:
-    atom_root = orchestrate_dir / "source-obligation-atoms"
+    atom_root = orchestrate_dir / "phase-works/phase-2/source-obligation-atoms"
     if not atom_root.exists():
         return
     for atom_file in sorted(atom_root.glob("*.atoms.md")):

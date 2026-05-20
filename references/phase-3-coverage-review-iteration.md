@@ -17,10 +17,10 @@ Source anchors and line ranges remain useful for navigation and mechanical check
 ## Inputs
 
 - `openspec/orchestrate/change-plan.md`
-- `openspec/orchestrate/source-doc-manifest.md`
-- `openspec/orchestrate/source-obligation-atoms/work-queue.md`
-- `openspec/orchestrate/source-obligation-atoms/index.md`
-- `openspec/orchestrate/source-obligation-atoms/<source>.atoms.md`
+- `openspec/orchestrate/phase-works/phase-1/source-doc-manifest.md`
+- `openspec/orchestrate/phase-works/phase-2/source-obligation-atoms/work-queue.md`
+- `openspec/orchestrate/phase-works/phase-2/source-obligation-atoms/index.md`
+- `openspec/orchestrate/phase-works/phase-2/source-obligation-atoms/<source>.atoms.md`
 - User-specified source document roots or exact source paths, for manifest verification and targeted semantic reads.
 - Optional mechanical helper: `.codex/skills/source-aligned-change-plan-coverage/scripts/phase3_line_range_audit.py`
 
@@ -28,21 +28,21 @@ Source anchors and line ranges remain useful for navigation and mechanical check
 
 Write current copies only:
 
-- `openspec/orchestrate/source-doc-manifest.md`
-- `openspec/orchestrate/source-doc-coverage/<source-relative-path-without-extension>.coverage.md` for every source document listed in the manifest
+- `openspec/orchestrate/phase-works/phase-3/source-doc-manifest.md`
+- `openspec/orchestrate/phase-works/phase-3/source-doc-coverage/<source-relative-path-without-extension>.coverage.md` for every source document listed in the manifest
 - `openspec/orchestrate/change-capability-anchors/obligation-atom-index.md`
-- `openspec/orchestrate/reviews/phase-3-trace/source-to-global-atom-map.md`
-- `openspec/orchestrate/reviews/phase-3-trace/source-remainder-review.md`
-- `openspec/orchestrate/reviews/phase-3-trace/duplicate-ownership-review.md`
-- `openspec/orchestrate/reviews/phase-3-trace/atom-normalization-decision-log.md`
-- `openspec/orchestrate/reviews/coverage-review.md`
-- `openspec/orchestrate/reports/phase-3-agent-report.md`
+- `openspec/orchestrate/phase-works/phase-3/phase-3-trace/source-to-global-atom-map.md`
+- `openspec/orchestrate/phase-works/phase-3/phase-3-trace/source-remainder-review.md`
+- `openspec/orchestrate/phase-works/phase-3/phase-3-trace/duplicate-ownership-review.md`
+- `openspec/orchestrate/phase-works/phase-3/phase-3-trace/atom-normalization-decision-log.md`
+- `openspec/orchestrate/phase-works/phase-3/coverage-review.md`
+- `openspec/orchestrate/phase-works/phase-3/phase-3-agent-report.md`
 
-Use a single-level filename for per-source files. Derive it from the source document path as listed in the manifest, remove the file extension, replace path separators with `--`, and add `.coverage.md`. Do not create nested directories under `source-doc-coverage/`.
+Use a single-level filename for per-source files. Derive it from the source document path as listed in the manifest, remove the file extension, replace path separators with `--`, and add `.coverage.md`. Do not create nested directories under `phase-works/phase-3/source-doc-coverage/`.
 
 Phase 3 may add precise missing source-backed atoms to `obligation-atom-index.md`, but it must not edit Phase 2 source atom files. If missing obligations are too broad or require rereading many documents beyond targeted semantic review, return `Decision: blocked` and state whether a full Phase 2 rerun is required.
 
-`reviews/phase-3-trace/` records the current Phase 3 pass's intermediate audit trail. These files are review aids, not source of truth. They must be overwritten on each fresh Phase 3 pass and must be consistent with the final `obligation-atom-index.md`, per-source coverage files, and `coverage-review.md`.
+`phase-works/phase-3/phase-3-trace/` records the current Phase 3 intermediate audit trail. These files are review aids, not source of truth. They must be overwritten on each fresh Phase 3 run and must be consistent with the final `obligation-atom-index.md`, per-source coverage files, and `phase-works/phase-3/coverage-review.md`.
 
 ## Artifact Language Gate
 
@@ -99,9 +99,9 @@ Coverage statuses:
 
 ## Source Discovery and Reading Boundary
 
-Read the Phase 1 `source-doc-manifest.md`, verify it still matches the user-specified source roots, and enrich it with Phase 3 classifications. If Phase 1 did not list every source document or Phase 2 did not write a source atom file for every `read-full` source document, return `Decision: blocked` unless the issue can be corrected through targeted Phase 3 review without invalidating Phase 1 or Phase 2.
+Read the Phase 1 `phase-works/phase-1/source-doc-manifest.md`, verify it still matches the user-specified source roots, and write the enriched Phase 3 review copy to `phase-works/phase-3/source-doc-manifest.md`. If Phase 1 did not list every source document or Phase 2 did not write a source atom file for every `read-full` source document, return `Decision: blocked` unless the issue can be corrected through targeted Phase 3 review without invalidating Phase 1 or Phase 2.
 
-For every manifest row, write a matching per-source review file under `source-doc-coverage/`, even when the final classification is `reference-only`, `intentionally-not-read`, or `non-source-artifact`.
+For every manifest row, write a matching per-source review file under `phase-works/phase-3/source-doc-coverage/`, even when the final classification is `reference-only`, `intentionally-not-read`, or `non-source-artifact`.
 
 Classify each document as:
 
@@ -127,7 +127,7 @@ For UI, object/component, flow, interaction, state, fixture, scenario, verificat
 
 Evaluate in this order:
 
-1. Confirm every `read-full` manifest source document appears exactly once in `source-obligation-atoms/work-queue.md` and has one canonical extraction owner.
+1. Confirm every `read-full` manifest source document appears exactly once in `phase-works/phase-2/source-obligation-atoms/work-queue.md` and has one canonical extraction owner.
 2. Confirm every `read-full` manifest source document has one Phase 2 source atom file.
 3. Treat `work-queue.md` only as scheduling trace. Do not use its batching rationale, document name, path, role, or line count as coverage evidence.
 4. Extract every Phase 2 atom candidate with source document, source-local atom id, line range, atom type, source fact, normativity, candidate status, candidate artifact projection, candidate owner change/capability, roles, rationale, propose use, evidence need, and artifact origin.
@@ -135,9 +135,9 @@ Evaluate in this order:
 6. Build a semantic duplicate review across extracted atoms. Same source document/range, equivalent source facts, equivalent state/action/verification obligations, or identical propose use are duplicate candidates until reviewed.
 7. Split broad atoms when one Phase 2 row covers multiple mandatory UI/flow/data/verification obligations. Each split atom must keep source evidence and a source-local origin or Phase 3 missing-atom finding id.
 8. Build `change-capability-anchors/obligation-atom-index.md` with one global atom per production obligation and one normalized artifact projection per global atom.
-9. Write `reviews/phase-3-trace/source-to-global-atom-map.md`, mapping every Phase 2 atom/context row to exactly one global atom id, relation, non-direct status, or blocker.
-10. Write `reviews/phase-3-trace/duplicate-ownership-review.md`, preserving every duplicate, broad-atom, overlap, and ownership candidate considered and its resolution.
-11. For each source document in the manifest, create or update the matching `source-doc-coverage/<source>.coverage.md` file before writing the final global review.
+9. Write `phase-works/phase-3/phase-3-trace/source-to-global-atom-map.md`, mapping every Phase 2 atom/context row to exactly one global atom id, relation, non-direct status, or blocker.
+10. Write `phase-works/phase-3/phase-3-trace/duplicate-ownership-review.md`, preserving every duplicate, broad-atom, overlap, and ownership candidate considered and its resolution.
+11. For each source document in the manifest, create or update the matching `phase-works/phase-3/source-doc-coverage/<source>.coverage.md` file before writing the final global review.
 12. For each source document, inspect obligation-bearing sections and verify atom completeness:
     - For pages/objects: page role, route, entry, exit, layout constraints with behavior impact, every named state, state triggers, display, primary actions, disabled actions, recovery, interaction rules, object dependencies, action labels that define behavior, acceptance criteria, responsive behavior, and non-goals.
     - For flow/state/system docs: lifecycle stages, allowed transitions, overlay/blocking rules, fixture fields, scenario ids, verification matrix rows, interaction outcomes, and preserve boundaries.
@@ -146,20 +146,20 @@ Evaluate in this order:
     - ignore blank lines, table separators, decorative separators, generated table-of-contents lines, and pure formatting
     - ignore background prose, repeated summaries, discarded options, and purely explanatory text unless it defines a production behavior, boundary, data fact, verification obligation, deployment requirement, auth/privacy rule, failure path, or preserve constraint
     - record each remaining meaningful uncovered source obligation as a missing atom and add it to the global index when precise enough
-14. Write `reviews/phase-3-trace/source-remainder-review.md`, listing every candidate remaining source range reviewed, how it was discovered, read scope, semantic classification, whether it contains a production obligation, and the resulting atom/status/finding.
+14. Write `phase-works/phase-3/phase-3-trace/source-remainder-review.md`, listing every candidate remaining source range reviewed, how it was discovered, read scope, semantic classification, whether it contains a production obligation, and the resulting atom/status/finding.
 15. Identify atoms whose owner change/capability cannot be resolved without plan refit. Mark them `phase-4-refit-required` instead of forcing them into the Phase 1 framework.
-16. Write `reviews/phase-3-trace/atom-normalization-decision-log.md`, preserving every candidate finding considered, the decision for each, and whether Phase 4 must resolve final placement.
+16. Write `phase-works/phase-3/phase-3-trace/atom-normalization-decision-log.md`, preserving every candidate finding considered, the decision for each, and whether Phase 4 must resolve final placement.
 17. Build compact global statistics across source documents, global atoms, meaningful missing atoms, duplicate findings, broad-atom split findings, non-coverage classifications, ownership ambiguities, gaps, and conflicts.
 18. Decide whether coverage normalization is complete or blocked.
 
 ## Required Tables
 
-`source-doc-manifest.md` must include:
+`phase-works/phase-3/source-doc-manifest.md` must include:
 
 | Source Document | Classification | Phase 2 Atom File | Review File | Effective Atom Ranges | Missing Obligation Atom Ranges | Non-Atom Ranges | Read Scope | Reason |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- |
 
-Each `source-doc-coverage/<source>.coverage.md` file must include:
+Each `phase-works/phase-3/source-doc-coverage/<source>.coverage.md` file must include:
 
 ### Source Document
 
@@ -197,27 +197,27 @@ Each `source-doc-coverage/<source>.coverage.md` file must include:
 - Phase 4 placement findings, or `None`
 - Judgment: `covered`, `covered-by-classification`, `phase-4-refit-required`, or `blocked`
 
-`reviews/phase-3-trace/source-to-global-atom-map.md` must include one row for every Phase 2 atom/context row:
+`phase-works/phase-3/phase-3-trace/source-to-global-atom-map.md` must include one row for every Phase 2 atom/context row:
 
 | Source Document | Source Atom ID | Lines | Candidate Status | Candidate Artifact Projection | Candidate Owner Change | Candidate Owner Capability | Global Atom ID or Relation | Global Coverage Status | Global Artifact Projection | Review Decision | Reason |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
 
-`reviews/phase-3-trace/source-remainder-review.md` must include:
+`phase-works/phase-3/phase-3-trace/source-remainder-review.md` must include:
 
 | Source Document | Candidate Range | How Found | Read Scope | Semantic Classification | Production Obligation? | Atom / Status / Finding | Reason |
 | --- | --- | --- | --- | --- | --- | --- | --- |
 
-`reviews/phase-3-trace/duplicate-ownership-review.md` must include:
+`phase-works/phase-3/phase-3-trace/duplicate-ownership-review.md` must include:
 
 | Candidate ID | Source Ranges or Source Atoms | Candidate Type | Equivalent Obligation? | Resolution | Global Atom ID or Relation | Phase 4 Placement Needed? | Reason |
 | --- | --- | --- | --- | --- | --- | --- | --- |
 
-`reviews/phase-3-trace/atom-normalization-decision-log.md` must include:
+`phase-works/phase-3/phase-3-trace/atom-normalization-decision-log.md` must include:
 
 | Review Item | Finding Class | Input Evidence | Decision | Output Artifact | Phase 4 Needed? | Reason |
 | --- | --- | --- | --- | --- | --- | --- |
 
-`coverage-review.md` must include:
+`phase-works/phase-3/coverage-review.md` must include:
 
 | Source Document | Review File | Atom Coverage Summary | Missing Obligation Atoms | Duplicate/Ownership Findings | Non-Atom Ranges | Read Scope | Review Judgment |
 | --- | --- | --- | --- | --- | --- | --- | --- |
@@ -234,20 +234,20 @@ And a Phase 4 handoff table:
 
 ## Decision Values
 
-`coverage-review.md` must end with exactly one decision:
+`phase-works/phase-3/coverage-review.md` must end with exactly one decision:
 
 - `Decision: coverage-complete`
 - `Decision: blocked`
 
 Use `coverage-complete` only when every source document under the specified roots is manifest-classified, every production-meaningful source obligation has exactly one global atom or justified non-coverage status, every source range without atoms is classified as production-safe non-atom content, there are no unclassified atoms, no unresolved duplicate obligations, no broad atom compression findings left unsplit or justified, no blocking conflicts, and every Phase 4 placement question is explicitly handed off.
 
-Additionally, use `coverage-complete` only when every source document listed in `source-doc-manifest.md` has a matching `source-doc-coverage/<source>.coverage.md` file and all four `reviews/phase-3-trace/` files exist and reconcile with the final review.
+Additionally, use `coverage-complete` only when every source document listed in `phase-works/phase-3/source-doc-manifest.md` has a matching `phase-works/phase-3/source-doc-coverage/<source>.coverage.md` file and all four `phase-works/phase-3/phase-3-trace/` files exist and reconcile with the final review.
 
 Use `blocked` when source documents conflict, source roots are incomplete, source atom files are missing, atom evidence is too broad to normalize, or the user must decide a boundary before coverage can close.
 
 ## Final Report
 
-`reports/phase-3-agent-report.md` must summarize:
+`phase-works/phase-3/phase-3-agent-report.md` must summarize:
 
 - source documents classified
 - per-source-document review files written

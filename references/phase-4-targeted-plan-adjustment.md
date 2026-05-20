@@ -9,38 +9,37 @@ Phase 4 MUST be performed by a fresh independent subagent. It must not rerun Pha
 ## Inputs
 
 - `openspec/orchestrate/change-plan.md`
-- `openspec/orchestrate/source-doc-manifest.md`
-- `openspec/orchestrate/source-obligation-atoms/index.md`
+- `openspec/orchestrate/phase-works/phase-3/source-doc-manifest.md`
+- `openspec/orchestrate/phase-works/phase-2/source-obligation-atoms/index.md`
 - `openspec/orchestrate/change-capability-anchors/obligation-atom-index.md`
-- `openspec/orchestrate/reviews/coverage-review.md`
-- `openspec/orchestrate/reviews/phase-3-trace/*.md`
+- `openspec/orchestrate/phase-works/phase-3/coverage-review.md`
+- `openspec/orchestrate/phase-works/phase-3/phase-3-trace/*.md`
 - User-specified source document roots or exact source paths, for targeted context reads only when a Phase 3 handoff needs local wording.
 
 ## Outputs
 
-Write the next monotonically increasing refit directory under `openspec/orchestrate/phase-4-plan-refit/`, such as `pass-01`, `pass-02`, and so on. Never overwrite an existing pass directory.
+Write the current refit packet directly under `openspec/orchestrate/phase-works/phase-4/`. Do not create `pass-*`, `iteration-*`, attempt-numbered, or similarly iterative subdirectories for Phase 4. If Phase 4 must run again after `needs-coverage-recheck`, update the current Phase 4 packet in place unless the user explicitly requests historical archival.
 
-- `openspec/orchestrate/phase-4-plan-refit/pass-<NN>/input-change-plan.md`
-- `openspec/orchestrate/phase-4-plan-refit/pass-<NN>/change-plan.md`
-- `openspec/orchestrate/phase-4-plan-refit/pass-<NN>/atom-plan-mapping.md`
-- `openspec/orchestrate/phase-4-plan-refit/pass-<NN>/phase-4-agent-report.md`
-- `openspec/orchestrate/reviews/phase-4-trace/capability-progression-review.md`
-- `openspec/orchestrate/reviews/phase-4-trace/change-complexity-review.md`
-- `openspec/orchestrate/reviews/phase-4-trace/plan-refit-decision-log.md`
-- `openspec/orchestrate/reviews/change-plan-adjustments.md` only when the status is `adjusted`, `needs-coverage-recheck`, or `blocked`
-- `openspec/orchestrate/reports/phase-4-agent-report.md`
-- `openspec/orchestrate/reports/alignment-final-report.md`
+- `openspec/orchestrate/phase-works/phase-4/input-change-plan.md`
+- `openspec/orchestrate/phase-works/phase-4/change-plan.md`
+- `openspec/orchestrate/phase-works/phase-4/atom-plan-mapping.md`
+- `openspec/orchestrate/phase-works/phase-4/capability-progression-review.md`
+- `openspec/orchestrate/phase-works/phase-4/change-complexity-review.md`
+- `openspec/orchestrate/phase-works/phase-4/plan-refit-decision-log.md`
+- `openspec/orchestrate/phase-works/phase-4/change-plan-adjustments.md` only when the status is `adjusted`, `needs-coverage-recheck`, or `blocked`
+- `openspec/orchestrate/phase-works/phase-4/phase-4-agent-report.md`
+- `openspec/orchestrate/phase-works/phase-4/alignment-final-report.md`
 
 When the status is `accepted` or `adjusted`, also write final consume-ready artifacts:
 
 - `openspec/orchestrate/change-capability-anchors/index.md`
 - `openspec/orchestrate/change-capability-anchors/<change-slug>/<change-slug>.md`
 - `openspec/orchestrate/change-capability-anchors/<change-slug>/capability-anchors/<capability-slug>.md`
-- `openspec/orchestrate/reports/change-capability-human-plan.md`
+- `openspec/orchestrate/phase-works/phase-4/change-capability-human-plan.md`
 
-If Phase 4 accepts the input plan unchanged, still write the pass directory and final change packets. If Phase 4 adjusts the plan, write the adjusted snapshot to the pass directory and update root `openspec/orchestrate/change-plan.md` to the latest effective plan only after the pass directory records the input plan, output plan, and atom-plan mapping.
+If Phase 4 accepts the input plan unchanged, still write the current Phase 4 packet and final change packets. If Phase 4 adjusts the plan, write the adjusted snapshot to `phase-works/phase-4/change-plan.md` and update root `openspec/orchestrate/change-plan.md` to the latest effective plan only after the Phase 4 packet records the input plan, output plan, and atom-plan mapping.
 
-`source-obligation-atoms/` and `change-capability-anchors/obligation-atom-index.md` are upstream evidence. Do not edit them in Phase 4.
+`phase-works/phase-2/source-obligation-atoms/` and `change-capability-anchors/obligation-atom-index.md` are upstream evidence. Do not edit them in Phase 4.
 
 ## Recommended Mechanical Helper
 
@@ -51,8 +50,8 @@ Suggested flow:
 ```bash
 python3 .codex/skills/source-aligned-change-plan-coverage/scripts/phase4_plan_refit.py \
   --orchestrate-dir openspec/orchestrate \
-  --mapping openspec/orchestrate/phase-4-plan-refit/pass-01/atom-plan-mapping.md \
-  --print-config-template > openspec/orchestrate/phase-4-plan-refit/pass-01/phase4-refit.config.json
+  --mapping openspec/orchestrate/phase-works/phase-4/atom-plan-mapping.md \
+  --print-config-template > openspec/orchestrate/phase-works/phase-4/phase4-refit.config.json
 ```
 
 Then edit `phase4-refit.config.json` so every final change has the reviewed Chinese title/outcome/kind, every capability has the reviewed Chinese behavior boundary, and the reviewed decisions/split analyses/adjustments/report findings are recorded. After that, run:
@@ -62,13 +61,13 @@ python3 -m py_compile .codex/skills/source-aligned-change-plan-coverage/scripts/
 
 python3 .codex/skills/source-aligned-change-plan-coverage/scripts/phase4_plan_refit.py \
   --orchestrate-dir openspec/orchestrate \
-  --mapping openspec/orchestrate/phase-4-plan-refit/pass-01/atom-plan-mapping.md \
-  --config openspec/orchestrate/phase-4-plan-refit/pass-01/phase4-refit.config.json
+  --mapping openspec/orchestrate/phase-works/phase-4/atom-plan-mapping.md \
+  --config openspec/orchestrate/phase-works/phase-4/phase4-refit.config.json
 
 python3 .codex/skills/source-aligned-change-plan-coverage/scripts/phase4_plan_refit.py \
   --orchestrate-dir openspec/orchestrate \
-  --mapping openspec/orchestrate/phase-4-plan-refit/pass-01/atom-plan-mapping.md \
-  --config openspec/orchestrate/phase-4-plan-refit/pass-01/phase4-refit.config.json \
+  --mapping openspec/orchestrate/phase-works/phase-4/atom-plan-mapping.md \
+  --config openspec/orchestrate/phase-works/phase-4/phase4-refit.config.json \
   --write
 ```
 
@@ -262,7 +261,7 @@ The final `change-plan.md` must include:
 
 - Source documents read
 - Phase 3 global atom index path
-- Phase 4 pass path
+- Phase 4 work path
 - Assumptions and conflicts
 
 ### Capability Map
@@ -379,7 +378,7 @@ Derived-view invariants:
 
 ## Final Capability Relation Consistency Check
 
-Before writing final reports, Phase 4 must run a consistency check across the final plan and derived anchors. Write the result into `reports/alignment-final-report.md` and summarize it in `reports/phase-4-agent-report.md`.
+Before writing final reports, Phase 4 must run a consistency check across the final plan and derived anchors. Write the result into `phase-works/phase-4/alignment-final-report.md` and summarize it in `phase-works/phase-4/phase-4-agent-report.md`.
 
 Required comparison:
 
@@ -397,31 +396,31 @@ Rules:
 
 ## Workflow
 
-1. Read Phase 3's `coverage-review.md` decision and global atom index.
+1. Read Phase 3's `phase-works/phase-3/coverage-review.md` decision and global atom index.
 2. Read Phase 3 handoff items, especially atoms marked `phase-4-refit-required`, ownership ambiguities, and source-backed non-direct constraints.
-3. Create the next `phase-4-plan-refit/pass-<NN>/` directory and write `input-change-plan.md`.
+3. Ensure `phase-works/phase-4/` exists and write `input-change-plan.md` directly in that directory.
 4. Build the atom-driven planning graph.
 5. Apply the implementation-ready complexity gate, Single Foundation and Business-First Gate, required split analysis, and Change/Capability Coupling Gate to every candidate final change.
 6. Decide whether the Phase 1 framework is accepted, adjusted, needs coverage recheck, or blocked.
-7. If accepted or adjusted, write `phase-4-plan-refit/pass-<NN>/change-plan.md` and `atom-plan-mapping.md`.
-8. If adjusted, update root `openspec/orchestrate/change-plan.md` to the latest effective plan after the pass snapshot and mapping are written.
-9. Write `reviews/phase-4-trace/capability-progression-review.md`, `change-complexity-review.md`, and `plan-refit-decision-log.md`.
-10. If the status is `adjusted`, `needs-coverage-recheck`, or `blocked`, write `reviews/change-plan-adjustments.md` with the plan-impact and next-action summary.
+7. If accepted or adjusted, write `phase-works/phase-4/change-plan.md` and `phase-works/phase-4/atom-plan-mapping.md`.
+8. If adjusted, update root `openspec/orchestrate/change-plan.md` to the latest effective plan after the Phase 4 snapshot and mapping are written.
+9. Write `phase-works/phase-4/capability-progression-review.md`, `change-complexity-review.md`, and `plan-refit-decision-log.md`.
+10. If the status is `adjusted`, `needs-coverage-recheck`, or `blocked`, write `phase-works/phase-4/change-plan-adjustments.md` with the plan-impact and next-action summary.
 11. Derive final `change-capability-anchors/<change-slug>/` packets and capability views from the global atom index and final plan when the status is `accepted` or `adjusted`.
 12. Write `change-capability-anchors/index.md`.
 13. Run the Final Capability Relation Consistency Check. Repair stale `First change`, matrix cells, roadmap `New`/`Modified` labels, final anchors index rows, capability views, and human-plan summaries before proceeding.
-14. Write `reports/change-capability-human-plan.md` as a readable synthesis of final change packets and capability progression when the status is `accepted` or `adjusted`.
-15. Write `reports/phase-4-agent-report.md` and `reports/alignment-final-report.md`.
+14. Write `phase-works/phase-4/change-capability-human-plan.md` as a readable synthesis of final change packets and capability progression when the status is `accepted` or `adjusted`.
+15. Write `phase-works/phase-4/phase-4-agent-report.md` and `phase-works/phase-4/alignment-final-report.md`.
 16. Run a local artifact consistency check by inspection or deterministic parsing before finishing.
 
 ## Required Mapping Tables
 
-`phase-4-plan-refit/pass-<NN>/atom-plan-mapping.md` must include:
+`phase-works/phase-4/atom-plan-mapping.md` must include:
 
 | Global Atom ID | Source Document | Lines | Phase 3 Owner / Status | Phase 3 Artifact Projection | Final Owner Change | Final Owner Capability | Final Artifact Projection | Final Relation | Plan Decision | Reason |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
 
-`reviews/phase-4-trace/plan-refit-decision-log.md` must include:
+`phase-works/phase-4/plan-refit-decision-log.md` must include:
 
 | Decision Item | Input Evidence | Candidate Options | Decision | Output Artifact | Reason |
 | --- | --- | --- | --- | --- | --- |
@@ -431,7 +430,7 @@ Rules:
 | Change | Change Packet | Capability Views | Direct Atoms | Contextual Atoms | Capabilities Advanced | Complexity Budget | Evidence Burden | Blockers |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- |
 
-`reports/change-capability-human-plan.md` must include readable change packets:
+`phase-works/phase-4/change-capability-human-plan.md` must include readable change packets:
 
 | Change | Closed-loop Outcome | Direct Atom Groups | Complexity Budget | Contextual Atoms / Future Constraints | Upstream Realized Baseline | Downstream Constraints | Non-Goals | Evidence Burden | Ledger Links |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
@@ -443,7 +442,7 @@ It must also include a capability progression narrative:
 
 ## Phase 4 Report
 
-`reports/phase-4-agent-report.md` must include:
+`phase-works/phase-4/phase-4-agent-report.md` must include:
 
 | Refit Finding | Source Ranges or Atoms | Plan Decision | Files Written | Atom Resolution | Remaining Gap or Blocker |
 | --- | --- | --- | --- | --- | --- |
@@ -475,7 +474,7 @@ It must also include:
 
 ## Completion
 
-Phase 4 ends with exactly one status in `reports/phase-4-agent-report.md`:
+Phase 4 ends with exactly one status in `phase-works/phase-4/phase-4-agent-report.md`:
 
 - `Phase 4 Status: accepted`
 - `Phase 4 Status: adjusted`

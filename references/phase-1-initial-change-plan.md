@@ -2,7 +2,13 @@
 
 Phase 1 creates the initial top-level OpenSpec change/capability framework from the user-specified source documents. It must enumerate and read every source document under the user-specified source roots before slicing the plan. The Phase 1 framework is a source-informed slicing hypothesis that Phase 4 may refit after obligation atoms are normalized. It does not create concrete OpenSpec changes, proposals, specs, designs, tasks, acceptance artifacts, obligation atom ledgers, line-range anchors, coverage statuses, or a backlog of evidence items waiting for Phase 2.
 
-Write the plan to:
+Write the Phase 1 plan snapshot to:
+
+```text
+openspec/orchestrate/phase-works/phase-1/change-plan.md
+```
+
+Also promote the same initial latest-effective plan to:
 
 ```text
 openspec/orchestrate/change-plan.md
@@ -11,13 +17,13 @@ openspec/orchestrate/change-plan.md
 Write the initial full-source manifest to:
 
 ```text
-openspec/orchestrate/source-doc-manifest.md
+openspec/orchestrate/phase-works/phase-1/source-doc-manifest.md
 ```
 
 Write the Phase 1 report to:
 
 ```text
-openspec/orchestrate/reports/phase-1-agent-report.md
+openspec/orchestrate/phase-works/phase-1/phase-1-agent-report.md
 ```
 
 ## Artifact Language Gate
@@ -145,7 +151,7 @@ Source-backed domain behavior found during Phase 1 should be sliced into busines
 
 1. Enumerate every source document under the user-specified roots or exact paths.
 2. Read every enumerated source document body. Do not sample, skim only filenames, or defer full reading to Phase 2.
-3. Write `source-doc-manifest.md` with every source document, read status, high-level source role, and coarse topic/path hints.
+3. Write `phase-works/phase-1/source-doc-manifest.md` with every source document, read status, high-level source role, and coarse topic/path hints.
 4. Extract core user or system paths.
 5. Express each path as: entry -> behavior -> system fact -> visible result -> failure recovery.
 6. Identify long-lived behavior capabilities with English kebab-case ids. Capabilities should be broader than one implementation unit unless the source set proves a terminal boundary.
@@ -160,7 +166,7 @@ Source-backed domain behavior found during Phase 1 should be sliced into busines
 
 ## Output
 
-Produce `openspec/orchestrate/source-doc-manifest.md` with:
+Produce `openspec/orchestrate/phase-works/phase-1/source-doc-manifest.md` with:
 
 | Source Document | Read Status | Source Role | Coarse Topics / Paths | Notes |
 | --- | --- | --- | --- | --- |
@@ -172,7 +178,7 @@ Rules:
 - Non-source artifacts may be listed as `non-source-artifact` only when they are under a specified root and are not meaningful source docs.
 - Do not add coverage status, atom counts, or line-range coverage in Phase 1.
 
-Produce `openspec/orchestrate/change-plan.md` with:
+Produce `openspec/orchestrate/phase-works/phase-1/change-plan.md`, then promote the same latest-effective content to `openspec/orchestrate/change-plan.md`, with:
 
 ### Inputs
 
@@ -262,7 +268,7 @@ Answer:
 
 ## Phase Report
 
-`reports/phase-1-agent-report.md` must briefly list:
+`phase-works/phase-1/phase-1-agent-report.md` must briefly list:
 
 - source documents read
 - generated plan path

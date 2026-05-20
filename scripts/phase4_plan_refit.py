@@ -294,11 +294,10 @@ def parse_capabilities(config: Dict[str, object]) -> List[CapabilityDef]:
 
 
 def latest_mapping(orchestrate_dir: Path) -> Path:
-    pass_root = orchestrate_dir / "phase-4-plan-refit"
-    candidates = sorted(pass_root.glob("pass-*/atom-plan-mapping.md"))
-    if not candidates:
-        raise ValueError(f"{pass_root} 下没有 pass-*/atom-plan-mapping.md")
-    return candidates[-1]
+    mapping_path = orchestrate_dir / "phase-works/phase-4/atom-plan-mapping.md"
+    if not mapping_path.exists():
+        raise ValueError(f"缺少 Phase 4 mapping: {mapping_path}")
+    return mapping_path
 
 
 def default_config_path(mapping_path: Path) -> Path:
@@ -459,14 +458,14 @@ def render_change_plan(
     capabilities: Sequence[CapabilityDef],
     by_change: Dict[str, List[FinalAtom]],
     cap_changes: Dict[str, List[str]],
-    pass_dir: Path,
+    work_dir: Path,
 ) -> str:
     lines: List[str] = ["# Source-Aligned Phase 4 Change Plan\n\n", "## Inputs\n\n"]
     lines.append(
-        f"- Source documents read: {config.get('source_documents_read', '`openspec/orchestrate/source-doc-manifest.md` 中源文档已由 Phase 2/3 覆盖。')}\n"
+        f"- Source documents read: {config.get('source_documents_read', '`openspec/orchestrate/phase-works/phase-3/source-doc-manifest.md` 中源文档已由 Phase 2/3 覆盖。')}\n"
     )
     lines.append("- Phase 3 global atom index path: `openspec/orchestrate/change-capability-anchors/obligation-atom-index.md`。\n")
-    lines.append(f"- Phase 4 pass path: `{pass_dir.as_posix()}/`。\n")
+    lines.append(f"- Phase 4 work path: `{work_dir.as_posix()}/`。\n")
     lines.append(
         f"- Assumptions and conflicts: {config.get('assumptions_and_conflicts', 'Phase 3 已给出 `Decision: coverage-complete`；Phase 4 未新增 atom，也未改写 Phase 2/3 证据。')}\n"
     )
@@ -678,7 +677,7 @@ def render_packet(
     changes: Sequence[ChangeDef],
     by_change: Dict[str, List[FinalAtom]],
     by_context: Dict[str, List[FinalAtom]],
-    pass_dir: Path,
+    work_dir: Path,
 ) -> str:
     items = by_change[change.slug]
     gate = "single-foundation-exception" if change.kind == "foundation" else "business-first"
@@ -687,7 +686,7 @@ def render_packet(
         f"- Change name: `{change.slug}`\n",
         f"- Closed-loop outcome: {md(change.outcome)}\n",
         "- Global atom index: `openspec/orchestrate/change-capability-anchors/obligation-atom-index.md`\n",
-        f"- Phase 4 mapping: `{pass_dir.as_posix()}/atom-plan-mapping.md`\n",
+        f"- Phase 4 mapping: `{work_dir.as_posix()}/atom-plan-mapping.md`\n",
         f"- Complexity budget status: `{budget_status(items)}`；direct atom count=`{len(items)}`。\n",
         f"- Foundation/business gate status: `{gate}`。\n",
         "- Blockers: `None`\n\n",
@@ -839,7 +838,7 @@ def render_alignment_report(
         owners = cap_changes.get(cap.slug, [])
         first = owners[0] if owners else "None"
         later = ", ".join(code(owner) for owner in owners[1:]) if len(owners) > 1 else "`None`"
-        lines.append(f"| `{cap.slug}` | `{first}` | `{first}` | `{first}` | `{first}` | `{first}` | {later} | `pass` | 不需要修复。 |\n")
+        lines.append(f"| `{cap.slug}` | `{first}` | `{first}` | `{first}` | `{first}` | `{first}` | {later} | `ok` | 不需要修复。 |\n")
     lines.append("\n## Direct Ownership Checks\n\n")
     lines.append(f"- Final direct atoms: `{len(direct_items)}`。每个 final direct atom 在 mapping 中只有一个 final owner change/capability。\n")
     lines.append("- Final direct projections 仅使用 `spec-requirement`、`spec-guard`、`design-obligation`、`verification-obligation`。\n")
@@ -873,7 +872,7 @@ def render_phase4_report(
             )
     else:
         lines.append(
-            f"| atom-driven refit | `{mapping_path.as_posix()}` | `{status}` | Phase 4 pass、reviews、reports、final packets | "
+            f"| atom-driven refit | `{mapping_path.as_posix()}` | `{status}` | Phase 4 work packet、final packets | "
             "从 reviewed mapping 机械派生最终 owner、projection 和 relation | `None` |\n"
         )
 
@@ -895,16 +894,17 @@ def render_phase4_report(
 
     lines.append("\n## Files Written\n\n")
     for path in [
-        "openspec/orchestrate/phase-4-plan-refit/pass-<NN>/input-change-plan.md",
-        "openspec/orchestrate/phase-4-plan-refit/pass-<NN>/change-plan.md",
-        "openspec/orchestrate/phase-4-plan-refit/pass-<NN>/atom-plan-mapping.md",
-        "openspec/orchestrate/phase-4-plan-refit/pass-<NN>/phase-4-agent-report.md",
-        "openspec/orchestrate/reviews/phase-4-trace/capability-progression-review.md",
-        "openspec/orchestrate/reviews/phase-4-trace/change-complexity-review.md",
-        "openspec/orchestrate/reviews/phase-4-trace/plan-refit-decision-log.md",
+        "openspec/orchestrate/phase-works/phase-4/input-change-plan.md",
+        "openspec/orchestrate/phase-works/phase-4/change-plan.md",
+        "openspec/orchestrate/phase-works/phase-4/atom-plan-mapping.md",
+        "openspec/orchestrate/phase-works/phase-4/capability-progression-review.md",
+        "openspec/orchestrate/phase-works/phase-4/change-complexity-review.md",
+        "openspec/orchestrate/phase-works/phase-4/plan-refit-decision-log.md",
+        "openspec/orchestrate/phase-works/phase-4/phase-4-agent-report.md",
+        "openspec/orchestrate/change-plan.md",
         "openspec/orchestrate/change-capability-anchors/index.md",
-        "openspec/orchestrate/reports/change-capability-human-plan.md",
-        "openspec/orchestrate/reports/alignment-final-report.md",
+        "openspec/orchestrate/phase-works/phase-4/change-capability-human-plan.md",
+        "openspec/orchestrate/phase-works/phase-4/alignment-final-report.md",
     ]:
         lines.append(f"- `{path}`\n")
     lines.append("\n## Language Self-Check\n\n本文解释内容已按 Artifact Language Gate 检查为简体中文。\n")
@@ -923,53 +923,53 @@ def write_outputs(
     no_root_update: bool,
 ) -> None:
     status = str(config.get("status") or "adjusted")
-    pass_dir = output_orchestrate_dir / "phase-4-plan-refit" / mapping_path.parent.name
-    rel_pass_dir = Path("openspec/orchestrate/phase-4-plan-refit") / mapping_path.parent.name
+    work_dir = output_orchestrate_dir / "phase-works/phase-4"
+    rel_work_dir = Path("openspec/orchestrate/phase-works/phase-4")
     by_change = direct_by_change(final_atoms, changes)
     by_context = context_by_change(final_atoms, changes)
     direct_items = [item for item in final_atoms if item.mapping.final_relation == "direct"]
     cap_changes = capability_progression(by_change, changes)
 
-    ensure_dir(pass_dir)
-    output_mapping = pass_dir / "atom-plan-mapping.md"
+    ensure_dir(work_dir)
+    output_mapping = work_dir / "atom-plan-mapping.md"
     if output_mapping.resolve() != mapping_path.resolve():
         shutil.copyfile(mapping_path, output_mapping)
-    output_config = pass_dir / config_path.name
+    output_config = work_dir / config_path.name
     if output_config.resolve() != config_path.resolve():
         shutil.copyfile(config_path, output_config)
 
     input_plan = orchestrate_dir / "change-plan.md"
-    output_input_plan = pass_dir / "input-change-plan.md"
+    output_input_plan = work_dir / "input-change-plan.md"
     if input_plan.exists() and not output_input_plan.exists():
         shutil.copyfile(input_plan, output_input_plan)
 
-    change_plan = render_change_plan(config, changes, capabilities, by_change, cap_changes, rel_pass_dir)
-    write_text(pass_dir / "change-plan.md", change_plan)
+    change_plan = render_change_plan(config, changes, capabilities, by_change, cap_changes, rel_work_dir)
+    write_text(work_dir / "change-plan.md", change_plan)
     if not no_root_update:
         write_text(output_orchestrate_dir / "change-plan.md", change_plan)
 
     write_text(
-        output_orchestrate_dir / "reviews/phase-4-trace/capability-progression-review.md",
+        work_dir / "capability-progression-review.md",
         render_capability_review(capabilities, direct_items, cap_changes),
     )
     write_text(
-        output_orchestrate_dir / "reviews/phase-4-trace/change-complexity-review.md",
+        work_dir / "change-complexity-review.md",
         render_complexity_review(config, changes, by_change, cap_changes),
     )
     write_text(
-        output_orchestrate_dir / "reviews/phase-4-trace/plan-refit-decision-log.md",
+        work_dir / "plan-refit-decision-log.md",
         render_decision_log(config),
     )
     adjustments = render_adjustments(config, status)
     if adjustments is not None:
-        write_text(output_orchestrate_dir / "reviews/change-plan-adjustments.md", adjustments)
+        write_text(work_dir / "change-plan-adjustments.md", adjustments)
 
     anchors = output_orchestrate_dir / "change-capability-anchors"
     for change in changes:
         change_dir = anchors / change.slug
         cap_dir = change_dir / "capability-anchors"
         ensure_dir(cap_dir)
-        write_text(change_dir / f"{change.slug}.md", render_packet(change, changes, by_change, by_context, rel_pass_dir))
+        write_text(change_dir / f"{change.slug}.md", render_packet(change, changes, by_change, by_context, rel_work_dir))
         caps = sorted({item.mapping.final_capability for item in by_change[change.slug] if item.mapping.final_capability != "None"})
         for cap in caps:
             items = [item for item in by_change[change.slug] if item.mapping.final_capability == cap]
@@ -977,16 +977,15 @@ def write_outputs(
 
     write_text(anchors / "index.md", render_anchor_index(changes, by_change, by_context))
     write_text(
-        output_orchestrate_dir / "reports/change-capability-human-plan.md",
+        work_dir / "change-capability-human-plan.md",
         render_human_plan(changes, capabilities, by_change, by_context, cap_changes),
     )
     write_text(
-        output_orchestrate_dir / "reports/alignment-final-report.md",
+        work_dir / "alignment-final-report.md",
         render_alignment_report(capabilities, direct_items, cap_changes),
     )
     report = render_phase4_report(config, status, output_mapping, changes, by_change)
-    write_text(pass_dir / "phase-4-agent-report.md", report.replace("# Phase 4 Agent Report", "# Phase 4 Pass Agent Report", 1))
-    write_text(output_orchestrate_dir / "reports/phase-4-agent-report.md", report)
+    write_text(work_dir / "phase-4-agent-report.md", report)
 
 
 def print_config_template(final_atoms: Sequence[FinalAtom]) -> None:
@@ -1006,7 +1005,7 @@ def print_config_template(final_atoms: Sequence[FinalAtom]) -> None:
     )
     template = {
         "status": "adjusted",
-        "source_documents_read": "`openspec/orchestrate/source-doc-manifest.md` 中源文档已由 Phase 2/3 覆盖。",
+        "source_documents_read": "`openspec/orchestrate/phase-works/phase-3/source-doc-manifest.md` 中源文档已由 Phase 2/3 覆盖。",
         "assumptions_and_conflicts": "Phase 3 已给出 `Decision: coverage-complete`；Phase 4 未新增 atom，也未改写 Phase 2/3 证据。",
         "changes": [
             {"slug": slug, "title": slug, "outcome": f"TODO：补充 `{slug}` 的中文闭环结果。", "kind": "business"}
@@ -1030,7 +1029,7 @@ def build_parser() -> argparse.ArgumentParser:
         description="Validate and render mechanical Phase 4 plan-refit artifacts from a reviewed mapping/config."
     )
     parser.add_argument("--orchestrate-dir", default="openspec/orchestrate", type=Path)
-    parser.add_argument("--mapping", type=Path, help="Reviewed pass-<NN>/atom-plan-mapping.md. Defaults to latest pass.")
+    parser.add_argument("--mapping", type=Path, help="Reviewed phase-works/phase-4/atom-plan-mapping.md. Defaults to that path.")
     parser.add_argument("--config", type=Path, help="Reviewed Phase 4 JSON config. Defaults to mapping sibling phase4-refit.config.json.")
     parser.add_argument("--output-orchestrate-dir", type=Path, help="Write outputs to this orchestrate dir instead of --orchestrate-dir.")
     parser.add_argument("--write", action="store_true", help="Write rendered artifacts. Without this flag the script only checks inputs.")
