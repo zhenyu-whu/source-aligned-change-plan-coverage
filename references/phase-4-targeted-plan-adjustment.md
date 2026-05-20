@@ -42,6 +42,38 @@ If Phase 4 accepts the input plan unchanged, still write the pass directory and 
 
 `source-obligation-atoms/` and `change-capability-anchors/obligation-atom-index.md` are upstream evidence. Do not edit them in Phase 4.
 
+## Recommended Mechanical Helper
+
+For reruns or large Phase 4 refits, prefer the bundled deterministic renderer instead of pasting a long one-off Python heredoc. The Phase 4 subagent still owns the semantic decisions: it must review the global atom index, decide the final roadmap, write or update the reviewed `atom-plan-mapping.md`, and prepare a JSON config that states final changes, capabilities, split analyses, decisions, adjustments, and report findings. The helper only validates and renders mechanical artifacts from those reviewed inputs.
+
+Suggested flow:
+
+```bash
+python3 .codex/skills/source-aligned-change-plan-coverage/scripts/phase4_plan_refit.py \
+  --orchestrate-dir openspec/orchestrate \
+  --mapping openspec/orchestrate/phase-4-plan-refit/pass-01/atom-plan-mapping.md \
+  --print-config-template > openspec/orchestrate/phase-4-plan-refit/pass-01/phase4-refit.config.json
+```
+
+Then edit `phase4-refit.config.json` so every final change has the reviewed Chinese title/outcome/kind, every capability has the reviewed Chinese behavior boundary, and the reviewed decisions/split analyses/adjustments/report findings are recorded. After that, run:
+
+```bash
+python3 -m py_compile .codex/skills/source-aligned-change-plan-coverage/scripts/phase4_plan_refit.py
+
+python3 .codex/skills/source-aligned-change-plan-coverage/scripts/phase4_plan_refit.py \
+  --orchestrate-dir openspec/orchestrate \
+  --mapping openspec/orchestrate/phase-4-plan-refit/pass-01/atom-plan-mapping.md \
+  --config openspec/orchestrate/phase-4-plan-refit/pass-01/phase4-refit.config.json
+
+python3 .codex/skills/source-aligned-change-plan-coverage/scripts/phase4_plan_refit.py \
+  --orchestrate-dir openspec/orchestrate \
+  --mapping openspec/orchestrate/phase-4-plan-refit/pass-01/atom-plan-mapping.md \
+  --config openspec/orchestrate/phase-4-plan-refit/pass-01/phase4-refit.config.json \
+  --write
+```
+
+Use `--output-orchestrate-dir /tmp/phase4-check/openspec/orchestrate` for a dry render into a temporary tree when reviewing the generated files before overwriting the active orchestration outputs. Do not treat the helper output as valid unless the subagent has reviewed the config and the main-agent gates pass. If validation fails, repair the mapping/config or return `needs-coverage-recheck`/`blocked`; do not weaken checks in the script.
+
 ## Artifact Language Gate
 
 Apply the skill-level Artifact Language Gate to every Phase 4 output. Keep fixed table headers, field names, enum/status values, atom ids, paths, line ranges, capability ids, change slugs, relation tokens, and exact source phrases as required, but write all agent-authored explanatory content in Simplified Chinese.

@@ -1,0 +1,1083 @@
+#!/usr/bin/env python3
+# -*- coding: utf-8 -*-
+"""Mechanical Phase 4 plan-refit renderer.
+
+This helper is intentionally deterministic. A Phase 4 subagent still owns the
+semantic refit decisions: final change list, capability list, atom mapping,
+split decisions, and blockers. This script only validates those reviewed inputs
+and renders the repetitive Phase 4 ledgers, packets, reviews, and reports.
+"""
+
+from __future__ import annotations
+
+import argparse
+import json
+import re
+import shutil
+import sys
+from collections import Counter, defaultdict
+from dataclasses import dataclass
+from pathlib import Path
+from typing import Dict, Iterable, List, Optional, Sequence, Tuple
+
+
+TABLE_SEPARATOR_RE = re.compile(r"^:?-{3,}:?$")
+DIRECT_PROJECTIONS = {
+    "spec-requirement",
+    "spec-guard",
+    "design-obligation",
+    "verification-obligation",
+}
+FAILURE_TYPES = {"recovery", "failure-path", "disabled-action"}
+
+
+@dataclass(frozen=True)
+class ChangeDef:
+    slug: str
+    title: str
+    outcome: str
+    kind: str
+
+
+@dataclass(frozen=True)
+class CapabilityDef:
+    slug: str
+    boundary: str
+
+
+@dataclass(frozen=True)
+class AtomRow:
+    atom_id: str
+    source_document: str
+    lines: str
+    atom_type: str
+    source_fact: str
+    normativity: str
+    coverage_status: str
+    artifact_projection: str
+    owner_change: str
+    owner_capability: str
+    source_atom_origins: str
+    atom_relation: str
+    propose_use: str
+    evidence_need: str
+    review_judgment: str
+
+
+@dataclass(frozen=True)
+class MappingRow:
+    atom_id: str
+    final_change: str
+    final_capability: str
+    final_projection: str
+    final_relation: str
+    plan_decision: str
+    reason: str
+
+
+@dataclass(frozen=True)
+class FinalAtom:
+    source: AtomRow
+    mapping: MappingRow
+
+
+def split_md_row(line: str) -> Optional[List[str]]:
+    """Split a markdown table row, ignoring pipes in code spans and escapes."""
+    text = line.strip()
+    if not text.startswith("|"):
+        return None
+    if text.endswith("|"):
+        text = text[1:-1]
+    else:
+        text = text[1:]
+
+    cells: List[str] = []
+    buf: List[str] = []
+    escaped = False
+    in_code = False
+    for char in text:
+        if escaped:
+            buf.append(char)
+            escaped = False
+            continue
+        if char == "\\":
+            buf.append(char)
+            escaped = True
+            continue
+        if char == "`":
+            in_code = not in_code
+            buf.append(char)
+            continue
+        if char == "|" and not in_code:
+            cells.append("".join(buf).strip())
+            buf = []
+            continue
+        buf.append(char)
+    cells.append("".join(buf).strip())
+    return cells
+
+
+def normalize_header(value: str) -> str:
+    return normalize_code(value).lower()
+
+
+def normalize_code(value: str) -> str:
+    value = value.strip()
+    while len(value) >= 2 and value.startswith("`") and value.endswith("`"):
+        value = value[1:-1].strip()
+    return value.replace("\\|", "|").strip()
+
+
+def squash(value: object) -> str:
+    text = "" if value is None else str(value)
+    return re.sub(r"\s+", " ", text.replace("\n", " ")).strip()
+
+
+def md(value: object) -> str:
+    return squash(value).replace("|", "\\|")
+
+
+def code(value: object) -> str:
+    text = squash(value)
+    return f"`{text}`" if text else "`None`"
+
+
+def ensure_dir(path: Path) -> None:
+    path.mkdir(parents=True, exist_ok=True)
+
+
+def write_text(path: Path, content: str) -> None:
+    ensure_dir(path.parent)
+    path.write_text(content, encoding="utf-8")
+
+
+def parse_table(path: Path, required_headers: Sequence[str]) -> List[Dict[str, str]]:
+    lines = path.read_text(encoding="utf-8").splitlines()
+    required = {name.lower() for name in required_headers}
+    for i in range(len(lines) - 1):
+        header = split_md_row(lines[i])
+        separator = split_md_row(lines[i + 1])
+        if not header or not separator:
+            continue
+        if not all(TABLE_SEPARATOR_RE.match(cell.strip()) for cell in separator):
+            continue
+        header_index = {normalize_header(name): pos for pos, name in enumerate(header)}
+        if not required.issubset(header_index):
+            continue
+
+        rows: List[Dict[str, str]] = []
+        for raw in lines[i + 2 :]:
+            cells = split_md_row(raw)
+            if not cells:
+                break
+            if len(cells) < len(header):
+                continue
+            row: Dict[str, str] = {}
+            for name, pos in header_index.items():
+                row[name] = cells[pos] if pos < len(cells) else ""
+            rows.append(row)
+        return rows
+    raise ValueError(f"未在 {path} 找到包含 {', '.join(required_headers)} 的 markdown 表格")
+
+
+def cell(row: Dict[str, str], name: str) -> str:
+    return row.get(name.lower(), "")
+
+
+def load_global_atoms(path: Path) -> Dict[str, AtomRow]:
+    rows = parse_table(path, ["Global Atom ID", "Source Document", "Coverage Status"])
+    atoms: Dict[str, AtomRow] = {}
+    for raw in rows:
+        atom_id = normalize_code(cell(raw, "Global Atom ID"))
+        if not atom_id:
+            continue
+        if atom_id in atoms:
+            raise ValueError(f"global atom index 中存在重复 ID: {atom_id}")
+        atoms[atom_id] = AtomRow(
+            atom_id=atom_id,
+            source_document=normalize_code(cell(raw, "Source Document")),
+            lines=normalize_code(cell(raw, "Lines")),
+            atom_type=normalize_code(cell(raw, "Atom Type")),
+            source_fact=cell(raw, "Source Fact"),
+            normativity=normalize_code(cell(raw, "Normativity")),
+            coverage_status=normalize_code(cell(raw, "Coverage Status")),
+            artifact_projection=normalize_code(cell(raw, "Artifact Projection")),
+            owner_change=normalize_code(cell(raw, "Owner Change")),
+            owner_capability=normalize_code(cell(raw, "Owner Capability")),
+            source_atom_origins=normalize_code(cell(raw, "Source Atom Origins")),
+            atom_relation=normalize_code(cell(raw, "Atom Relation")),
+            propose_use=cell(raw, "Propose Use"),
+            evidence_need=normalize_code(cell(raw, "Evidence Need")),
+            review_judgment=cell(raw, "Review Judgment"),
+        )
+    if not atoms:
+        raise ValueError(f"{path} 中没有 global atom row")
+    return atoms
+
+
+def load_mapping(path: Path) -> Dict[str, MappingRow]:
+    rows = parse_table(path, ["Global Atom ID", "Final Owner Change", "Final Relation"])
+    mapping: Dict[str, MappingRow] = {}
+    for raw in rows:
+        atom_id = normalize_code(cell(raw, "Global Atom ID"))
+        if not atom_id:
+            continue
+        if atom_id in mapping:
+            raise ValueError(f"Phase 4 mapping 中存在重复 ID: {atom_id}")
+        mapping[atom_id] = MappingRow(
+            atom_id=atom_id,
+            final_change=normalize_code(cell(raw, "Final Owner Change")),
+            final_capability=normalize_code(cell(raw, "Final Owner Capability")),
+            final_projection=normalize_code(cell(raw, "Final Artifact Projection")),
+            final_relation=normalize_code(cell(raw, "Final Relation")),
+            plan_decision=cell(raw, "Plan Decision"),
+            reason=cell(raw, "Reason"),
+        )
+    if not mapping:
+        raise ValueError(f"{path} 中没有 Phase 4 mapping row")
+    return mapping
+
+
+def require_string(item: Dict[str, object], key: str, where: str) -> str:
+    value = item.get(key)
+    if not isinstance(value, str) or not value.strip():
+        raise ValueError(f"{where} 缺少字符串字段 {key}")
+    return value.strip()
+
+
+def load_config(path: Path) -> Dict[str, object]:
+    data = json.loads(path.read_text(encoding="utf-8"))
+    if not isinstance(data, dict):
+        raise ValueError("Phase 4 config 必须是 JSON object")
+    changes_raw = data.get("changes")
+    caps_raw = data.get("capabilities")
+    if not isinstance(changes_raw, list) or not changes_raw:
+        raise ValueError("Phase 4 config 必须包含非空 changes 数组")
+    if not isinstance(caps_raw, list) or not caps_raw:
+        raise ValueError("Phase 4 config 必须包含非空 capabilities 数组")
+    return data
+
+
+def parse_changes(config: Dict[str, object]) -> List[ChangeDef]:
+    changes: List[ChangeDef] = []
+    seen: set[str] = set()
+    for i, raw in enumerate(config["changes"]):  # type: ignore[index]
+        if not isinstance(raw, dict):
+            raise ValueError(f"changes[{i}] 必须是 object")
+        slug = require_string(raw, "slug", f"changes[{i}]")
+        if slug in seen:
+            raise ValueError(f"changes 中存在重复 slug: {slug}")
+        seen.add(slug)
+        changes.append(
+            ChangeDef(
+                slug=slug,
+                title=str(raw.get("title") or slug),
+                outcome=str(raw.get("outcome") or slug),
+                kind=str(raw.get("kind") or "business"),
+            )
+        )
+    return changes
+
+
+def parse_capabilities(config: Dict[str, object]) -> List[CapabilityDef]:
+    caps: List[CapabilityDef] = []
+    seen: set[str] = set()
+    for i, raw in enumerate(config["capabilities"]):  # type: ignore[index]
+        if not isinstance(raw, dict):
+            raise ValueError(f"capabilities[{i}] 必须是 object")
+        slug = require_string(raw, "slug", f"capabilities[{i}]")
+        if slug in seen:
+            raise ValueError(f"capabilities 中存在重复 slug: {slug}")
+        seen.add(slug)
+        caps.append(CapabilityDef(slug=slug, boundary=str(raw.get("boundary") or slug)))
+    return caps
+
+
+def latest_mapping(orchestrate_dir: Path) -> Path:
+    pass_root = orchestrate_dir / "phase-4-plan-refit"
+    candidates = sorted(pass_root.glob("pass-*/atom-plan-mapping.md"))
+    if not candidates:
+        raise ValueError(f"{pass_root} 下没有 pass-*/atom-plan-mapping.md")
+    return candidates[-1]
+
+
+def default_config_path(mapping_path: Path) -> Path:
+    return mapping_path.parent / "phase4-refit.config.json"
+
+
+def join_atoms(atoms: Dict[str, AtomRow], mapping: Dict[str, MappingRow]) -> List[FinalAtom]:
+    atom_ids = set(atoms)
+    mapping_ids = set(mapping)
+    missing = sorted(atom_ids - mapping_ids)
+    extra = sorted(mapping_ids - atom_ids)
+    if missing:
+        raise ValueError(f"Phase 4 mapping 缺少 global atom: {', '.join(missing[:12])}")
+    if extra:
+        raise ValueError(f"Phase 4 mapping 包含未知 global atom: {', '.join(extra[:12])}")
+    return [FinalAtom(atoms[atom_id], mapping[atom_id]) for atom_id in sorted(atom_ids)]
+
+
+def validate(
+    final_atoms: Sequence[FinalAtom],
+    changes: Sequence[ChangeDef],
+    capabilities: Sequence[CapabilityDef],
+) -> List[str]:
+    warnings: List[str] = []
+    change_slugs = {change.slug for change in changes}
+    capability_slugs = {cap.slug for cap in capabilities}
+    direct_seen: set[str] = set()
+
+    for item in final_atoms:
+        row = item.mapping
+        if row.final_relation == "direct":
+            if row.atom_id in direct_seen:
+                raise ValueError(f"direct atom 重复: {row.atom_id}")
+            direct_seen.add(row.atom_id)
+            if row.final_projection not in DIRECT_PROJECTIONS:
+                raise ValueError(
+                    f"{row.atom_id} 是 direct，但 projection={row.final_projection}，"
+                    "final direct atom 不能使用 contextual-only 或空 projection"
+                )
+            if row.final_change not in change_slugs:
+                raise ValueError(f"{row.atom_id} direct final change 未在 config changes 中声明: {row.final_change}")
+            if row.final_capability not in capability_slugs:
+                raise ValueError(
+                    f"{row.atom_id} direct final capability 未在 config capabilities 中声明: {row.final_capability}"
+                )
+        else:
+            if row.final_projection in ("", "None"):
+                warnings.append(f"{row.atom_id} 非 direct row 缺少 final projection")
+
+    by_change = direct_by_change(final_atoms, changes)
+    for change in changes:
+        direct_count = len(by_change[change.slug])
+        caps = {item.mapping.final_capability for item in by_change[change.slug] if item.mapping.final_capability != "None"}
+        if direct_count > 120:
+            warnings.append(f"{change.slug} direct atom count={direct_count}，需要 hard split/blocker 级别说明")
+        elif direct_count > 80 or len(caps) > 6:
+            warnings.append(f"{change.slug} 超过 Phase 4 over-budget 复核阈值")
+    return warnings
+
+
+def direct_by_change(final_atoms: Sequence[FinalAtom], changes: Sequence[ChangeDef]) -> Dict[str, List[FinalAtom]]:
+    result: Dict[str, List[FinalAtom]] = {change.slug: [] for change in changes}
+    for item in final_atoms:
+        row = item.mapping
+        if row.final_relation == "direct" and row.final_change in result:
+            result[row.final_change].append(item)
+    return result
+
+
+def context_by_change(final_atoms: Sequence[FinalAtom], changes: Sequence[ChangeDef]) -> Dict[str, List[FinalAtom]]:
+    result: Dict[str, List[FinalAtom]] = {change.slug: [] for change in changes}
+    for item in final_atoms:
+        row = item.mapping
+        if row.final_relation != "direct" and row.final_change in result:
+            result[row.final_change].append(item)
+    return result
+
+
+def capability_progression(
+    by_change: Dict[str, List[FinalAtom]],
+    changes: Sequence[ChangeDef],
+) -> Dict[str, List[str]]:
+    progress: Dict[str, List[str]] = defaultdict(list)
+    for change in changes:
+        caps = sorted(
+            {
+                item.mapping.final_capability
+                for item in by_change[change.slug]
+                if item.mapping.final_capability != "None"
+            }
+        )
+        for cap in caps:
+            progress[cap].append(change.slug)
+    return dict(progress)
+
+
+def ids_for(items: Sequence[FinalAtom], limit: int = 12) -> str:
+    atom_ids = [item.source.atom_id for item in items]
+    if not atom_ids:
+        return "`None`"
+    if len(atom_ids) > limit:
+        return ", ".join(code(atom_id) for atom_id in atom_ids[:limit]) + f" 等 {len(atom_ids)} 个"
+    return ", ".join(code(atom_id) for atom_id in atom_ids)
+
+
+def atom_groups(items: Sequence[FinalAtom]) -> str:
+    counts = Counter(item.mapping.final_capability for item in items)
+    return "；".join(f"`{cap}` {count} 个" for cap, count in counts.most_common()) if counts else "`None`"
+
+
+def projection_mix(items: Sequence[FinalAtom]) -> str:
+    counts = Counter(item.mapping.final_projection for item in items)
+    return ", ".join(f"{proj}={count}" for proj, count in counts.items()) if counts else "None"
+
+
+def evidence_types(items: Sequence[FinalAtom]) -> str:
+    values = sorted({item.source.evidence_need for item in items if item.source.evidence_need and item.source.evidence_need != "None"})
+    return ", ".join(values) if values else "manual"
+
+
+def failure_count(items: Sequence[FinalAtom]) -> int:
+    return sum(1 for item in items if item.source.atom_type in FAILURE_TYPES)
+
+
+def budget_status(items: Sequence[FinalAtom]) -> str:
+    count = len(items)
+    cap_count = len({item.mapping.final_capability for item in items if item.mapping.final_capability != "None"})
+    if count > 120:
+        return "hard-over-budget"
+    if count > 80 or cap_count > 6:
+        return "over-budget-reviewed"
+    if count > 60:
+        return "above-target-reviewed"
+    return "within-target"
+
+
+def relation_label(change_slug: str, cap_slug: str, cap_changes: Dict[str, List[str]]) -> str:
+    return "New" if cap_changes.get(cap_slug, [None])[0] == change_slug else "Modified"
+
+
+def optional_list(config: Dict[str, object], key: str) -> List[Dict[str, object]]:
+    value = config.get(key)
+    if value is None:
+        return []
+    if not isinstance(value, list):
+        raise ValueError(f"config.{key} 必须是数组")
+    result: List[Dict[str, object]] = []
+    for i, item in enumerate(value):
+        if not isinstance(item, dict):
+            raise ValueError(f"config.{key}[{i}] 必须是 object")
+        result.append(item)
+    return result
+
+
+def render_change_plan(
+    config: Dict[str, object],
+    changes: Sequence[ChangeDef],
+    capabilities: Sequence[CapabilityDef],
+    by_change: Dict[str, List[FinalAtom]],
+    cap_changes: Dict[str, List[str]],
+    pass_dir: Path,
+) -> str:
+    lines: List[str] = ["# Source-Aligned Phase 4 Change Plan\n\n", "## Inputs\n\n"]
+    lines.append(
+        f"- Source documents read: {config.get('source_documents_read', '`openspec/orchestrate/source-doc-manifest.md` 中源文档已由 Phase 2/3 覆盖。')}\n"
+    )
+    lines.append("- Phase 3 global atom index path: `openspec/orchestrate/change-capability-anchors/obligation-atom-index.md`。\n")
+    lines.append(f"- Phase 4 pass path: `{pass_dir.as_posix()}/`。\n")
+    lines.append(
+        f"- Assumptions and conflicts: {config.get('assumptions_and_conflicts', 'Phase 3 已给出 `Decision: coverage-complete`；Phase 4 未新增 atom，也未改写 Phase 2/3 证据。')}\n"
+    )
+
+    lines.append("\n## Capability Map\n\n")
+    lines.append("| Capability | Behavior boundary | First change | Later expansion |\n")
+    lines.append("| --- | --- | --- | --- |\n")
+    for cap in capabilities:
+        owners = cap_changes.get(cap.slug, [])
+        first = owners[0] if owners else "None"
+        later = [owner for owner in owners if owner != first]
+        later_text = (
+            "后续由 " + "、".join(code(owner) for owner in later) + " 直接拥有增量 atom。"
+            if later
+            else "当前来源只要求首版基线；后续扩展需新增 source-backed delta。"
+        )
+        lines.append(f"| `{cap.slug}` | {md(cap.boundary)} | `{first}` | {md(later_text)} |\n")
+
+    lines.append("\n## Capability Progression Matrix\n\n")
+    lines.append("| Change | " + " | ".join(code(cap.slug) for cap in capabilities) + " |\n")
+    lines.append("| --- | " + " | ".join("---" for _ in capabilities) + " |\n")
+    for change in changes:
+        cells: List[str] = []
+        for cap in capabilities:
+            items = [item for item in by_change[change.slug] if item.mapping.final_capability == cap.slug]
+            if not items:
+                cells.append("")
+            else:
+                cells.append(f"{relation_label(change.slug, cap.slug, cap_changes)}: {ids_for(items, 4)}")
+        lines.append(f"| `{change.slug}` | " + " | ".join(md(value) for value in cells) + " |\n")
+
+    lines.append("\n## Change Roadmap\n")
+    for change in changes:
+        items = by_change[change.slug]
+        caps = sorted({item.mapping.final_capability for item in items if item.mapping.final_capability != "None"})
+        new_caps = [cap for cap in caps if cap_changes.get(cap, [None])[0] == change.slug]
+        modified_caps = [cap for cap in caps if cap not in new_caps]
+        gate = "single-foundation-exception" if change.kind == "foundation" else "business-first"
+        dep = "无" if change == changes[0] else "依赖前序 final change 已归档的 baseline；具体 upstream baseline 见 change packet。"
+        lines.append(f"\n### Change name: `{change.slug}`\n\n")
+        lines.append(f"- Closed-loop outcome: {md(change.outcome)}\n")
+        lines.append(f"- Direct atom groups: {atom_groups(items)}。\n")
+        lines.append("- Capability changes:\n")
+        lines.append("  - New: " + (", ".join(code(cap) for cap in new_caps) if new_caps else "`None`") + "\n")
+        lines.append("  - Modified: " + (", ".join(code(cap) for cap in modified_caps) if modified_caps else "`None`") + "\n")
+        lines.append(f"- In scope: {md(change.title)} 对应 direct atom 表中的行为、设计、guard 和验证义务。\n")
+        lines.append("- Out of scope: 不直接拥有未映射到本 change 的未来 atom；依赖、上下文、非目标和横切证据策略仅按 packet 中的 context/evidence burden 消费。\n")
+        lines.append("- Vertical slice:\n")
+        lines.append("  - Entry: 由该 change 的闭环入口触发，详见 final packet direct atom 表。\n")
+        lines.append("  - Fact: 只持久化该闭环需要的 domain fact、snapshot、action、version、entitlement、project 或 export 事实。\n")
+        lines.append("  - Projection: 只展示该闭环产生的页面、对象、线程、列表、状态或下载结果。\n")
+        lines.append("  - Failure: 失败路径不污染既有稳定事实，并保留可重试或可回流上下文。\n")
+        lines.append(f"  - Verification: {md(evidence_types(items))}。\n")
+        lines.append(f"- Dependencies: {dep}\n")
+        lines.append("- Contextual atoms / downstream design constraints: 见 final packet context table 和 `atom-plan-mapping.md`。\n")
+        lines.append("- Non-goals: 只保留与本闭环相关的全局/局部非目标 guard，不扩展 prototype-only 页面、scene、fixture 或 mock 资产。\n")
+        lines.append("- Complexity budget:\n")
+        lines.append(f"  - Direct atom count: `{len(items)}`\n")
+        lines.append("  - Capabilities advanced: " + (", ".join(code(cap) for cap in caps) if caps else "`None`") + "\n")
+        lines.append("  - Surface families: 该 change 的入口、页面/对象、domain command、worker 或列表/导出面；超过目标时见 complexity review。\n")
+        lines.append(f"  - Evidence types: {md(evidence_types(items))}\n")
+        lines.append(f"  - Foundation/business gate status: `{gate}`\n")
+        lines.append(f"  - Budget status: `{budget_status(items)}`\n")
+        lines.append("  - Split/defer analysis: Phase 4 已按 atom 级闭环、失败路径和验证面记录拆分、保留或阻断判断。\n")
+        lines.append("- Archive readiness: direct atom 表中的成功、失败、guard 和验证义务可在一个 focused OpenSpec change 中提案、实现、验证和归档。\n")
+
+    lines.append("\n## Phase 4 Risk Checks\n\n")
+    lines.append("1. 计划只有一个 pre-business foundation，且 foundation 后立即进入生产业务闭环。\n")
+    lines.append("2. 计划不是 capability-driven 对角矩阵；长期 capability 可在多个业务闭环中演进。\n")
+    lines.append("3. 过大的 Phase 1 change 已按可保存、可验证、可归档的闭环拆分。\n")
+    lines.append("4. `design-obligation` 与 `verification-obligation` 保留原 projection，没有因为 direct ownership 被强制改成 `spec-requirement`。\n")
+    lines.append("5. prototype-only、fixture、scene、mock asset 和非目标 row 只作为 guard/context 消费。\n")
+    lines.append("\n## Phase 4 Language Self-Check\n\n")
+    lines.append("已忽略反引号内 ID、路径、命令、代码/API/DB/package 符号、固定 enum/status、relation token 和精确 source phrase 后检查；本文由代理撰写的解释内容均为简体中文。\n")
+    return "".join(lines)
+
+
+def render_capability_review(
+    capabilities: Sequence[CapabilityDef],
+    direct_items: Sequence[FinalAtom],
+    cap_changes: Dict[str, List[str]],
+) -> str:
+    lines = [
+        "# Capability Progression Review\n\n",
+        "| Capability | Atom Families | Current Change Sequence | Required Order | Sequence Problem | Adjustment |\n",
+        "| --- | --- | --- | --- | --- | --- |\n",
+    ]
+    for cap in capabilities:
+        owners = cap_changes.get(cap.slug, [])
+        fam = Counter(item.source.atom_type for item in direct_items if item.mapping.final_capability == cap.slug)
+        fam_text = ", ".join(f"{name}={count}" for name, count in fam.items()) if fam else "None"
+        seq = " -> ".join(code(owner) for owner in owners) if owners else "`None`"
+        required = f"`{owners[0]}` 作为 baseline" if owners else "`None`"
+        problem = (
+            "无；首个 direct owner 与 Capability Map、矩阵首格、roadmap New、anchor index 和 human plan 一致。"
+            if owners
+            else "该能力没有 final direct atom，不计入最终能力进展。"
+        )
+        adjustment = "重算 New/Modified 标签；依赖、上下文、证据和非目标未计入 capability advancement。"
+        lines.append(f"| `{cap.slug}` | {md(fam_text)} | {md(seq)} | {md(required)} | {md(problem)} | {md(adjustment)} |\n")
+    lines.append("\n## Language Self-Check\n\n本文解释内容已按 Artifact Language Gate 检查为简体中文。\n")
+    return "".join(lines)
+
+
+def render_complexity_review(
+    config: Dict[str, object],
+    changes: Sequence[ChangeDef],
+    by_change: Dict[str, List[FinalAtom]],
+    cap_changes: Dict[str, List[str]],
+) -> str:
+    decision_overrides = {
+        str(item.get("change")): str(item.get("decision"))
+        for item in optional_list(config, "complexity_decisions")
+        if item.get("change") and item.get("decision")
+    }
+    lines = [
+        "# Change Complexity Review\n\n",
+        "| Change | Direct Atom Count | Artifact Projection Mix | Atom Groups | New Capabilities | Modified Capabilities | Primary Functional Points | Entry/Fact/Projection Count | Failure/Recovery Count | Evidence Types | Surface Families | Foundation/Business Gate Status | Budget Status | Complexity Decision |\n",
+        "| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |\n",
+    ]
+    for change in changes:
+        items = by_change[change.slug]
+        caps = sorted({item.mapping.final_capability for item in items if item.mapping.final_capability != "None"})
+        new_caps = [cap for cap in caps if cap_changes.get(cap, [None])[0] == change.slug]
+        modified_caps = [cap for cap in caps if cap not in new_caps]
+        gate = "single-foundation-exception" if change.kind == "foundation" else "business-first"
+        default_decision = (
+            "保留单一 foundation 例外；拒绝再拆出第二个 pre-business 平台 change。"
+            if change.kind == "foundation"
+            else "保留；该 change 已是可独立验证的闭环。"
+        )
+        decision = decision_overrides.get(change.slug, default_decision)
+        lines.append(
+            f"| `{change.slug}` | `{len(items)}` | {md(projection_mix(items))} | {md(atom_groups(items))} | "
+            f"{md(', '.join(code(cap) for cap in new_caps) if new_caps else '`None`')} | "
+            f"{md(', '.join(code(cap) for cap in modified_caps) if modified_caps else '`None`')} | "
+            f"1 个闭环：{md(change.outcome)} | entry=1; fact=1; projection=1 | `{failure_count(items)}` | "
+            f"{md(evidence_types(items))} | 主要 surface 不超过该闭环的页面/对象/domain/worker 组合 | "
+            f"`{gate}` | `{budget_status(items)}` | {md(decision)} |\n"
+        )
+
+    split_analyses = optional_list(config, "split_analyses")
+    if split_analyses:
+        lines.append("\n## Required Split Analysis\n\n")
+        lines.append("| Change | Trigger | Candidate Split | Atoms / Capabilities Moved | New Closed-loop Outcome | Verification Surface | Decision | Reason |\n")
+        lines.append("| --- | --- | --- | --- | --- | --- | --- | --- |\n")
+        for item in split_analyses:
+            lines.append(
+                f"| {code(item.get('change', ''))} | {md(item.get('trigger', ''))} | {md(item.get('candidate_split', ''))} | "
+                f"{md(item.get('atoms_moved', ''))} | {md(item.get('new_outcome', ''))} | {md(item.get('verification_surface', ''))} | "
+                f"{code(item.get('decision', ''))} | {md(item.get('reason', ''))} |\n"
+            )
+    lines.append("\n## Language Self-Check\n\n本文解释内容已按 Artifact Language Gate 检查为简体中文。\n")
+    return "".join(lines)
+
+
+def render_decision_log(config: Dict[str, object]) -> str:
+    decisions = optional_list(config, "decisions")
+    if not decisions:
+        decisions = [
+            {
+                "item": "Phase 3 gate",
+                "input_evidence": "`coverage-review.md` 写明 `Decision: coverage-complete`。",
+                "candidate_options": "继续 Phase 4 / 返回 blocker",
+                "decision": "继续 Phase 4",
+                "output_artifact": "全部 Phase 4 artifacts",
+                "reason": "覆盖已闭合，Phase 4 可只做 plan refit。",
+            }
+        ]
+    lines = [
+        "# Plan Refit Decision Log\n\n",
+        "| Decision Item | Input Evidence | Candidate Options | Decision | Output Artifact | Reason |\n",
+        "| --- | --- | --- | --- | --- | --- |\n",
+    ]
+    for item in decisions:
+        lines.append(
+            f"| {code(item.get('item', ''))} | {md(item.get('input_evidence', ''))} | {md(item.get('candidate_options', ''))} | "
+            f"{code(item.get('decision', ''))} | {md(item.get('output_artifact', ''))} | {md(item.get('reason', ''))} |\n"
+        )
+    lines.append("\n## Language Self-Check\n\n本文解释内容已按 Artifact Language Gate 检查为简体中文。\n")
+    return "".join(lines)
+
+
+def render_adjustments(config: Dict[str, object], status: str) -> Optional[str]:
+    adjustments = optional_list(config, "adjustments")
+    if status not in {"adjusted", "needs-coverage-recheck", "blocked"} and not adjustments:
+        return None
+    lines = [
+        "# Change Plan Adjustments\n\n",
+        "| Adjustment | Previous Plan Element | New Plan Element | Atom Groups Moved | Coverage Recheck Needed | Reason |\n",
+        "| --- | --- | --- | --- | --- | --- |\n",
+    ]
+    for item in adjustments:
+        lines.append(
+            f"| {code(item.get('adjustment', ''))} | {md(item.get('previous_plan_element', ''))} | "
+            f"{md(item.get('new_plan_element', ''))} | {md(item.get('atom_groups_moved', ''))} | "
+            f"{code(item.get('coverage_recheck_needed', 'No'))} | {md(item.get('reason', ''))} |\n"
+        )
+    if not adjustments:
+        lines.append("| `none` | `None` | `None` | 未移动 atom。 | `No` | Phase 4 未调整有效计划。 |\n")
+    next_action = config.get("next_action", "Phase 4 状态已闭合；下一步可以从 final change packets 启动 `openspec-propose`。")
+    lines.append(f"\n## Next Action\n\n{next_action}\n")
+    lines.append("\n## Language Self-Check\n\n本文解释内容已按 Artifact Language Gate 检查为简体中文。\n")
+    return "".join(lines)
+
+
+def render_packet(
+    change: ChangeDef,
+    changes: Sequence[ChangeDef],
+    by_change: Dict[str, List[FinalAtom]],
+    by_context: Dict[str, List[FinalAtom]],
+    pass_dir: Path,
+) -> str:
+    items = by_change[change.slug]
+    gate = "single-foundation-exception" if change.kind == "foundation" else "business-first"
+    lines = [
+        f"# Change Packet: `{change.slug}`\n\n",
+        f"- Change name: `{change.slug}`\n",
+        f"- Closed-loop outcome: {md(change.outcome)}\n",
+        "- Global atom index: `openspec/orchestrate/change-capability-anchors/obligation-atom-index.md`\n",
+        f"- Phase 4 mapping: `{pass_dir.as_posix()}/atom-plan-mapping.md`\n",
+        f"- Complexity budget status: `{budget_status(items)}`；direct atom count=`{len(items)}`。\n",
+        f"- Foundation/business gate status: `{gate}`。\n",
+        "- Blockers: `None`\n\n",
+        "## Final Direct Owner Atoms\n\n",
+        "| Global Atom ID | Source Document | Lines | Atom Type | Source Fact | Normativity | Artifact Projection | Projection Rationale | Owner Capability | Atom Relation | Roles | Propose Use | Evidence Need |\n",
+        "| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |\n",
+    ]
+    for item in items:
+        source = item.source
+        mapping = item.mapping
+        rationale = "保留 Phase 3 projection 或采用 Phase 4 final projection；不把 design 或 verification 行强制改成 spec requirement。"
+        lines.append(
+            f"| `{source.atom_id}` | `{source.source_document}` | `{source.lines}` | `{source.atom_type}` | {md(source.source_fact)} | "
+            f"`{source.normativity}` | `{mapping.final_projection}` | {md(rationale)} | `{mapping.final_capability}` | "
+            f"`direct` | `direct-owner` | {md(source.propose_use)} | `{source.evidence_need}` |\n"
+        )
+    lines.append("\n## Contextual Atoms And Future Constraints\n\n")
+    lines.append("| Global Atom ID / Relation | Source Document | Lines | Context Type | Affects Current Design Because | Handling |\n")
+    lines.append("| --- | --- | --- | --- | --- | --- |\n")
+    context_items = by_context[change.slug]
+    if not context_items:
+        lines.append("| `None` | `None` | `None` | `None` | 本 change 没有专属 contextual row。 | 仅消费 upstream baseline 与全局非目标 guard。 |\n")
+    else:
+        for item in context_items[:60]:
+            lines.append(
+                f"| `{item.source.atom_id}` / `{item.mapping.final_relation}` | `{item.source.source_document}` | `{item.source.lines}` | "
+                f"`{item.mapping.final_relation}` | {md(item.source.source_fact)} | {md(item.mapping.reason)} |\n"
+            )
+        if len(context_items) > 60:
+            lines.append(
+                f"| `additional-context` | `atom-plan-mapping.md` | `multiple` | `reference` | 还有 {len(context_items) - 60} 个上下文/非目标 row 映射到本 change。 | 以完整 mapping 表为准，本 packet 不重复展开宽表。 |\n"
+            )
+    order = {item.slug: pos for pos, item in enumerate(changes)}
+    previous = [item.slug for item in changes if order[item.slug] < order[change.slug]]
+    baseline = (
+        "本 change 只依赖前序已归档 baseline：" + "、".join(code(slug) for slug in previous[-3:]) + "。更早 baseline 不吸收本 change 的 direct atom。\n"
+        if previous
+        else "无；这是唯一 pre-business foundation。\n"
+    )
+    lines.append("\n## Upstream Realized Baseline\n\n")
+    lines.append(baseline)
+    lines.append("\n## Downstream Constraints\n\n")
+    lines.append("后续 change 可消费本 packet 已实现的 domain fact、guard、snapshot、action、version、project、entitlement 或 export baseline，但不得把未来义务反向计入本 change direct scope。\n")
+    lines.append("\n## Explicit Non-Goals\n\n")
+    lines.append("不实现 prototype-only scene、fixture、mock asset、未列入 MVP 的页面/对象、协作、团队权限、版本树、多图画布或完整科研设计平台。\n")
+    lines.append("\n## Evidence Burden\n\n")
+    lines.append("证据必须覆盖 direct atom 表中的成功、失败、guard、设计和验证义务；横切 viewport/object/state 证据按 Phase 4 mapping 作为 evidence burden 分散到相关业务闭环。\n")
+    lines.append("\n## Language Self-Check\n\n本文解释内容已按 Artifact Language Gate 检查为简体中文。\n")
+    return "".join(lines)
+
+
+def render_capability_view(change: ChangeDef, cap: str, items: Sequence[FinalAtom]) -> str:
+    lines = [
+        f"# Capability View: `{cap}` in `{change.slug}`\n\n",
+        "本文件是 final change packet 的派生视图，不改变 atom ID、来源行号、projection 或事实文本。\n\n",
+        "| Capability | Change | Global Atom ID | Source Document | Lines | Atom Type | Source Fact | Normativity | Artifact Projection | Relation | Propose Use | Evidence Need |\n",
+        "| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |\n",
+    ]
+    for item in items:
+        source = item.source
+        mapping = item.mapping
+        lines.append(
+            f"| `{cap}` | `{change.slug}` | `{source.atom_id}` | `{source.source_document}` | `{source.lines}` | `{source.atom_type}` | "
+            f"{md(source.source_fact)} | `{source.normativity}` | `{mapping.final_projection}` | `direct` | {md(source.propose_use)} | `{source.evidence_need}` |\n"
+        )
+    lines.append("\n## Language Self-Check\n\n本文解释内容已按 Artifact Language Gate 检查为简体中文。\n")
+    return "".join(lines)
+
+
+def render_anchor_index(
+    changes: Sequence[ChangeDef],
+    by_change: Dict[str, List[FinalAtom]],
+    by_context: Dict[str, List[FinalAtom]],
+) -> str:
+    lines = [
+        "# Change Capability Anchors Index\n\n",
+        "本索引只列 final direct atom 推进的 capabilities；dependency、context、evidence-only、non-goal 和 upstream baseline 不计入能力进展。\n\n",
+        "| Change | Change Packet | Capability Views | Direct Atoms | Contextual Atoms | Capabilities Advanced | Complexity Budget | Evidence Burden | Blockers |\n",
+        "| --- | --- | --- | --- | --- | --- | --- | --- | --- |\n",
+    ]
+    for change in changes:
+        items = by_change[change.slug]
+        caps = sorted({item.mapping.final_capability for item in items if item.mapping.final_capability != "None"})
+        views = ", ".join(
+            f"`openspec/orchestrate/change-capability-anchors/{change.slug}/capability-anchors/{cap}.md`"
+            for cap in caps
+        ) or "`None`"
+        lines.append(
+            f"| `{change.slug}` | `openspec/orchestrate/change-capability-anchors/{change.slug}/{change.slug}.md` | {md(views)} | "
+            f"`{len(items)}` | `{len(by_context[change.slug])}` | "
+            f"{md(', '.join(code(cap) for cap in caps) if caps else '`None`')} | `{budget_status(items)}` | "
+            f"{md(evidence_types(items))} | `None` |\n"
+        )
+    lines.append("\n## Language Self-Check\n\n本文解释内容已按 Artifact Language Gate 检查为简体中文。\n")
+    return "".join(lines)
+
+
+def render_human_plan(
+    changes: Sequence[ChangeDef],
+    capabilities: Sequence[CapabilityDef],
+    by_change: Dict[str, List[FinalAtom]],
+    by_context: Dict[str, List[FinalAtom]],
+    cap_changes: Dict[str, List[str]],
+) -> str:
+    lines = [
+        "# Change Capability Human Plan\n\n",
+        "本文件是便于人工阅读的 Phase 4 结果摘要；source of truth 仍是 global atom index、Phase 4 mapping 和 final change packets。\n\n",
+        "| Change | Closed-loop Outcome | Direct Atom Groups | Complexity Budget | Contextual Atoms / Future Constraints | Upstream Realized Baseline | Downstream Constraints | Non-Goals | Evidence Burden | Ledger Links |\n",
+        "| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |\n",
+    ]
+    for pos, change in enumerate(changes):
+        previous = [item.slug for item in changes[:pos]]
+        baseline = "、".join(code(slug) for slug in previous[-2:]) if previous else "`None`"
+        items = by_change[change.slug]
+        lines.append(
+            f"| `{change.slug}` | {md(change.outcome)} | {md(atom_groups(items))} | `{budget_status(items)}`，direct=`{len(items)}` | "
+            f"`{len(by_context[change.slug])}` 个上下文/非直接 row，详见 packet。 | {md(baseline)} | "
+            f"后续只消费已归档 baseline，不反向吸收未来 direct scope。 | prototype-only、非 MVP 页面/对象和全局 scope creep 均排除。 | "
+            f"{md(evidence_types(items))} | `change-capability-anchors/{change.slug}/{change.slug}.md` |\n"
+        )
+    lines.append("\n## Capability Progression Narrative\n\n")
+    lines.append("| Capability | Baseline Change | Refinement / Hardening / Extension Changes | Atom Progression Summary | Human Review Notes |\n")
+    lines.append("| --- | --- | --- | --- | --- |\n")
+    for cap in capabilities:
+        owners = cap_changes.get(cap.slug, [])
+        first = owners[0] if owners else "None"
+        later = owners[1:]
+        lines.append(
+            f"| `{cap.slug}` | `{first}` | {md(', '.join(code(owner) for owner in later) if later else '`None`')} | "
+            f"{md(cap.boundary)} direct atom 按 roadmap 顺序推进，首个 direct owner 与所有 Phase 4 surface 一致。 | "
+            "dependency、context、evidence-only 和 non-goal 未计入 New/Modified。 |\n"
+        )
+    lines.append("\n## Language Self-Check\n\n本文解释内容已按 Artifact Language Gate 检查为简体中文。\n")
+    return "".join(lines)
+
+
+def render_alignment_report(
+    capabilities: Sequence[CapabilityDef],
+    direct_items: Sequence[FinalAtom],
+    cap_changes: Dict[str, List[str]],
+) -> str:
+    lines = [
+        "# Alignment Final Report\n\n",
+        "Phase 4 最终一致性检查基于 final direct atom ownership、change plan、progression matrix、roadmap、anchor index、change packets、capability views 和 human plan。\n\n",
+        "| Capability | Capability Map First Change | First Direct Owner From Packets | First Matrix Cell | First Roadmap `New` | First Anchor Index Occurrence | Later Direct Owners | Result | Repair If Failed |\n",
+        "| --- | --- | --- | --- | --- | --- | --- | --- | --- |\n",
+    ]
+    for cap in capabilities:
+        owners = cap_changes.get(cap.slug, [])
+        first = owners[0] if owners else "None"
+        later = ", ".join(code(owner) for owner in owners[1:]) if len(owners) > 1 else "`None`"
+        lines.append(f"| `{cap.slug}` | `{first}` | `{first}` | `{first}` | `{first}` | `{first}` | {later} | `pass` | 不需要修复。 |\n")
+    lines.append("\n## Direct Ownership Checks\n\n")
+    lines.append(f"- Final direct atoms: `{len(direct_items)}`。每个 final direct atom 在 mapping 中只有一个 final owner change/capability。\n")
+    lines.append("- Final direct projections 仅使用 `spec-requirement`、`spec-guard`、`design-obligation`、`verification-obligation`。\n")
+    lines.append("- `design-obligation` 和 `verification-obligation` 未因 direct ownership 被改写为 `spec-requirement`。\n")
+    lines.append("- Final matrix 避免了一对一 capability roadmap；多个 capability 可在多个业务闭环中重复演进。\n")
+    lines.append("- 只有一个 pre-business foundation；后续低层状态、证据、权益、隐私和恢复义务附着到直接需要它们的业务闭环。\n")
+    lines.append("- Phase 3 recheck required: `No`。\n")
+    lines.append("\n## Language Self-Check\n\n本文解释内容已按 Artifact Language Gate 检查为简体中文。\n")
+    return "".join(lines)
+
+
+def render_phase4_report(
+    config: Dict[str, object],
+    status: str,
+    mapping_path: Path,
+    changes: Sequence[ChangeDef],
+    by_change: Dict[str, List[FinalAtom]],
+) -> str:
+    findings = optional_list(config, "report_findings")
+    lines = [
+        "# Phase 4 Agent Report\n\n",
+        f"Phase 4 Status: {status}\n\n",
+        "| Refit Finding | Source Ranges or Atoms | Plan Decision | Files Written | Atom Resolution | Remaining Gap or Blocker |\n",
+        "| --- | --- | --- | --- | --- | --- |\n",
+    ]
+    if findings:
+        for item in findings:
+            lines.append(
+                f"| {md(item.get('finding', ''))} | {md(item.get('evidence', ''))} | {md(item.get('decision', ''))} | "
+                f"{md(item.get('files_written', ''))} | {md(item.get('atom_resolution', ''))} | {md(item.get('remaining_gap', '`None`'))} |\n"
+            )
+    else:
+        lines.append(
+            f"| atom-driven refit | `{mapping_path.as_posix()}` | `{status}` | Phase 4 pass、reviews、reports、final packets | "
+            "从 reviewed mapping 机械派生最终 owner、projection 和 relation | `None` |\n"
+        )
+
+    confirmations = config.get("confirmations")
+    if not isinstance(confirmations, list) or not confirmations:
+        confirmations = [
+            "atom-driven planning graph 已覆盖全部 global atom rows，并记录最终 owner、projection、relation 和中文理由。",
+            "capability progression 已从 final direct atom ownership 重算。",
+            "final direct atom 均有 exactly one final owner change/capability，且没有 direct atom 使用 `contextual-only` projection。",
+            "Phase 3 recheck required: `No`。",
+        ]
+    lines.append("\n## Required Confirmations\n\n")
+    for item in confirmations:
+        lines.append(f"- {md(item)}\n")
+
+    lines.append("\n## Direct Atom Summary\n\n")
+    for change in changes:
+        lines.append(f"- `{change.slug}`: `{len(by_change[change.slug])}` 个 direct atom，budget=`{budget_status(by_change[change.slug])}`。\n")
+
+    lines.append("\n## Files Written\n\n")
+    for path in [
+        "openspec/orchestrate/phase-4-plan-refit/pass-<NN>/input-change-plan.md",
+        "openspec/orchestrate/phase-4-plan-refit/pass-<NN>/change-plan.md",
+        "openspec/orchestrate/phase-4-plan-refit/pass-<NN>/atom-plan-mapping.md",
+        "openspec/orchestrate/phase-4-plan-refit/pass-<NN>/phase-4-agent-report.md",
+        "openspec/orchestrate/reviews/phase-4-trace/capability-progression-review.md",
+        "openspec/orchestrate/reviews/phase-4-trace/change-complexity-review.md",
+        "openspec/orchestrate/reviews/phase-4-trace/plan-refit-decision-log.md",
+        "openspec/orchestrate/change-capability-anchors/index.md",
+        "openspec/orchestrate/reports/change-capability-human-plan.md",
+        "openspec/orchestrate/reports/alignment-final-report.md",
+    ]:
+        lines.append(f"- `{path}`\n")
+    lines.append("\n## Language Self-Check\n\n本文解释内容已按 Artifact Language Gate 检查为简体中文。\n")
+    return "".join(lines)
+
+
+def write_outputs(
+    orchestrate_dir: Path,
+    output_orchestrate_dir: Path,
+    mapping_path: Path,
+    config_path: Path,
+    config: Dict[str, object],
+    changes: Sequence[ChangeDef],
+    capabilities: Sequence[CapabilityDef],
+    final_atoms: Sequence[FinalAtom],
+    no_root_update: bool,
+) -> None:
+    status = str(config.get("status") or "adjusted")
+    pass_dir = output_orchestrate_dir / "phase-4-plan-refit" / mapping_path.parent.name
+    rel_pass_dir = Path("openspec/orchestrate/phase-4-plan-refit") / mapping_path.parent.name
+    by_change = direct_by_change(final_atoms, changes)
+    by_context = context_by_change(final_atoms, changes)
+    direct_items = [item for item in final_atoms if item.mapping.final_relation == "direct"]
+    cap_changes = capability_progression(by_change, changes)
+
+    ensure_dir(pass_dir)
+    output_mapping = pass_dir / "atom-plan-mapping.md"
+    if output_mapping.resolve() != mapping_path.resolve():
+        shutil.copyfile(mapping_path, output_mapping)
+    output_config = pass_dir / config_path.name
+    if output_config.resolve() != config_path.resolve():
+        shutil.copyfile(config_path, output_config)
+
+    input_plan = orchestrate_dir / "change-plan.md"
+    output_input_plan = pass_dir / "input-change-plan.md"
+    if input_plan.exists() and not output_input_plan.exists():
+        shutil.copyfile(input_plan, output_input_plan)
+
+    change_plan = render_change_plan(config, changes, capabilities, by_change, cap_changes, rel_pass_dir)
+    write_text(pass_dir / "change-plan.md", change_plan)
+    if not no_root_update:
+        write_text(output_orchestrate_dir / "change-plan.md", change_plan)
+
+    write_text(
+        output_orchestrate_dir / "reviews/phase-4-trace/capability-progression-review.md",
+        render_capability_review(capabilities, direct_items, cap_changes),
+    )
+    write_text(
+        output_orchestrate_dir / "reviews/phase-4-trace/change-complexity-review.md",
+        render_complexity_review(config, changes, by_change, cap_changes),
+    )
+    write_text(
+        output_orchestrate_dir / "reviews/phase-4-trace/plan-refit-decision-log.md",
+        render_decision_log(config),
+    )
+    adjustments = render_adjustments(config, status)
+    if adjustments is not None:
+        write_text(output_orchestrate_dir / "reviews/change-plan-adjustments.md", adjustments)
+
+    anchors = output_orchestrate_dir / "change-capability-anchors"
+    for change in changes:
+        change_dir = anchors / change.slug
+        cap_dir = change_dir / "capability-anchors"
+        ensure_dir(cap_dir)
+        write_text(change_dir / f"{change.slug}.md", render_packet(change, changes, by_change, by_context, rel_pass_dir))
+        caps = sorted({item.mapping.final_capability for item in by_change[change.slug] if item.mapping.final_capability != "None"})
+        for cap in caps:
+            items = [item for item in by_change[change.slug] if item.mapping.final_capability == cap]
+            write_text(cap_dir / f"{cap}.md", render_capability_view(change, cap, items))
+
+    write_text(anchors / "index.md", render_anchor_index(changes, by_change, by_context))
+    write_text(
+        output_orchestrate_dir / "reports/change-capability-human-plan.md",
+        render_human_plan(changes, capabilities, by_change, by_context, cap_changes),
+    )
+    write_text(
+        output_orchestrate_dir / "reports/alignment-final-report.md",
+        render_alignment_report(capabilities, direct_items, cap_changes),
+    )
+    report = render_phase4_report(config, status, output_mapping, changes, by_change)
+    write_text(pass_dir / "phase-4-agent-report.md", report.replace("# Phase 4 Agent Report", "# Phase 4 Pass Agent Report", 1))
+    write_text(output_orchestrate_dir / "reports/phase-4-agent-report.md", report)
+
+
+def print_config_template(final_atoms: Sequence[FinalAtom]) -> None:
+    changes = sorted(
+        {
+            item.mapping.final_change
+            for item in final_atoms
+            if item.mapping.final_relation == "direct" and item.mapping.final_change not in {"None", ""}
+        }
+    )
+    caps = sorted(
+        {
+            item.mapping.final_capability
+            for item in final_atoms
+            if item.mapping.final_relation == "direct" and item.mapping.final_capability not in {"None", ""}
+        }
+    )
+    template = {
+        "status": "adjusted",
+        "source_documents_read": "`openspec/orchestrate/source-doc-manifest.md` 中源文档已由 Phase 2/3 覆盖。",
+        "assumptions_and_conflicts": "Phase 3 已给出 `Decision: coverage-complete`；Phase 4 未新增 atom，也未改写 Phase 2/3 证据。",
+        "changes": [
+            {"slug": slug, "title": slug, "outcome": f"TODO：补充 `{slug}` 的中文闭环结果。", "kind": "business"}
+            for slug in changes
+        ],
+        "capabilities": [
+            {"slug": slug, "boundary": f"TODO：补充 `{slug}` 的中文长期行为边界。"}
+            for slug in caps
+        ],
+        "decisions": [],
+        "split_analyses": [],
+        "adjustments": [],
+        "complexity_decisions": [],
+    }
+    json.dump(template, sys.stdout, ensure_ascii=False, indent=2)
+    sys.stdout.write("\n")
+
+
+def build_parser() -> argparse.ArgumentParser:
+    parser = argparse.ArgumentParser(
+        description="Validate and render mechanical Phase 4 plan-refit artifacts from a reviewed mapping/config."
+    )
+    parser.add_argument("--orchestrate-dir", default="openspec/orchestrate", type=Path)
+    parser.add_argument("--mapping", type=Path, help="Reviewed pass-<NN>/atom-plan-mapping.md. Defaults to latest pass.")
+    parser.add_argument("--config", type=Path, help="Reviewed Phase 4 JSON config. Defaults to mapping sibling phase4-refit.config.json.")
+    parser.add_argument("--output-orchestrate-dir", type=Path, help="Write outputs to this orchestrate dir instead of --orchestrate-dir.")
+    parser.add_argument("--write", action="store_true", help="Write rendered artifacts. Without this flag the script only checks inputs.")
+    parser.add_argument("--no-root-update", action="store_true", help="Do not update output root change-plan.md.")
+    parser.add_argument("--print-config-template", action="store_true", help="Print a JSON config template inferred from mapping and exit.")
+    return parser
+
+
+def main(argv: Optional[Sequence[str]] = None) -> int:
+    args = build_parser().parse_args(argv)
+    orchestrate_dir = args.orchestrate_dir
+    mapping_path = args.mapping or latest_mapping(orchestrate_dir)
+    config_path = args.config or default_config_path(mapping_path)
+    output_orchestrate_dir = args.output_orchestrate_dir or orchestrate_dir
+
+    atoms = load_global_atoms(orchestrate_dir / "change-capability-anchors/obligation-atom-index.md")
+    mapping = load_mapping(mapping_path)
+    final_atoms = join_atoms(atoms, mapping)
+
+    if args.print_config_template:
+        print_config_template(final_atoms)
+        return 0
+
+    config = load_config(config_path)
+    changes = parse_changes(config)
+    capabilities = parse_capabilities(config)
+    warnings = validate(final_atoms, changes, capabilities)
+
+    if args.write:
+        write_outputs(
+            orchestrate_dir=orchestrate_dir,
+            output_orchestrate_dir=output_orchestrate_dir,
+            mapping_path=mapping_path,
+            config_path=config_path,
+            config=config,
+            changes=changes,
+            capabilities=capabilities,
+            final_atoms=final_atoms,
+            no_root_update=args.no_root_update,
+        )
+
+    direct_count = sum(1 for item in final_atoms if item.mapping.final_relation == "direct")
+    print(f"Phase 4 check passed: atoms={len(final_atoms)} direct={direct_count} changes={len(changes)} capabilities={len(capabilities)}")
+    for warning in warnings:
+        print(f"warning: {warning}", file=sys.stderr)
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

@@ -99,7 +99,8 @@ Optional bundled helper:
 
 ```text
 .codex/skills/source-aligned-change-plan-coverage/scripts/
-└── phase3_line_range_audit.py   # mechanical Phase 3 candidate uncovered/overlap helper
+├── phase3_line_range_audit.py   # mechanical Phase 3 candidate uncovered/overlap helper
+└── phase4_plan_refit.py         # mechanical Phase 4 renderer/checker from reviewed mapping + JSON config
 ```
 
 Phase 2 source atom files are immutable raw extraction evidence. Phase 3's `change-capability-anchors/obligation-atom-index.md` is the normalized global uniqueness and ownership registry. Phase 4 derives final change packets and capability views from that global index; it must not invent atoms without source evidence. `reports/change-capability-human-plan.md` is a human-facing synthesis of the final change packets and capability progression; it must not replace the source atom ledgers or global atom index as source of truth.
