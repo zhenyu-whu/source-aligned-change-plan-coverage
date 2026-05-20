@@ -139,11 +139,11 @@ The Phase 1 foundation candidate must not include:
 - business/domain table creation or table ownership beyond migration tooling
 - domain commands, use-cases, policies, or repositories
 - user-facing API routes or DTOs
-- worker action semantics, job state machines, recovery loops, or business queues
-- SSE/outbox business events
-- auth/business identity mapping
-- assets, subscriptions, entitlements, usage, export, project, figure, brief, thread, message, or version design
-- observability, privacy, recovery, responsive, design-system, or verification behavior that belongs to the first workflow that needs it
+- domain-specific worker or async semantics, job state machines, recovery loops, or business queues
+- domain events, stream messages, outbox events, or realtime business messages
+- identity, authorization, tenancy, entitlement, or account mapping tied to domain semantics
+- domain entities, lifecycle objects, collection/accounting/delivery/export concepts, or history/versioning rules
+- workflow-specific observability, privacy, recovery, responsive, design-system, or verification behavior that belongs to the first workflow that needs it
 
 Source-backed domain behavior found during Phase 1 should be sliced into business change candidates or recorded as non-canonical ownership hints for Phase 2. Do not hide it inside a foundation/spine change.
 
@@ -263,7 +263,7 @@ Answer:
 13. Are cross-cutting production concerns being moved into separate capability-shaped changes even though they directly affect the same user/system loop?
 14. If more than half of non-foundation changes advance only one capability, is there source-backed evidence that those are genuinely separate loops rather than a diagonalized roadmap?
 15. If a foundation candidate exists, is it strictly a zero-domain engineering bootstrap?
-16. Did Phase 1 avoid placing business schema, domain commands, user-facing APIs, worker business semantics, SSE/outbox events, auth/business identity, assets, entitlement, usage, export, project, figure, brief, thread, message, version, privacy, recovery, responsive, design-system, or observability behavior into foundation scope?
+16. Did Phase 1 avoid placing domain-specific schemas, entities, commands, user-facing APIs, worker or async business semantics, domain events, identity/authorization/account mappings, entitlement/accounting/delivery/export concepts, lifecycle/versioning rules, privacy, recovery, responsive, design-system, observability, or other workflow-specific behavior into foundation scope?
 17. Are source-backed domain obligations represented as business change candidates or Phase 2 ownership context for the first workflow that needs them?
 
 ## Phase Report
