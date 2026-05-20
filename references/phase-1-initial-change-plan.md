@@ -110,10 +110,36 @@ If a candidate change only proves that a low-level component exists, it cannot s
 A foundation change is allowed only when all conditions hold:
 
 1. Without it, no later closed-loop change can reasonably start.
-2. It produces a stable reusable engineering boundary.
-3. It has runtime or integration-level proof.
-4. It names the first closed-loop change that will build on it.
-5. The plan does not contain consecutive pure foundation changes.
+2. It is the only pre-business foundation candidate in the initial roadmap.
+3. It is a zero-domain engineering bootstrap.
+4. It produces a stable reusable engineering boundary.
+5. It has runtime or integration-level proof.
+6. It names the first closed-loop business/user workflow that will build on it.
+7. The plan does not contain consecutive pure foundation changes.
+
+The Phase 1 foundation candidate may include only engineering substrate needed before the first real workflow:
+
+- repository/package directories
+- root scripts
+- lint/typecheck/test harness
+- env validation
+- local dependency manifests
+- migration tooling, but not business schema
+- empty web/worker smoke entrypoints
+- empty adapter seams whose behavior is not yet domain-specific
+
+The Phase 1 foundation candidate must not include:
+
+- business/domain table creation or table ownership beyond migration tooling
+- domain commands, use-cases, policies, or repositories
+- user-facing API routes or DTOs
+- worker action semantics, job state machines, recovery loops, or business queues
+- SSE/outbox business events
+- auth/business identity mapping
+- assets, subscriptions, entitlements, usage, export, project, figure, brief, thread, message, or version design
+- observability, privacy, recovery, responsive, design-system, or verification behavior that belongs to the first workflow that needs it
+
+Source-backed domain behavior found during Phase 1 should be sliced into business change candidates or recorded as non-canonical ownership hints for Phase 2. Do not hide it inside a foundation/spine change.
 
 ## Workflow
 
@@ -230,6 +256,9 @@ Answer:
 12. Do many capability ids paraphrase the change slug that first owns them?
 13. Are cross-cutting production concerns being moved into separate capability-shaped changes even though they directly affect the same user/system loop?
 14. If more than half of non-foundation changes advance only one capability, is there source-backed evidence that those are genuinely separate loops rather than a diagonalized roadmap?
+15. If a foundation candidate exists, is it strictly a zero-domain engineering bootstrap?
+16. Did Phase 1 avoid placing business schema, domain commands, user-facing APIs, worker business semantics, SSE/outbox events, auth/business identity, assets, entitlement, usage, export, project, figure, brief, thread, message, version, privacy, recovery, responsive, design-system, or observability behavior into foundation scope?
+17. Are source-backed domain obligations represented as business change candidates or Phase 2 ownership context for the first workflow that needs them?
 
 ## Phase Report
 

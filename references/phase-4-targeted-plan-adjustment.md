@@ -88,7 +88,7 @@ Phase 4 may:
 
 - accept the Phase 1 framework when global atoms prove it is coherent
 - add, remove, split, merge, reorder, or rename changes when atom groups and dependencies require it
-- keep one narrow pre-business foundation change when the first production business workflow cannot run without minimal runtime scaffolding
+- keep one narrow pre-business foundation change only when the first production business workflow cannot run without minimal zero-domain engineering scaffolding
 - add, remove, split, merge, or rename capabilities when atoms reveal a durable behavior boundary gap
 - move a global atom to a different owner change/capability when Phase 3 left placement to refit or when sequencing proves the initial candidate owner was wrong
 - reclassify a global atom as contextual future-compatibility, dependency, preserve, reference, later-change, or explicit non-goal when it constrains design but is not current direct scope
@@ -105,6 +105,7 @@ Phase 4 must not:
 - edit Phase 3 coverage outputs or the global atom index
 - invent new atoms without Phase 3 normalization
 - create a sequence of pre-business foundation, governance, state-contract, design-system, harness, or platform-hardening changes before the first production business/user workflow
+- keep a pre-business domain foundation/spine change that creates business tables, domain commands/use-cases, user-facing API contracts, worker action semantics, SSE/outbox business events, auth/business identity mapping, assets, subscriptions, entitlements, usage, export, project, figure, brief, thread, message, version, observability, privacy, recovery, responsive, design-system, or verification behavior
 - keep a standalone post-foundation technical change unless it has an independently runnable user/system or operational loop with concrete failure paths and archive-ready evidence
 - use raw uncovered line counts as a plan-adjustment driver without semantic review
 - leave any direct global atom without exactly one final owner change/capability unless it is non-direct, non-coverage, or blocked
@@ -128,8 +129,8 @@ Use these rules:
 
 - A final change should represent a reviewable, implementable, verifiable user/system loop or a valid foundation exception.
 - A final change is also the unit a later AI agent will implement in one focused `openspec-apply-change` pass. Closed-loop coherence alone does not justify a large change.
-- A valid foundation exception is normally only the first final change. It establishes the minimum scaffolding required for the first production business workflow to run, then stops.
-- After the first foundation, prefer business-first sequencing: advance runtime, async, UI state, object state, design-system, responsive, observability, entitlement, privacy, recovery, and verification capabilities inside the first production workflow that directly needs them.
+- A valid foundation exception is normally only the first final change. It establishes only zero-domain engineering scaffolding required for the first production business workflow to run, then stops.
+- After the first foundation, use business-first sequencing: advance runtime, async, UI state, object state, design-system, responsive, observability, entitlement, privacy, recovery, and verification capabilities inside the first production workflow that directly needs them.
 - Do not split a reusable contract, UI state vocabulary, object specimen, design token system, visual harness, or async scaffold into its own change merely because it can be unit-tested. It needs a real business/user/system loop or must become part of a business change's design/tasks/evidence burden.
 - Attach an atom to an existing change only when that change owns the same coherent loop: entry, fact, projection, failure path, and verification surface.
 - Add or split a change when atom groups reveal an independently verifiable loop that can be implemented, verified, reviewed, and archived separately.
@@ -141,7 +142,7 @@ Use these rules:
 - Resolve duplicate direct atoms by choosing the owner change that first implements the production obligation. Later changes may only keep a direct atom when they add a source-backed delta; otherwise they become preserve/dependency/reference/context.
 - Represent staged maturity as distinct atoms. Do not repeat the same atom across changes to simulate progression.
 - Treat earlier changes as realized baseline providers, not global-context catchalls.
-- Treat future domain behavior as contextual or downstream constraints until the first change that directly implements it. Do not make an early change own direct atoms simply because later changes depend on their contracts.
+- Treat future domain behavior as contextual or downstream constraints until the first business change that directly implements it. Do not make a foundation or early technical change own direct atoms simply because later changes depend on their contracts.
 - Preserve artifact projection independently from final owner placement. A direct atom can be implementation-owned by a change while projecting to design, tasks/proof, or spec guard rather than becoming a spec requirement; it cannot remain `contextual-only` in the final direct table.
 - Prefer staged slices such as input preparation -> confirmed domain fact -> async execution -> external integration -> result projection -> hardening/delivery/operations when each slice can be verified truthfully.
 - Preserve directly necessary cross-capability increments inside the same change when they share the same entry, fact, projection, failure path, and verification truth. Do not move identity, privacy, realtime state, versioning, entitlement, export, failure recovery, or observability atoms into artificial standalone changes solely to narrow the matrix row.
@@ -199,14 +200,15 @@ Rules:
 Foundation changes are valid only as minimal enabling scaffolds. Treat this as a hard gate for Phase 4 plan acceptance:
 
 - A final plan should have at most one foundation change before the first production business/user workflow. The default valid foundation is the first final change.
-- A foundation change should directly own only runtime/repository skeleton, package/app boundaries, configuration loading, migration/test harnesses, local dependency startup, empty adapter seams, environment/deploy conventions, and smoke proof.
+- A foundation change must be a zero-domain engineering bootstrap. It should directly own only repository/package skeleton, package/app boundaries, root scripts, lint/typecheck/test harnesses, configuration loading, local dependency manifests, migration tooling without business schema, empty adapter seams, empty web/worker smoke entrypoints, environment/deploy conventions, and smoke proof.
 - These foundation direct atoms often project to `design-obligation`, `verification-obligation`, or `spec-guard`; only externally meaningful runtime contracts should project to `spec-requirement`.
-- A foundation change must prove itself with executable checks such as dependency startup, migration smoke, env schema validation, package/build/typecheck, storage/auth adapter smoke, or a minimal health/API probe. "Types exist", "contract exists", "specimen renders", or "visual harness exists" is not sufficient by itself.
-- A foundation change should not directly advance user/domain capabilities such as access/session flows, input preparation, domain-work execution, interactive state projection, object state governance, result history, collection management, quota/accounting, delivery, privacy workflows, operational observability, responsive behavior, or visual quality. Those are direct scope in the first business change that needs them.
-- Direct domain atoms in a foundation change must be moved to later changes or reclassified as contextual/downstream constraints unless Phase 4 proves no later closed-loop change can start without implementing them now.
-- Low-level or governance-heavy atom groups that appear after the foundation, such as action/job runtime, UI stage/overlay contracts, object disabled-state governance, design tokens, responsive proof, observability, privacy, or quota policy, must normally be attached to the first business workflow that directly needs them as direct deltas, design obligations, task obligations, or evidence burden.
+- A foundation change must prove itself with executable checks such as dependency startup, empty migration tooling smoke, env schema validation, package/build/typecheck, and a minimal empty health/API or worker probe. "Types exist", "contract exists", "specimen renders", or "visual harness exists" is not sufficient by itself.
+- A foundation change must not directly advance user/domain capabilities or business capability baselines. It must not create business/domain tables, domain commands/use-cases, user-facing API contracts, worker action semantics, SSE/outbox business events, auth/business identity mapping, assets, subscriptions, entitlements, usage, export, project, figure, brief, thread, message, version, operational observability, privacy workflows, recovery behavior, responsive behavior, visual quality, or design-system behavior.
+- Direct domain atoms in a foundation change must be moved to the first business change that needs them or reclassified as contextual/downstream constraints. Phase 4 must not keep them in foundation by arguing that later changes will depend on their contracts; dependency is not direct ownership.
+- Low-level or governance-heavy atom groups that appear after the foundation, such as action/job runtime, UI stage/overlay contracts, object disabled-state governance, design tokens, responsive proof, observability, privacy, or quota policy, must be attached to the first business workflow that directly needs them as direct deltas, design obligations, task obligations, or evidence burden unless they qualify as an independently runnable operational loop.
 - A standalone post-foundation non-business change is allowed only when source evidence requires an independently runnable user/system or operational loop whose entry, fact, projection, failure path, and evidence can be archived without waiting for a later business workflow. The Phase 4 report must name that loop and explain why embedding it in the first dependent business change would be less truthful.
-- A foundation change with more than 35 direct atoms, more than 2 capabilities advanced, or any direct domain behavior requires split/defer analysis. If it remains over budget, return `blocked` or record a user-facing exception with rejected split options.
+- A foundation change with any direct domain behavior, business table creation, or business capability advancement must be refit. Move those atoms to business changes or return `blocked`; do not record a domain-spine exception.
+- A foundation change with more than 35 direct atoms or more than 1 capability advanced requires split/defer analysis. If it remains over budget, return `blocked` or record a user-facing exception with rejected split options.
 - A plan with multiple pre-business foundation/governance changes must not return `accepted` or `adjusted`; Phase 4 must merge them into the single foundation, move them into the first dependent business change, defer them as contextual/evidence burden, or return `blocked`.
 
 ### Required Split Analysis
@@ -219,6 +221,7 @@ For every over-budget trigger, write a split analysis before the final decision:
 Candidate split patterns include:
 
 - scaffold-only foundation -> first production business workflow
+- domain foundation/spine -> zero-domain bootstrap + first business workflows that own the domain atoms
 - input capture/validation/preparation -> downstream execution
 - command/job contract -> concrete executor or external integration
 - durable result fact creation -> result projection/history/interaction surface
