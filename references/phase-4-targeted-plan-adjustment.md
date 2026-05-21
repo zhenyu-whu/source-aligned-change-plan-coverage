@@ -355,6 +355,8 @@ Direct atom table:
 | Global Atom ID | Source Document | Lines | Atom Type | Source Fact | Normativity | Artifact Projection | Projection Rationale | Owner Capability | Atom Relation | Roles | Propose Use | Evidence Need |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
 
+All final packet `Global Atom ID` values must preserve the exact `GA-####` IDs from `change-capability-anchors/obligation-atom-index.md`; Phase 4 must not rewrite them to another global prefix or source-local atom id.
+
 Direct table rows must use `spec-requirement`, `spec-guard`, `design-obligation`, or `verification-obligation`. `contextual-only` belongs only in the context table or non-direct classifications.
 
 Context table:

@@ -64,6 +64,7 @@ It must include:
 Rules:
 
 - Assign exactly one `Global Atom ID` to each production obligation.
+- Each `Global Atom ID` must use the canonical `GA-####` format, such as `GA-0001`. Do not use another global prefix, a range, or a Phase 2 source-local atom id as the normalized global atom id.
 - If two source atom rows describe the same source obligation, keep one global atom and map the other rows to the same global atom or a non-direct relation.
 - If a later obligation genuinely strengthens or narrows an earlier obligation, create a new atom only for the additional source-backed delta and set `Atom Relation` to `refines:<global-atom-id>` or `modifies:<global-atom-id>`.
 - If a source fact only preserves or depends on another atom, use `Atom Relation` such as `preserves:<global-atom-id>` or `depends-on:<global-atom-id>` and do not count it as duplicate direct coverage.

@@ -22,6 +22,7 @@ from typing import Dict, Iterable, List, Optional, Sequence, Tuple
 
 
 TABLE_SEPARATOR_RE = re.compile(r"^:?-{3,}:?$")
+GLOBAL_ATOM_ID_RE = re.compile(r"^GA-\d{4}$")
 DIRECT_PROJECTIONS = {
     "spec-requirement",
     "spec-guard",
@@ -191,6 +192,8 @@ def load_global_atoms(path: Path) -> Dict[str, AtomRow]:
         atom_id = normalize_code(cell(raw, "Global Atom ID"))
         if not atom_id:
             continue
+        if not GLOBAL_ATOM_ID_RE.match(atom_id):
+            raise ValueError(f"global atom index 中的 Global Atom ID 必须匹配 GA-####: {atom_id}")
         if atom_id in atoms:
             raise ValueError(f"global atom index 中存在重复 ID: {atom_id}")
         atoms[atom_id] = AtomRow(
@@ -222,6 +225,8 @@ def load_mapping(path: Path) -> Dict[str, MappingRow]:
         atom_id = normalize_code(cell(raw, "Global Atom ID"))
         if not atom_id:
             continue
+        if not GLOBAL_ATOM_ID_RE.match(atom_id):
+            raise ValueError(f"Phase 4 mapping 中的 Global Atom ID 必须匹配 GA-####: {atom_id}")
         if atom_id in mapping:
             raise ValueError(f"Phase 4 mapping 中存在重复 ID: {atom_id}")
         mapping[atom_id] = MappingRow(
