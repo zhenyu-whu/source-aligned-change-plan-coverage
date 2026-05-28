@@ -1,10 +1,10 @@
-# Phase 4: Atom-Driven Change and Capability Plan Refit
+# Phase 5: Atom-Driven Change and Capability Plan Refit
 
-Phase 4 runs after Phase 3 returns `Decision: coverage-complete`. At this point the obligation atom granularity is stable enough to evaluate whether the Phase 1 change/capability framework is scientifically reasonable.
+Phase 5 runs after Phase 3 returns `Decision: coverage-complete` and Phase 4 returns `Phase 4 Status: grounded`. At this point the obligation atom granularity is stable and the original source windows behind the initial change/capability framework have been copied into Phase 4 reviewer-facing dossiers. Phase 5 must not make plan-refit judgments from atom summaries alone: it must consume the Phase 4 source-window dossiers and semantic profiles as the grounding evidence for every split, merge, reorder, rename, ownership move, relation change, and complexity decision.
 
-Phase 4 exists to refit the plan from the normalized global atom index. It evaluates change order, capability progression, dependencies, artifact projection, and change complexity using concrete atom groups rather than the initial slicing hypothesis. It may accept the Phase 1 framework or restructure changes/capabilities. Every decision must preserve atom-level traceability and ensure each final direct atom has a downstream artifact projection.
+Phase 5 exists to refit the plan from the normalized global atom index and Phase 4 source-window semantic dossiers. It evaluates change order, capability progression, dependencies, artifact projection, and change complexity using concrete source-backed atom groups and their original source context rather than the initial slicing hypothesis. It may accept the Phase 1 framework or restructure changes/capabilities. Every decision must preserve atom-level traceability and ensure each final direct atom has a downstream artifact projection.
 
-Phase 4 MUST be performed by a fresh independent subagent. It must not rerun Phase 2 extraction and must not invent new source obligations. If Phase 4 discovers a missing or over-broad source obligation, it must return `needs-coverage-recheck` instead of silently creating new atoms outside Phase 3.
+Phase 5 MUST be performed by a fresh independent subagent. It must not rerun Phase 2 extraction and must not invent new source obligations. If Phase 5 discovers a missing or over-broad source obligation, it must return `needs-coverage-recheck` instead of silently creating new atoms outside Phase 3.
 
 ## Inputs
 
@@ -12,78 +12,89 @@ Phase 4 MUST be performed by a fresh independent subagent. It must not rerun Pha
 - `openspec/orchestrate/phase-works/phase-3/source-doc-manifest.md`
 - `openspec/orchestrate/phase-works/phase-2/source-obligation-atoms/index.md`
 - `openspec/orchestrate/change-capability-anchors/obligation-atom-index.md`
+- `openspec/orchestrate/phase-works/phase-4/source-window-dossiers/index.md`
+- `openspec/orchestrate/phase-works/phase-4/source-window-dossiers/by-input-change/*.md`
+- `openspec/orchestrate/phase-works/phase-4/source-window-dossiers/by-input-capability/*.md`
+- `openspec/orchestrate/phase-works/phase-4/source-window-semantic-profile-review.md`
+- `openspec/orchestrate/phase-works/phase-4/source-window-grounding-issues.md`
+- `openspec/orchestrate/phase-works/phase-4/phase-4-agent-report.md`
 - `openspec/orchestrate/phase-works/phase-3/coverage-review.md`
 - `openspec/orchestrate/phase-works/phase-3/phase-3-trace/*.md`
-- User-specified source document roots or exact source paths, for targeted context reads only when a Phase 3 handoff needs local wording.
+- User-specified source document roots or exact source paths, for targeted context reads only when a Phase 4 dossier cites a window that must be verified locally.
 
 ## Outputs
 
-Write the current refit packet directly under `openspec/orchestrate/phase-works/phase-4/`. Do not create `pass-*`, `iteration-*`, attempt-numbered, or similarly iterative subdirectories for Phase 4. If Phase 4 must run again after `needs-coverage-recheck`, update the current Phase 4 packet in place unless the user explicitly requests historical archival.
+Write the current refit packet directly under `openspec/orchestrate/phase-works/phase-5/`. Do not create `pass-*`, `iteration-*`, attempt-numbered, or similarly iterative subdirectories for Phase 5. If Phase 5 must run again after `needs-coverage-recheck`, update the current Phase 5 packet in place unless the user explicitly requests historical archival.
 
-- `openspec/orchestrate/phase-works/phase-4/input-change-plan.md`
-- `openspec/orchestrate/phase-works/phase-4/change-plan.md`
-- `openspec/orchestrate/phase-works/phase-4/atom-plan-mapping.md`
-- `openspec/orchestrate/phase-works/phase-4/capability-progression-review.md`
-- `openspec/orchestrate/phase-works/phase-4/change-complexity-review.md`
-- `openspec/orchestrate/phase-works/phase-4/plan-refit-decision-log.md`
-- `openspec/orchestrate/phase-works/phase-4/change-plan-adjustments.md` only when the status is `adjusted`, `needs-coverage-recheck`, or `blocked`
-- `openspec/orchestrate/phase-works/phase-4/phase-4-agent-report.md`
-- `openspec/orchestrate/phase-works/phase-4/alignment-final-report.md`
+- `openspec/orchestrate/phase-works/phase-5/input-change-plan.md`
+- `openspec/orchestrate/phase-works/phase-5/source-window-refit-trace.md`
+- `openspec/orchestrate/phase-works/phase-5/change-plan.md`
+- `openspec/orchestrate/phase-works/phase-5/atom-plan-mapping.md`
+- `openspec/orchestrate/phase-works/phase-5/capability-progression-review.md`
+- `openspec/orchestrate/phase-works/phase-5/change-complexity-review.md`
+- `openspec/orchestrate/phase-works/phase-5/plan-refit-decision-log.md`
+- `openspec/orchestrate/phase-works/phase-5/change-plan-adjustments.md` only when the status is `adjusted`, `needs-coverage-recheck`, or `blocked`
+- `openspec/orchestrate/phase-works/phase-5/phase-5-agent-report.md`
+- `openspec/orchestrate/phase-works/phase-5/alignment-final-report.md`
 
 When the status is `accepted` or `adjusted`, also write final consume-ready artifacts:
 
 - `openspec/orchestrate/change-capability-anchors/index.md`
 - `openspec/orchestrate/change-capability-anchors/<change-slug>/<change-slug>.md`
 - `openspec/orchestrate/change-capability-anchors/<change-slug>/capability-anchors/<capability-slug>.md`
-- `openspec/orchestrate/phase-works/phase-4/change-capability-human-plan.md`
+- `openspec/orchestrate/phase-works/phase-5/change-capability-human-plan.md`
 
-If Phase 4 accepts the input plan unchanged, still write the current Phase 4 packet and final change packets. If Phase 4 adjusts the plan, write the adjusted snapshot to `phase-works/phase-4/change-plan.md` and update root `openspec/orchestrate/change-plan.md` to the latest effective plan only after the Phase 4 packet records the input plan, output plan, and atom-plan mapping.
+If Phase 5 accepts the input plan unchanged, still write the current Phase 5 packet and final change packets. If Phase 5 adjusts the plan, write the adjusted snapshot to `phase-works/phase-5/change-plan.md` and update root `openspec/orchestrate/change-plan.md` to the latest effective plan only after the Phase 5 packet records the input plan, output plan, and atom-plan mapping.
 
-`phase-works/phase-2/source-obligation-atoms/` and `change-capability-anchors/obligation-atom-index.md` are upstream evidence. Do not edit them in Phase 4.
+`phase-works/phase-2/source-obligation-atoms/`, `change-capability-anchors/obligation-atom-index.md`, and `phase-works/phase-4/source-window-dossiers/` are upstream evidence. Do not edit them in Phase 5.
+
+Phase 4 source-window dossiers and semantic profiles are the source-grounding input for Phase 5. `source-window-refit-trace.md` is the Phase 5 decision trace that explains how those input source-window profiles were transformed into final changes/capabilities: which original atoms stayed together, moved, split, merged, became contextual/dependency/evidence/non-goal, and why the adjusted unit remains a truthful engineering delivery slice.
 
 ## Recommended Mechanical Helper
 
-For reruns or large Phase 4 refits, prefer the bundled deterministic renderer instead of pasting a long one-off Python heredoc. The Phase 4 subagent still owns the semantic decisions: it must review the global atom index, decide the final roadmap, write or update the reviewed `atom-plan-mapping.md`, and prepare a JSON config that states final changes, capabilities, split analyses, decisions, adjustments, and report findings. The helper only validates and renders mechanical artifacts from those reviewed inputs.
+For reruns or large Phase 5 refits, prefer the bundled deterministic renderer instead of pasting a long one-off Python heredoc. The Phase 5 subagent still owns the semantic decisions: it must review the Phase 4 source-window dossiers, review the global atom index, decide the final roadmap, write or update the reviewed `atom-plan-mapping.md`, and prepare a JSON config that states final changes, capabilities, split analyses, decisions, adjustments, and report findings. The helper only validates and renders mechanical artifacts from those reviewed inputs.
+
+Do not run the helper as a substitute for Phase 4 source-window grounding. `phase-works/phase-4/source-window-dossiers/`, `phase-works/phase-4/source-window-semantic-profile-review.md`, and `phase-works/phase-5/source-window-refit-trace.md` must be written and reviewed before helper-rendered final packets are treated as valid.
 
 Suggested flow:
 
 ```bash
-python3 .codex/skills/source-aligned-change-plan-coverage/scripts/phase4_plan_refit.py \
+python3 .codex/skills/source-aligned-change-plan-coverage/scripts/phase5_plan_refit.py \
   --orchestrate-dir openspec/orchestrate \
-  --mapping openspec/orchestrate/phase-works/phase-4/atom-plan-mapping.md \
-  --print-config-template > openspec/orchestrate/phase-works/phase-4/phase4-refit.config.json
+  --mapping openspec/orchestrate/phase-works/phase-5/atom-plan-mapping.md \
+  --print-config-template > openspec/orchestrate/phase-works/phase-5/phase5-refit.config.json
 ```
 
-Then edit `phase4-refit.config.json` so every final change has the reviewed Chinese title/outcome/kind, every capability has the reviewed Chinese behavior boundary, and the reviewed decisions/split analyses/adjustments/report findings are recorded. After that, run:
+Then edit `phase5-refit.config.json` so every final change has the reviewed Chinese title/outcome/kind, every capability has the reviewed Chinese behavior boundary, and the reviewed decisions/split analyses/adjustments/report findings are recorded. After that, run:
 
 ```bash
-python3 -m py_compile .codex/skills/source-aligned-change-plan-coverage/scripts/phase4_plan_refit.py
+python3 -m py_compile .codex/skills/source-aligned-change-plan-coverage/scripts/phase5_plan_refit.py
 
-python3 .codex/skills/source-aligned-change-plan-coverage/scripts/phase4_plan_refit.py \
+python3 .codex/skills/source-aligned-change-plan-coverage/scripts/phase5_plan_refit.py \
   --orchestrate-dir openspec/orchestrate \
-  --mapping openspec/orchestrate/phase-works/phase-4/atom-plan-mapping.md \
-  --config openspec/orchestrate/phase-works/phase-4/phase4-refit.config.json
+  --mapping openspec/orchestrate/phase-works/phase-5/atom-plan-mapping.md \
+  --config openspec/orchestrate/phase-works/phase-5/phase5-refit.config.json
 
-python3 .codex/skills/source-aligned-change-plan-coverage/scripts/phase4_plan_refit.py \
+python3 .codex/skills/source-aligned-change-plan-coverage/scripts/phase5_plan_refit.py \
   --orchestrate-dir openspec/orchestrate \
-  --mapping openspec/orchestrate/phase-works/phase-4/atom-plan-mapping.md \
-  --config openspec/orchestrate/phase-works/phase-4/phase4-refit.config.json \
+  --mapping openspec/orchestrate/phase-works/phase-5/atom-plan-mapping.md \
+  --config openspec/orchestrate/phase-works/phase-5/phase5-refit.config.json \
   --write
 ```
 
-Use `--output-orchestrate-dir /tmp/phase4-check/openspec/orchestrate` for a dry render into a temporary tree when reviewing the generated files before overwriting the active orchestration outputs. Do not treat the helper output as valid unless the subagent has reviewed the config and the main-agent gates pass. If validation fails, repair the mapping/config or return `needs-coverage-recheck`/`blocked`; do not weaken checks in the script.
+Use `--output-orchestrate-dir /tmp/phase5-check/openspec/orchestrate` for a dry render into a temporary tree when reviewing the generated files before overwriting the active orchestration outputs. Do not treat the helper output as valid unless the subagent has reviewed the config and the main-agent gates pass. If validation fails, repair the mapping/config or return `needs-coverage-recheck`/`blocked`; do not weaken checks in the script.
 
 ## Artifact Language Gate
 
-Apply the skill-level Artifact Language Gate to every Phase 4 output. Keep fixed table headers, field names, enum/status values, atom ids, paths, line ranges, capability ids, change slugs, relation tokens, and exact source phrases as required, but write all agent-authored explanatory content in Simplified Chinese.
+Apply the skill-level Artifact Language Gate to every Phase 5 output. Keep fixed table headers, field names, enum/status values, atom ids, paths, line ranges, capability ids, change slugs, relation tokens, and exact source phrases as required, but write all agent-authored explanatory content in Simplified Chinese.
 
 In particular, closed-loop outcomes, behavior-boundary descriptions, roadmap values, capability progression narratives, complexity decisions, split/defer analyses, context handling, blockers, plan-decision reasons, evidence-burden descriptions, human review notes, and report summaries must be Chinese unless the entire value is only a fixed enum, ID, path, command, relation token, proof-type token, or exact source term.
 
-After writing each Phase 4 artifact, perform the language self-check from the skill gate. If any explanation sentence remains English-dominant after ignoring IDs, paths, commands, code, fixed enum/status values, relation tokens, proof-type tokens, and exact source phrases, rewrite it before finishing Phase 4.
+After writing each Phase 5 artifact, perform the language self-check from the skill gate. If any explanation sentence remains English-dominant after ignoring IDs, paths, commands, code, fixed enum/status values, relation tokens, proof-type tokens, and exact source phrases, rewrite it before finishing Phase 5.
 
 ## Scope Rules
 
-Phase 4 may:
+Phase 5 may:
 
 - accept the Phase 1 framework when global atoms prove it is coherent
 - add, remove, split, merge, reorder, or rename changes when atom groups and dependencies require it
@@ -91,22 +102,27 @@ Phase 4 may:
 - add, remove, split, merge, or rename capabilities when atoms reveal a durable behavior boundary gap
 - move a global atom to a different owner change/capability when Phase 3 left placement to refit or when sequencing proves the initial candidate owner was wrong
 - reclassify a global atom as contextual future-compatibility, dependency, preserve, reference, later-change, or explicit non-goal when it constrains design but is not current direct scope
-- resolve final owner placement for atoms marked `phase-4-refit-required`
+- resolve final owner placement for atoms marked `phase-5-refit-required`
 - adjust final artifact projection when Phase 3's projection is too broad, too narrow, or no longer matches final change packet use
 - stage capability maturity as baseline -> refinement/hardening/extension using distinct source-backed atom deltas
 - derive final per-change and per-capability atom files from the global atom index
-- read targeted source context around Phase 3 handoff items when needed to verify wording or dependency rationale
+- cite Phase 4 source-window dossier evidence when deciding plan refit
+- read targeted source context around Phase 3/4 handoff items when needed to verify wording or dependency rationale already cited by Phase 4 dossiers
 
-Phase 4 must not:
+Phase 5 must not:
 
 - rerun Phase 2 globally
 - edit Phase 2 source atom files
 - edit Phase 3 coverage outputs or the global atom index
+- edit Phase 4 source-window dossier outputs
+- generate replacement source-window dossiers that bypass Phase 4
 - invent new atoms without Phase 3 normalization
 - create a sequence of pre-business foundation, governance, state-contract, design-system, harness, or platform-hardening changes before the first production business/user workflow
 - keep a pre-business domain foundation/spine change that creates domain-specific schemas or entities, domain commands/use-cases/policies, user-facing API contracts, worker or async business semantics, domain events/streams/outbox messages, identity/authorization/tenancy mappings, entitlement/accounting/delivery/export concepts, lifecycle/versioning rules, or workflow-specific observability, privacy, recovery, responsive, design-system, or verification behavior
 - keep a standalone post-foundation technical change unless it has an independently runnable user/system or operational loop with concrete failure paths and archive-ready evidence
 - use raw uncovered line counts as a plan-adjustment driver without semantic review
+- treat Phase 4 source-window dossiers as permission to extract, rewrite, merge, split, or invent new obligation atoms outside Phase 3
+- decide change splits, merges, reorders, capability boundaries, or foundation exceptions from atom counts or summaries alone when the corresponding Phase 4 source windows are available
 - leave any direct global atom without exactly one final owner change/capability unless it is non-direct, non-coverage, or blocked
 - leave any direct global atom without final artifact projection
 - leave any final direct global atom with `contextual-only`; contextual-only atoms must be moved to the context table, non-direct handling, or blocker status
@@ -119,7 +135,85 @@ If an adjustment cannot be made from Phase 3 findings plus targeted source conte
 
 ## Refit Method
 
-Phase 4 must first build an atom-driven planning graph:
+Phase 5 must first review Phase 4 source-window dossiers and semantic profiles, then build the atom-driven planning graph.
+
+Phase 5 refit is not atom-count-based splitting. Atom count is a later complexity signal only. The required order is:
+
+```text
+Phase 4 source-window dossiers and semantic profiles
+-> engineering delivery judgment for input changes/capabilities
+-> final change order and capability boundary decisions
+-> GA-#### final ownership/projection/relation mapping
+-> atom-count and complexity budget review
+```
+
+Phase 5 must not start by clustering atoms, sorting by atom counts, or splitting oversized input changes mechanically. It must first decide what source-window-backed business/system outcomes are implementable, testable, manually acceptable, and archive-ready.
+
+### Source-Window Profile Intake
+
+Before changing the plan, read:
+
+- `phase-works/phase-4/source-window-dossiers/index.md`
+- all `phase-works/phase-4/source-window-dossiers/by-input-change/*.md`
+- all `phase-works/phase-4/source-window-dossiers/by-input-capability/*.md`
+- `phase-works/phase-4/source-window-semantic-profile-review.md`
+- `phase-works/phase-4/source-window-grounding-issues.md`
+- `phase-works/phase-4/phase-4-agent-report.md`
+
+Rules:
+
+- Treat Phase 4 dossiers as immutable grounding evidence.
+- Every accepted, adjusted, split, merge, reorder, rename, moved atom, contextual downgrade, dependency classification, evidence-burden classification, or non-goal classification must cite a Phase 4 dossier or semantic profile row.
+- If Phase 4 reports `Phase 4 Status: needs-coverage-recheck` or `blocked`, stop; Phase 5 must not run.
+- If Phase 4 reports `grounded` but a required source-window profile is missing for an input change/capability that Phase 5 must judge, return `blocked` or ask for a fresh Phase 4 grounding pass. Do not silently regenerate the missing dossier inside Phase 5.
+- If Phase 4 source windows show several capabilities are directly required for one truthful business loop, keep those capability deltas together even when the atom count is high, unless a source-window-backed split preserves independent acceptance.
+- If Phase 4 source windows show one input change mixes multiple independently acceptable business outcomes, split, defer, or record why the source windows prove indivisibility.
+- If Phase 4 source windows show technical preparation without an independently runnable operational loop, make it the single valid zero-domain foundation, fold it into the first dependent business workflow, make it contextual/evidence burden, or block.
+
+### Source Window Semantic Grounding Gate
+
+Before building final atom ownership, Phase 5 must judge the initial change plan and every candidate final change from Phase 4 source-window semantics.
+
+For the initial change plan, answer:
+
+- Does the input change describe a complete business/system loop whose entry, fact, projection, failure path, and verification truth can be delivered together?
+- Does it mix multiple business outcomes that can be independently implemented, manually accepted, and archived?
+- Does it split capabilities that the source windows show must be delivered together for one truthful loop?
+- Does it package pure technical preparation as a business change without an independently runnable operational loop?
+- Does it move domain behavior, user-facing API contracts, business worker semantics, entitlement/export concepts, project/figure/version semantics, or recovery/privacy behavior into a foundation change too early?
+- Does any later change depend on a fact, state, contract, entitlement, version, asset, or lifecycle rule that is not established by an earlier direct owner?
+- Is each capability a durable behavior boundary, or is it only a temporary implementation module, page, table, source section, SDK, queue, provider, component, or one-change alias?
+
+Only after these questions are answered may Phase 5 map `GA-####` rows to final ownership. At that point each relevant global atom must be assigned:
+
+- final change
+- final capability
+- final artifact projection
+- final relation: `direct`, contextual, dependency, evidence-burden, preserve/reference, explicit non-goal, later-change, or blocker
+
+Every final change must pass this reviewer-facing gate:
+
+| Gate Question | Required Evidence |
+| --- | --- |
+| Which source windows does this final change cite? | Phase 4 dossier paths and line ranges. |
+| What business/system semantics do those source windows express together? | Chinese source-window semantic profile summary. |
+| Why should these atoms be delivered in one change? | Entry/fact/projection/failure/verification cohesion, or a valid foundation exception. |
+| Why does this change appear at this point in the roadmap? | Upstream realized baseline and downstream dependency explanation. |
+| How can a human manually accept this completed change? | Concrete acceptance scenario and observable result. |
+| Which source obligations were made contextual, dependency, evidence-burden, preserve/reference, later-change, or non-goal, and why are they not direct scope? | `source-window-refit-trace.md`, `atom-plan-mapping.md`, and final packet context/non-goal/evidence tables. |
+
+If a final change cannot answer all gate questions, Phase 5 must split, merge, reorder, rename, reclassify atoms, return `needs-coverage-recheck`, or return `blocked`. A final change must not be accepted merely because its atom count falls within the target budget.
+
+After final refit decisions, write `source-window-refit-trace.md`:
+
+| Input Change / Capability | Source Window Evidence | Input Atoms | Final Change / Capability | Atom Movement | Relation Changes | Engineering Reason |
+| --- | --- | --- | --- | --- | --- | --- |
+
+This trace must make it clear which Phase 4 source-window-backed atoms were reconstructed into each adjusted final change/capability. Any split, merge, reorder, rename, moved atom, contextual downgrade, dependency classification, evidence-burden classification, or non-goal classification must cite the relevant Phase 4 source-window dossier.
+
+### Atom-Driven Planning Graph
+
+After source-window profile intake, build an atom-driven planning graph:
 
 | Global Atom ID | Source Obligation | Current Candidate Owner Change | Current Candidate Owner Capability | Current Artifact Projection | Dependency Atoms | Candidate Final Change | Candidate Final Capability | Candidate Final Artifact Projection | Sequence Impact | Complexity Impact | Decision |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
@@ -146,7 +240,7 @@ Use these rules:
 - Prefer staged slices such as input preparation -> confirmed domain fact -> async execution -> external integration -> result projection -> hardening/delivery/operations when each slice can be verified truthfully.
 - Preserve directly necessary cross-capability increments inside the same change when they share the same entry, fact, projection, failure path, and verification truth. Do not move identity, privacy, realtime state, versioning, entitlement, export, failure recovery, or observability atoms into artificial standalone changes solely to narrow the matrix row.
 - After the final change/capability refit, discard Phase 1 `New`/`Modified` labels and rebuild them from final direct atom ownership. The first final change in roadmap order that directly owns at least one non-contextual atom for a capability is `New`; every later final change that directly owns a source-backed delta for that capability is `Modified`.
-- A capability cannot be `Modified` before it is `New`. If an earlier change appears to modify a capability that is declared as first created later, either move the `First change` to the earlier direct owner, move those atoms to the later owner, or reclassify the earlier relation as contextual/dependency/preserve-only. Do not finish Phase 4 with a "pre-baseline Modified" relation.
+- A capability cannot be `Modified` before it is `New`. If an earlier change appears to modify a capability that is declared as first created later, either move the `First change` to the earlier direct owner, move those atoms to the later owner, or reclassify the earlier relation as contextual/dependency/preserve-only. Do not finish Phase 5 with a "pre-baseline Modified" relation.
 - Capability relations must be derived from final packets, not from dependency notes. If a change only consumes, preserves, depends on, or evidences a capability without directly owning a source-backed atom for that capability, it must not appear as advancing that capability in the matrix, roadmap `New`/`Modified` lists, final anchors index, or human plan.
 
 ## Capability Progression Review
@@ -165,7 +259,7 @@ Rules:
 - If a capability has multiple unrelated atom families, split the capability only when they are durable behavior boundaries rather than temporary implementation areas.
 - `Current Change Sequence` must be computed from final direct ownership in roadmap order: include every final change whose packet directly owns at least one atom for the capability, and exclude dependency-only or contextual mentions.
 - `Required Order` must name the first direct owner as the capability baseline. The same first direct owner must match the Capability Map `First change`, the first non-empty matrix cell for that capability, the first `New` entry in the Change Roadmap, and the first occurrence of that capability in `change-capability-anchors/index.md`.
-- If those five surfaces disagree, Phase 4 must repair the plan artifacts before returning `accepted` or `adjusted`. If the disagreement reflects unclear atom ownership rather than stale labels, return `needs-coverage-recheck` or `blocked`.
+- If those five surfaces disagree, Phase 5 must repair the plan artifacts before returning `accepted` or `adjusted`. If the disagreement reflects unclear atom ownership rather than stale labels, return `needs-coverage-recheck` or `blocked`.
 - `New`/`Modified` labels are final-plan labels, not historical labels from Phase 1. Renaming, splitting, or moving changes/capabilities requires recomputing all labels and rewriting affected capability views.
 
 ## Change Complexity Review
@@ -181,8 +275,9 @@ Rules:
 
 - Target budget: 20-60 direct atoms, one primary functional point, directly necessary capability deltas only, at most two primary surface families, and a compact evidence burden. More than one new or modified capability is acceptable when those deltas are required for the same truthful loop.
 - Over-budget trigger: any change with more than 80 direct atoms, more than 4 unrelated directly advanced capabilities, an incoherent artifact projection mix, more than 12 failure/recovery atoms, more than 2 primary entry points, more than 2 fact families, more than 2 projection families, more than 3 evidence types, or more than 3 surface families must be split, deferred, or justified with concrete indivisibility evidence. Related cross-cutting capability deltas are not an over-budget trigger by count alone.
-- Hard split/blocker trigger: any change with more than 120 direct atoms or more than 6 unrelated directly advanced capabilities that do not share the same entry/fact/projection/failure truth must not be marked `accepted` or `adjusted` as-is. Phase 4 must split it, move atoms to later changes/context, or return `blocked` for a user slicing decision.
+- Hard split/blocker trigger: any change with more than 120 direct atoms or more than 6 unrelated directly advanced capabilities that do not share the same entry/fact/projection/failure truth must not be marked `accepted` or `adjusted` as-is. Phase 5 must split it, move atoms to later changes/context, or return `blocked` for a user slicing decision.
 - A `Keep` decision for an over-budget change must list rejected split candidates and explain why each would break truthfulness. "One coherent loop", "shared infrastructure", or "packet-level evidence grouping" is not sufficient.
+- Do not split a change merely because direct atom count exceeds the target range. Split only when the Source Window Semantic Grounding Gate shows independently acceptable business/system outcomes, invalid sequencing, false foundation ownership, non-durable capability boundaries, incoherent evidence surfaces, or unrelated entry/fact/projection/failure truth.
 - Split a change when it contains multiple atom groups that can pass the Closed-loop Test independently.
 - Split a change when it advances many capabilities only because shared infrastructure made grouping convenient.
 - Split a change when the evidence burden spans many unrelated proof surfaces and would make review/archival ambiguous.
@@ -196,19 +291,19 @@ Rules:
 
 ### Single Foundation and Business-First Gate
 
-Foundation changes are valid only as minimal enabling scaffolds. Treat this as a hard gate for Phase 4 plan acceptance:
+Foundation changes are valid only as minimal enabling scaffolds. Treat this as a hard gate for Phase 5 plan acceptance:
 
 - A final plan should have at most one foundation change before the first production business/user workflow. The default valid foundation is the first final change.
 - A foundation change must be a zero-domain engineering bootstrap. It should directly own only repository/package skeleton, package/app boundaries, root scripts, lint/typecheck/test harnesses, configuration loading, local dependency manifests, migration tooling without business schema, empty adapter seams, empty web/worker smoke entrypoints, environment/deploy conventions, and smoke proof.
 - These foundation direct atoms often project to `design-obligation`, `verification-obligation`, or `spec-guard`; only externally meaningful runtime contracts should project to `spec-requirement`.
 - A foundation change must prove itself with executable checks such as dependency startup, empty migration tooling smoke, env schema validation, package/build/typecheck, and a minimal empty health/API or worker probe. "Types exist", "contract exists", "specimen renders", or "visual harness exists" is not sufficient by itself.
 - A foundation change must not directly advance user/domain capabilities or business capability baselines. It must not create domain-specific schemas or entities, domain commands/use-cases/policies, user-facing API contracts, worker or async business semantics, domain events/streams/outbox messages, identity/authorization/tenancy mappings, entitlement/accounting/delivery/export concepts, lifecycle/versioning rules, operational observability, privacy workflows, recovery behavior, responsive behavior, visual quality, or design-system behavior.
-- Direct domain atoms in a foundation change must be moved to the first business change that needs them or reclassified as contextual/downstream constraints. Phase 4 must not keep them in foundation by arguing that later changes will depend on their contracts; dependency is not direct ownership.
+- Direct domain atoms in a foundation change must be moved to the first business change that needs them or reclassified as contextual/downstream constraints. Phase 5 must not keep them in foundation by arguing that later changes will depend on their contracts; dependency is not direct ownership.
 - Low-level or governance-heavy atom groups that appear after the foundation, such as action/job runtime, UI stage/overlay contracts, object disabled-state governance, design tokens, responsive proof, observability, privacy, or quota policy, must be attached to the first business workflow that directly needs them as direct deltas, design obligations, task obligations, or evidence burden unless they qualify as an independently runnable operational loop.
-- A standalone post-foundation non-business change is allowed only when source evidence requires an independently runnable user/system or operational loop whose entry, fact, projection, failure path, and evidence can be archived without waiting for a later business workflow. The Phase 4 report must name that loop and explain why embedding it in the first dependent business change would be less truthful.
+- A standalone post-foundation non-business change is allowed only when source evidence requires an independently runnable user/system or operational loop whose entry, fact, projection, failure path, and evidence can be archived without waiting for a later business workflow. The Phase 5 report must name that loop and explain why embedding it in the first dependent business change would be less truthful.
 - A foundation change with any direct domain behavior, business table creation, or business capability advancement must be refit. Move those atoms to business changes or return `blocked`; do not record a domain-spine exception.
 - A foundation change with more than 35 direct atoms or more than 1 capability advanced requires split/defer analysis. If it remains over budget, return `blocked` or record a user-facing exception with rejected split options.
-- A plan with multiple pre-business foundation/governance changes must not return `accepted` or `adjusted`; Phase 4 must merge them into the single foundation, move them into the first dependent business change, defer them as contextual/evidence burden, or return `blocked`.
+- A plan with multiple pre-business foundation/governance changes must not return `accepted` or `adjusted`; Phase 5 must merge them into the single foundation, move them into the first dependent business change, defer them as contextual/evidence burden, or return `blocked`.
 
 ### Required Split Analysis
 
@@ -251,7 +346,7 @@ Rules:
 - A single-capability change is allowed only when its entry, fact, projection, failure path, and verification truly do not directly change another durable capability.
 - A capability advanced by one change is allowed only when the source set makes it a terminal first-version boundary or later expansion is explicitly out of scope; this must be stated in the progression review.
 - If the final plan has a mostly diagonal matrix and the coupling gate cannot justify it from source evidence, return `blocked` instead of `accepted` or `adjusted`.
-- The Phase 4 report must summarize this audit with counts or qualitative findings sufficient for a reviewer to see why the plan did not collapse into change/capability one-to-one mapping.
+- The Phase 5 report must summarize this audit with counts or qualitative findings sufficient for a reviewer to see why the plan did not collapse into change/capability one-to-one mapping.
 
 ## Effective Change Plan Requirements
 
@@ -261,7 +356,7 @@ The final `change-plan.md` must include:
 
 - Source documents read
 - Phase 3 global atom index path
-- Phase 4 work path
+- Phase 5 work path
 - Assumptions and conflicts
 
 ### Capability Map
@@ -299,6 +394,17 @@ For each final change:
 
 - Change name:
 - Closed-loop outcome:
+- Source-window grounding:
+  - Input source-window dossiers:
+  - Source-backed semantic profile:
+  - Refit trace:
+- Source Window Semantic Grounding Gate:
+  - Source windows cited:
+  - Combined business/system semantics:
+  - Why these atoms belong together:
+  - Why this roadmap position is valid:
+  - Manual acceptance scenario:
+  - Non-direct obligation handling:
 - Direct atom groups:
 - Capability changes:
   - New:
@@ -330,7 +436,8 @@ Roadmap relation rules:
 - `Modified` must list only capabilities that already have an earlier final direct owner and for which the current change directly owns at least one additional source-backed atom.
 - A capability listed under `New` or `Modified` must also appear in this change's final packet capability ownership table and in `change-capability-anchors/index.md`.
 - A capability present only as dependency, preserve-only relation, upstream realized baseline, downstream constraint, contextual atom, evidence burden, or non-goal must not appear under `New` or `Modified`.
-- When Phase 4 splits, merges, renames, reorders, or remaps atom ownership, it must regenerate all roadmap relation labels after final packets are derived. Do not carry forward Phase 1 labels.
+- When Phase 5 splits, merges, renames, reorders, or remaps atom ownership, it must regenerate all roadmap relation labels after final packets are derived. Do not carry forward Phase 1 labels.
+- Every final change must cite the input source-window dossiers and refit trace rows that justify its closed-loop outcome and ordering. A final change with only atom-count or capability-count rationale is incomplete.
 
 ## Final Change Packets
 
@@ -338,6 +445,8 @@ Each `change-capability-anchors/<change-slug>/<change-slug>.md` final packet mus
 
 - change name
 - closed-loop outcome
+- source-window grounding links and semantic profile summary
+- Source Window Semantic Grounding Gate answer summary
 - final direct owner atoms grouped by capability
 - final artifact projection for every direct atom
 - contextual atoms and future constraints that affect current design
@@ -347,7 +456,7 @@ Each `change-capability-anchors/<change-slug>/<change-slug>.md` final packet mus
 - complexity budget status, over-budget triggers, and split/defer decisions
 - foundation/business gate status and any exception rationale
 - evidence burden
-- source atom and global atom index links
+- source atom, source-window dossier, source-window refit trace, and global atom index links
 - blockers, or `None`
 
 Direct atom table:
@@ -355,7 +464,7 @@ Direct atom table:
 | Global Atom ID | Source Document | Lines | Atom Type | Source Fact | Normativity | Artifact Projection | Projection Rationale | Owner Capability | Atom Relation | Roles | Propose Use | Evidence Need |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
 
-All final packet `Global Atom ID` values must preserve the exact `GA-####` IDs from `change-capability-anchors/obligation-atom-index.md`; Phase 4 must not rewrite them to another global prefix or source-local atom id.
+All final packet `Global Atom ID` values must preserve the exact `GA-####` IDs from `change-capability-anchors/obligation-atom-index.md`; Phase 5 must not rewrite them to another global prefix or source-local atom id.
 
 Direct table rows must use `spec-requirement`, `spec-guard`, `design-obligation`, or `verification-obligation`. `contextual-only` belongs only in the context table or non-direct classifications.
 
@@ -380,7 +489,7 @@ Derived-view invariants:
 
 ## Final Capability Relation Consistency Check
 
-Before writing final reports, Phase 4 must run a consistency check across the final plan and derived anchors. Write the result into `phase-works/phase-4/alignment-final-report.md` and summarize it in `phase-works/phase-4/phase-4-agent-report.md`.
+Before writing final reports, Phase 5 must run a consistency check across the final plan and derived anchors. Write the result into `phase-works/phase-5/alignment-final-report.md` and summarize it in `phase-works/phase-5/phase-5-agent-report.md`.
 
 Required comparison:
 
@@ -393,36 +502,44 @@ Rules:
 - `Later Direct Owners` must match later non-empty matrix cells, later roadmap `Modified` entries, final packet capability ownership, and capability views.
 - No capability may have a roadmap `Modified` entry, matrix `Modified` narrative, or anchor-index occurrence before its first roadmap `New`.
 - No capability may appear in `change-capability-anchors/index.md` unless at least one direct atom in that change packet has that capability as final owner.
-- If stale labels are the only problem, repair the Phase 4 artifacts without changing Phase 2 or Phase 3 evidence.
-- If the mismatch shows that final direct atom ownership itself is ambiguous or contradictory, return `needs-coverage-recheck` or `blocked`; do not mark Phase 4 `accepted` or `adjusted`.
+- If stale labels are the only problem, repair the Phase 5 artifacts without changing Phase 2 or Phase 3 evidence.
+- If the mismatch shows that final direct atom ownership itself is ambiguous or contradictory, return `needs-coverage-recheck` or `blocked`; do not mark Phase 5 `accepted` or `adjusted`.
 
 ## Workflow
 
 1. Read Phase 3's `phase-works/phase-3/coverage-review.md` decision and global atom index.
-2. Read Phase 3 handoff items, especially atoms marked `phase-4-refit-required`, ownership ambiguities, and source-backed non-direct constraints.
-3. Ensure `phase-works/phase-4/` exists and write `input-change-plan.md` directly in that directory.
-4. Build the atom-driven planning graph.
-5. Apply the implementation-ready complexity gate, Single Foundation and Business-First Gate, required split analysis, and Change/Capability Coupling Gate to every candidate final change.
-6. Decide whether the Phase 1 framework is accepted, adjusted, needs coverage recheck, or blocked.
-7. If accepted or adjusted, write `phase-works/phase-4/change-plan.md` and `phase-works/phase-4/atom-plan-mapping.md`.
-8. If adjusted, update root `openspec/orchestrate/change-plan.md` to the latest effective plan after the Phase 4 snapshot and mapping are written.
-9. Write `phase-works/phase-4/capability-progression-review.md`, `change-complexity-review.md`, and `plan-refit-decision-log.md`.
-10. If the status is `adjusted`, `needs-coverage-recheck`, or `blocked`, write `phase-works/phase-4/change-plan-adjustments.md` with the plan-impact and next-action summary.
-11. Derive final `change-capability-anchors/<change-slug>/` packets and capability views from the global atom index and final plan when the status is `accepted` or `adjusted`.
-12. Write `change-capability-anchors/index.md`.
-13. Run the Final Capability Relation Consistency Check. Repair stale `First change`, matrix cells, roadmap `New`/`Modified` labels, final anchors index rows, capability views, and human-plan summaries before proceeding.
-14. Write `phase-works/phase-4/change-capability-human-plan.md` as a readable synthesis of final change packets and capability progression when the status is `accepted` or `adjusted`.
-15. Write `phase-works/phase-4/phase-4-agent-report.md` and `phase-works/phase-4/alignment-final-report.md`.
-16. Run a local artifact consistency check by inspection or deterministic parsing before finishing.
+2. Read Phase 4's `phase-works/phase-4/phase-4-agent-report.md` and confirm `Phase 4 Status: grounded`.
+3. Read Phase 4 source-window dossiers, semantic profiles, and grounding issues.
+4. Read Phase 3 handoff items, especially atoms marked `phase-5-refit-required`, ownership ambiguities, and source-backed non-direct constraints.
+5. Ensure `phase-works/phase-5/` exists and write `input-change-plan.md` directly in that directory.
+6. Build the atom-driven planning graph using the global atom index and Phase 4 source-window semantic profiles.
+7. Apply the implementation-ready complexity gate, Single Foundation and Business-First Gate, required split analysis, and Change/Capability Coupling Gate to every candidate final change.
+8. Decide whether the Phase 1 framework is accepted, adjusted, needs coverage recheck, or blocked.
+9. Write `phase-works/phase-5/source-window-refit-trace.md` to explain how Phase 4 input change/capability source windows and atoms were reconstructed into final changes/capabilities.
+10. If accepted or adjusted, write `phase-works/phase-5/change-plan.md` and `phase-works/phase-5/atom-plan-mapping.md`.
+11. If adjusted, update root `openspec/orchestrate/change-plan.md` to the latest effective plan after the Phase 5 snapshot and mapping are written.
+12. Write `phase-works/phase-5/capability-progression-review.md`, `change-complexity-review.md`, and `plan-refit-decision-log.md`.
+13. If the status is `adjusted`, `needs-coverage-recheck`, or `blocked`, write `phase-works/phase-5/change-plan-adjustments.md` with the plan-impact and next-action summary.
+14. Derive final `change-capability-anchors/<change-slug>/` packets and capability views from the global atom index, source-window refit trace, and final plan when the status is `accepted` or `adjusted`.
+15. Write `change-capability-anchors/index.md`.
+16. Run the Final Capability Relation Consistency Check. Repair stale `First change`, matrix cells, roadmap `New`/`Modified` labels, final anchors index rows, capability views, and human-plan summaries before proceeding.
+17. Write `phase-works/phase-5/change-capability-human-plan.md` as a readable synthesis of final change packets and capability progression when the status is `accepted` or `adjusted`.
+18. Write `phase-works/phase-5/phase-5-agent-report.md` and `phase-works/phase-5/alignment-final-report.md`.
+19. Run a local artifact consistency check by inspection or deterministic parsing before finishing.
 
 ## Required Mapping Tables
 
-`phase-works/phase-4/atom-plan-mapping.md` must include:
+`phase-works/phase-5/source-window-refit-trace.md` must include:
+
+| Input Change / Capability | Source Window Evidence | Input Atoms | Final Change / Capability | Atom Movement | Relation Changes | Engineering Reason |
+| --- | --- | --- | --- | --- | --- | --- |
+
+`phase-works/phase-5/atom-plan-mapping.md` must include:
 
 | Global Atom ID | Source Document | Lines | Phase 3 Owner / Status | Phase 3 Artifact Projection | Final Owner Change | Final Owner Capability | Final Artifact Projection | Final Relation | Plan Decision | Reason |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
 
-`phase-works/phase-4/plan-refit-decision-log.md` must include:
+`phase-works/phase-5/plan-refit-decision-log.md` must include:
 
 | Decision Item | Input Evidence | Candidate Options | Decision | Output Artifact | Reason |
 | --- | --- | --- | --- | --- | --- |
@@ -432,19 +549,19 @@ Rules:
 | Change | Change Packet | Capability Views | Direct Atoms | Contextual Atoms | Capabilities Advanced | Complexity Budget | Evidence Burden | Blockers |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- |
 
-`phase-works/phase-4/change-capability-human-plan.md` must include readable change packets:
+`phase-works/phase-5/change-capability-human-plan.md` must include readable change packets:
 
-| Change | Closed-loop Outcome | Direct Atom Groups | Complexity Budget | Contextual Atoms / Future Constraints | Upstream Realized Baseline | Downstream Constraints | Non-Goals | Evidence Burden | Ledger Links |
-| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| Change | Closed-loop Outcome | Source-Window Grounding | Direct Atom Groups | Complexity Budget | Contextual Atoms / Future Constraints | Upstream Realized Baseline | Downstream Constraints | Non-Goals | Evidence Burden | Ledger Links |
+| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
 
 It must also include a capability progression narrative:
 
 | Capability | Baseline Change | Refinement / Hardening / Extension Changes | Atom Progression Summary | Human Review Notes |
 | --- | --- | --- | --- | --- |
 
-## Phase 4 Report
+## Phase 5 Report
 
-`phase-works/phase-4/phase-4-agent-report.md` must include:
+`phase-works/phase-5/phase-5-agent-report.md` must include:
 
 | Refit Finding | Source Ranges or Atoms | Plan Decision | Files Written | Atom Resolution | Remaining Gap or Blocker |
 | --- | --- | --- | --- | --- | --- |
@@ -452,6 +569,9 @@ It must also include a capability progression narrative:
 It must also include:
 
 - whether the initial plan was accepted or adjusted
+- Phase 4 source-window dossier intake summary, including input changes/capabilities covered and any grounding issues that affected refit
+- Phase 4 source-window semantic profile usage summary, including which original source semantics drove split, merge, reorder, rename, contextualization, dependency, evidence-burden, or non-goal decisions
+- Source Window Semantic Grounding Gate summary for final changes, including any rejected split/merge/reorder options and why atom count was or was not a valid complexity concern
 - atom-driven planning graph summary
 - capability progression recalibration summary
 - change complexity recalibration summary
@@ -471,24 +591,26 @@ It must also include:
 - confirmation that the final plan has at most one pre-business foundation change, or records a blocker/explicit exception with an independently runnable loop
 - confirmation that foundation changes do not directly own deferrable domain behavior and that post-foundation low-level capability deltas are advanced inside the first business workflow that needs them
 - confirmation that source atom files and the Phase 3 global atom index were not modified
-- confirmation that every Phase 4 artifact passed the Artifact Language Gate
+- confirmation that refit decisions cite Phase 4 source-window dossier evidence rather than relying only on atom count, capability count, or atom summaries
+- confirmation that every final change answers the Source Window Semantic Grounding Gate questions before atom ownership is finalized
+- confirmation that every Phase 5 artifact passed the Artifact Language Gate
 - next required step: `Start openspec-propose`, `Run Phase 3 again`, or `Blocked`
 
 ## Completion
 
-Phase 4 ends with exactly one status in `phase-works/phase-4/phase-4-agent-report.md`:
+Phase 5 ends with exactly one status in `phase-works/phase-5/phase-5-agent-report.md`:
 
-- `Phase 4 Status: accepted`
-- `Phase 4 Status: adjusted`
-- `Phase 4 Status: needs-coverage-recheck`
-- `Phase 4 Status: blocked`
+- `Phase 5 Status: accepted`
+- `Phase 5 Status: adjusted`
+- `Phase 5 Status: needs-coverage-recheck`
+- `Phase 5 Status: blocked`
 
-Use `accepted` when the Phase 1 framework remains coherent after atom-level review, final packets were derived, every capability atom sequence is coherent, every change satisfies the implementation-ready complexity gate, the final plan passes the Single Foundation and Business-First Gate, and the final matrix passes the Change/Capability Coupling Gate.
+Use `accepted` when the Phase 1 framework remains coherent after source-window and atom-level review, final packets were derived, every capability atom sequence is coherent, every change satisfies the implementation-ready complexity gate, the final plan passes the Single Foundation and Business-First Gate, and the final matrix passes the Change/Capability Coupling Gate.
 
-Use `adjusted` when the framework was refit, all final atom mappings are traceable, every capability atom sequence is coherent, every change satisfies the implementation-ready complexity gate, the final plan passes the Single Foundation and Business-First Gate, the final matrix passes the Change/Capability Coupling Gate, and final packets were derived.
+Use `adjusted` when the framework was refit from source-window semantic profiles, all final atom mappings are traceable, every capability atom sequence is coherent, every change satisfies the implementation-ready complexity gate, the final plan passes the Single Foundation and Business-First Gate, the final matrix passes the Change/Capability Coupling Gate, and final packets were derived.
 
-Use `needs-coverage-recheck` when Phase 4 exposes missing, over-broad, conflicting, or semantically unclear source obligations that Phase 3 must normalize before the plan can be final.
+Use `needs-coverage-recheck` when Phase 5 exposes missing, over-broad, conflicting, or semantically unclear source obligations that Phase 3 must normalize before the plan can be final.
 
-Use `blocked` when the adjustment needs source boundaries, product decisions, or broad reanalysis that Phase 4 is not allowed to perform.
+Use `blocked` when the adjustment needs source boundaries, product decisions, or broad reanalysis that Phase 5 is not allowed to perform.
 
-After `accepted` or `adjusted`, `openspec-propose` may start from the final change packets. After `needs-coverage-recheck`, the main agent must spawn a fresh Phase 3 review subagent. Do not start `openspec-propose` directly from `needs-coverage-recheck` or `blocked`.
+After `accepted` or `adjusted`, `openspec-propose` may start from the final change packets. After `needs-coverage-recheck`, the main agent must spawn a fresh Phase 3 review subagent, then fresh Phase 4 grounding and Phase 5 refit subagents. Do not start `openspec-propose` directly from `needs-coverage-recheck` or `blocked`.

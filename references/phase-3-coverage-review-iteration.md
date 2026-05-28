@@ -1,6 +1,6 @@
 # Phase 3: Coverage Normalization and Gap Audit
 
-Phase 3 consumes the source-first Phase 2 atom files and produces the normalized global obligation atom index. Its job is to close source coverage and atom identity, not to refit the final change plan. Phase 4 performs plan sequencing and granularity decisions after Phase 3 has made atom granularity stable.
+Phase 3 consumes the source-first Phase 2 atom files and produces the normalized global obligation atom index. Its job is to close source coverage and atom identity, not to refit the final change plan. Phase 4 grounds the source windows behind the candidate change/capability framework, and Phase 5 performs plan sequencing and granularity decisions after Phase 3 has made atom granularity stable.
 
 Phase 3 is not a new propose-writing pass and must not invent production requirements without source evidence. It answers:
 
@@ -8,7 +8,7 @@ Phase 3 is not a new propose-writing pass and must not invent production require
 2. Is each atom small enough, source-backed, and semantically valid?
 3. Are broad atoms compressing multiple UI/flow/data/verification obligations?
 4. Are repeated atoms true duplicates, refinements, preserve/dependency/context, or conflicts?
-5. Can each production obligation be assigned exactly one candidate/final owner change/capability, or does it require Phase 4 refit?
+5. Can each production obligation be assigned exactly one candidate owner change/capability, or does it require Phase 5 refit after Phase 4 source-window grounding?
 6. Are all source ranges without atoms genuinely non-production, reference-only, formatting, background, or otherwise safe to ignore?
 7. Does each atom have the right artifact projection (`spec-requirement`, `spec-guard`, `design-obligation`, `verification-obligation`, or `contextual-only`) based on source semantics?
 
@@ -35,6 +35,7 @@ Write current copies only:
 - `openspec/orchestrate/phase-works/phase-3/phase-3-trace/source-remainder-review.md`
 - `openspec/orchestrate/phase-works/phase-3/phase-3-trace/duplicate-ownership-review.md`
 - `openspec/orchestrate/phase-works/phase-3/phase-3-trace/atom-normalization-decision-log.md`
+- `openspec/orchestrate/phase-works/phase-3/coverage-review-app/index.html`
 - `openspec/orchestrate/phase-works/phase-3/coverage-review.md`
 - `openspec/orchestrate/phase-works/phase-3/phase-3-agent-report.md`
 
@@ -43,6 +44,8 @@ Use a single-level filename for per-source files. Derive it from the source docu
 Phase 3 may add precise missing source-backed atoms to `obligation-atom-index.md`, but it must not edit Phase 2 source atom files. If missing obligations are too broad or require rereading many documents beyond targeted semantic review, return `Decision: blocked` and state whether a full Phase 2 rerun is required.
 
 `phase-works/phase-3/phase-3-trace/` records the current Phase 3 intermediate audit trail. These files are review aids, not source of truth. They must be overwritten on each fresh Phase 3 run and must be consistent with the final `obligation-atom-index.md`, per-source coverage files, and `phase-works/phase-3/coverage-review.md`.
+
+After the Phase 3 semantic outputs exist, generate `phase-works/phase-3/coverage-review-app/index.html` as a deterministic static human review app. The app may read source document bodies to render original line-numbered content and may read Phase 3 outputs to render linked review views. It must not add atoms, change atom IDs, reinterpret coverage, decide duplicate resolution, decide ownership, or write Phase 4/Phase 5 artifacts.
 
 ## Artifact Language Gate
 
@@ -69,9 +72,9 @@ Rules:
 - If a later obligation genuinely strengthens or narrows an earlier obligation, create a new atom only for the additional source-backed delta and set `Atom Relation` to `refines:<global-atom-id>` or `modifies:<global-atom-id>`.
 - If a source fact only preserves or depends on another atom, use `Atom Relation` such as `preserves:<global-atom-id>` or `depends-on:<global-atom-id>` and do not count it as duplicate direct coverage.
 - If a source fact is needed only to keep current design compatible with a later obligation, classify it as contextual future-compatibility and link it to the future or candidate global atom when known.
-- `Owner Change` and `Owner Capability` may remain `phase-4-refit-required` when coverage is complete but final placement depends on sequencing or granularity decisions. Phase 4 must resolve these before final output.
+- `Owner Change` and `Owner Capability` may remain `phase-5-refit-required` when coverage is complete but final placement depends on source-window grounding, sequencing, or granularity decisions. Phase 5 must resolve these before final output.
 - `Artifact Projection` must follow source semantics independently from `Coverage Status`: direct architecture/runtime/package/schema/provider/deployment atoms may be `design-obligation`; test strategy, fixture, visual, smoke, and evidence atoms may be `verification-obligation`; preserve and explicit non-goal atoms may be `spec-guard`.
-- `contextual-only` is reserved for non-direct context, reference, future-compatibility, or non-coverage rows. If an atom is still a direct candidate or `phase-4-refit-required`, assign `spec-requirement`, `spec-guard`, `design-obligation`, or `verification-obligation`; if no non-context projection is safe, mark the row `blocked` instead of letting a direct atom proceed as `contextual-only`.
+- `contextual-only` is reserved for non-direct context, reference, future-compatibility, or non-coverage rows. If an atom is still a direct candidate or `phase-5-refit-required`, assign `spec-requirement`, `spec-guard`, `design-obligation`, or `verification-obligation`; if no non-context projection is safe, mark the row `blocked` instead of letting a direct atom proceed as `contextual-only`.
 - `duplicate` is not a complete rationale unless it names the duplicated `Global Atom ID` and explains semantic equivalence.
 
 Artifact projection values:
@@ -94,7 +97,7 @@ Coverage statuses:
 - `prototype-only-not-production`
 - `superseded`
 - `no-product-or-system-impact`
-- `phase-4-refit-required`
+- `phase-5-refit-required`
 - `unresolved-conflict`
 - `blocked`
 
@@ -148,10 +151,38 @@ Evaluate in this order:
     - ignore background prose, repeated summaries, discarded options, and purely explanatory text unless it defines a production behavior, boundary, data fact, verification obligation, deployment requirement, auth/privacy rule, failure path, or preserve constraint
     - record each remaining meaningful uncovered source obligation as a missing atom and add it to the global index when precise enough
 14. Write `phase-works/phase-3/phase-3-trace/source-remainder-review.md`, listing every candidate remaining source range reviewed, how it was discovered, read scope, semantic classification, whether it contains a production obligation, and the resulting atom/status/finding.
-15. Identify atoms whose owner change/capability cannot be resolved without plan refit. Mark them `phase-4-refit-required` instead of forcing them into the Phase 1 framework.
-16. Write `phase-works/phase-3/phase-3-trace/atom-normalization-decision-log.md`, preserving every candidate finding considered, the decision for each, and whether Phase 4 must resolve final placement.
+15. Identify atoms whose owner change/capability cannot be resolved without source-window grounding and plan refit. Mark them `phase-5-refit-required` instead of forcing them into the Phase 1 framework.
+16. Write `phase-works/phase-3/phase-3-trace/atom-normalization-decision-log.md`, preserving every candidate finding considered, the decision for each, and whether Phase 5 must resolve final placement.
 17. Build compact global statistics across source documents, global atoms, meaningful missing atoms, duplicate findings, broad-atom split findings, non-coverage classifications, ownership ambiguities, gaps, and conflicts.
-18. Decide whether coverage normalization is complete or blocked.
+18. Generate `phase-works/phase-3/coverage-review-app/index.html` from the source documents and Phase 3 artifacts. Prefer the bundled helper `scripts/phase3_coverage_review_app.py` unless a project-specific equivalent already exists.
+19. Decide whether coverage normalization is complete or blocked.
+
+## Phase 3 Human Review App
+
+The review app is a deterministic visualization layer over Phase 3 artifacts. It must help a human reviewer answer four questions:
+
+- For each source document, which source sections are covered, classified as safe non-atom ranges, or handed off?
+- For each Phase 2 source atom row, what normalized global atom, relation, non-direct status, or blocker did Phase 3 assign?
+- Which duplicate, broad-atom, overlap, ownership ambiguity, projection uncertainty, blocker, and Phase 5 refit handoff items deserve focused review?
+- Is the global `GA-####` registry internally searchable by source, status, projection, owner, relation, and evidence burden?
+
+The app must include:
+
+- `Source Coverage` view: source document tree, original source content with line numbers, effective `GA-####` annotations, per-document coverage judgment, section coverage, non-atom range review, and duplicate/ownership review.
+- `Source -> Global` view: searchable/filterable table over `phase-3-trace/source-to-global-atom-map.md`.
+- `Risk Queue` view: focused duplicate/broad/ownership/Phase 5 refit handoff queue, sorted by review risk rather than source order.
+- `Global Registry` view: searchable/filterable table over `change-capability-anchors/obligation-atom-index.md`.
+- Visible warning count when any source file, coverage file, trace table, global index, or line range cannot be parsed mechanically.
+
+Prefer generating a self-contained HTML file that can be opened directly from disk, so Phase 3 review does not require a dev server. The bundled helper can be run from the repository root:
+
+```bash
+python3 .codex/skills/source-aligned-change-plan-coverage/scripts/phase3_coverage_review_app.py \
+  --repo-root . \
+  --orchestrate-dir openspec/orchestrate
+```
+
+The helper reads source document bodies, `phase-works/phase-3/source-doc-manifest.md`, all per-source `.coverage.md` files, all four `phase-3-trace/*.md` files, `change-capability-anchors/obligation-atom-index.md`, and `phase-works/phase-3/coverage-review.md`, then writes `phase-works/phase-3/coverage-review-app/index.html`. Its output is reviewer-facing only and must not be treated as the source of truth for Phase 4 or Phase 5.
 
 ## Required Tables
 
@@ -195,8 +226,8 @@ Each `phase-works/phase-3/source-doc-coverage/<source>.coverage.md` file must in
 - Duplicate direct atoms, or `None`
 - Broad-atom split findings, or `None`
 - Non-coverage statuses used
-- Phase 4 placement findings, or `None`
-- Judgment: `covered`, `covered-by-classification`, `phase-4-refit-required`, or `blocked`
+- Phase 5 placement findings, or `None`
+- Judgment: `covered`, `covered-by-classification`, `phase-5-refit-required`, or `blocked`
 
 `phase-works/phase-3/phase-3-trace/source-to-global-atom-map.md` must include one row for every Phase 2 atom/context row:
 
@@ -210,12 +241,12 @@ Each `phase-works/phase-3/source-doc-coverage/<source>.coverage.md` file must in
 
 `phase-works/phase-3/phase-3-trace/duplicate-ownership-review.md` must include:
 
-| Candidate ID | Source Ranges or Source Atoms | Candidate Type | Equivalent Obligation? | Resolution | Global Atom ID or Relation | Phase 4 Placement Needed? | Reason |
+| Candidate ID | Source Ranges or Source Atoms | Candidate Type | Equivalent Obligation? | Resolution | Global Atom ID or Relation | Phase 5 Placement Needed? | Reason |
 | --- | --- | --- | --- | --- | --- | --- | --- |
 
 `phase-works/phase-3/phase-3-trace/atom-normalization-decision-log.md` must include:
 
-| Review Item | Finding Class | Input Evidence | Decision | Output Artifact | Phase 4 Needed? | Reason |
+| Review Item | Finding Class | Input Evidence | Decision | Output Artifact | Phase 5 Needed? | Reason |
 | --- | --- | --- | --- | --- | --- | --- |
 
 `phase-works/phase-3/coverage-review.md` must include:
@@ -228,9 +259,9 @@ It must also include:
 | Metric | Value | Evidence | Interpretation |
 | --- | --- | --- | --- |
 
-And a Phase 4 handoff table:
+And a Phase 5 refit handoff table:
 
-| Handoff Item | Source Ranges or Atoms | Current Candidate Owners | Current Artifact Projection | Why Phase 4 Must Decide | Required Plan Refit Consideration |
+| Handoff Item | Source Ranges or Atoms | Current Candidate Owners | Current Artifact Projection | Why Phase 5 Must Decide | Required Plan Refit Consideration |
 | --- | --- | --- | --- | --- | --- |
 
 ## Decision Values
@@ -240,9 +271,9 @@ And a Phase 4 handoff table:
 - `Decision: coverage-complete`
 - `Decision: blocked`
 
-Use `coverage-complete` only when every source document under the specified roots is manifest-classified, every production-meaningful source obligation has exactly one global atom or justified non-coverage status, every source range without atoms is classified as production-safe non-atom content, there are no unclassified atoms, no unresolved duplicate obligations, no broad atom compression findings left unsplit or justified, no blocking conflicts, and every Phase 4 placement question is explicitly handed off.
+Use `coverage-complete` only when every source document under the specified roots is manifest-classified, every production-meaningful source obligation has exactly one global atom or justified non-coverage status, every source range without atoms is classified as production-safe non-atom content, there are no unclassified atoms, no unresolved duplicate obligations, no broad atom compression findings left unsplit or justified, no blocking conflicts, and every Phase 5 placement question is explicitly handed off.
 
-Additionally, use `coverage-complete` only when every source document listed in `phase-works/phase-3/source-doc-manifest.md` has a matching `phase-works/phase-3/source-doc-coverage/<source>.coverage.md` file and all four `phase-works/phase-3/phase-3-trace/` files exist and reconcile with the final review.
+Additionally, use `coverage-complete` only when every source document listed in `phase-works/phase-3/source-doc-manifest.md` has a matching `phase-works/phase-3/source-doc-coverage/<source>.coverage.md` file, all four `phase-works/phase-3/phase-3-trace/` files exist and reconcile with the final review, and `phase-works/phase-3/coverage-review-app/index.html` exists as a review aid over the final Phase 3 outputs.
 
 Use `blocked` when source documents conflict, source roots are incomplete, source atom files are missing, atom evidence is too broad to normalize, or the user must decide a boundary before coverage can close.
 
@@ -261,11 +292,12 @@ Use `blocked` when source documents conflict, source roots are incomplete, sourc
 - broad atoms split or justified
 - non-coverage classifications
 - artifact projection distribution and any projection uncertainties
-- Phase 4 placement handoffs
+- Phase 5 placement handoffs
 - conflicts resolved or remaining
 - confirmation that every production-meaningful obligation under the specified roots is covered by exactly one global atom or justified
 - confirmation that no raw helper output was used as a gate
 - confirmation that any line-range helper output, if used, was treated only as mechanical candidate input
+- Phase 3 review app path, source document count, global atom count, risk item count, warning count, and confirmation that the app is only a deterministic visualization of Phase 3 artifacts
 - confirmation that every Phase 3 artifact passed the Artifact Language Gate
 
-The final agent reply should be short and in Chinese. Include the decision, changed files, missing atoms, duplicate/ownership findings, language-gate result, remaining blockers, and whether Phase 4 may proceed.
+The final agent reply should be short and in Chinese. Include the decision, changed files, missing atoms, duplicate/ownership findings, language-gate result, remaining blockers, and whether Phase 4 source-window grounding may proceed.
