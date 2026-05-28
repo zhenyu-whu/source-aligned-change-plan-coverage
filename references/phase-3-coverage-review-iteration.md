@@ -45,7 +45,7 @@ Phase 3 may add precise missing source-backed atoms to `obligation-atom-index.md
 
 `phase-works/phase-3/phase-3-trace/` records the current Phase 3 intermediate audit trail. These files are review aids, not source of truth. They must be overwritten on each fresh Phase 3 run and must be consistent with the final `obligation-atom-index.md`, per-source coverage files, and `phase-works/phase-3/coverage-review.md`.
 
-After the Phase 3 semantic outputs exist, generate `phase-works/phase-3/coverage-review-app/index.html` as a deterministic static human review app. The app may read source document bodies to render original line-numbered content and may read Phase 3 outputs to render linked review views. It must not add atoms, change atom IDs, reinterpret coverage, decide duplicate resolution, decide ownership, or write Phase 4/Phase 5 artifacts.
+After the Phase 3 semantic outputs exist, generate `phase-works/phase-3/coverage-review-app/index.html` as the deterministic static human review app defined below. It may render source bodies and Phase 3 outputs, but must not add atoms, change atom IDs, reinterpret coverage, decide duplicate/ownership issues, or write Phase 4/Phase 5 artifacts.
 
 ## Artifact Language Gate
 

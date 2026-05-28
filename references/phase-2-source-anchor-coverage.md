@@ -26,7 +26,7 @@ These files are immutable after Phase 2 completes. If later phases discover miss
 
 ## Output Ownership
 
-Phase 2 output responsibility is split across orchestration, source extraction, and aggregation:
+Phase 2 output responsibility is split across orchestration, source extraction, aggregation, and deterministic review-app generation:
 
 - The main orchestrating agent may write `phase-works/phase-2/source-obligation-atoms/work-queue.md` during Phase 2A, because this is lightweight scheduling rather than source obligation extraction.
 - Source-extraction subagents write only their assigned `phase-works/phase-2/source-obligation-atoms/<source>.atoms.md` files.
@@ -144,15 +144,15 @@ Phase 2 must be reviewable as a set of source document extractions.
 
 1. Read `change-plan.md` to understand candidate changes, capabilities, sequencing assumptions, and current planned boundaries.
 2. Read `phase-works/phase-1/source-doc-manifest.md` and list every source document with `Read Status: read-full`.
-3. Build `phase-works/phase-2/source-obligation-atoms/work-queue.md` using only lightweight scheduling evidence: initial semantic split first, then merge review, with a default target of five or fewer final extraction batches unless the source set is genuinely large or context pressure justifies more.
+3. Build `phase-works/phase-2/source-obligation-atoms/work-queue.md` using the Phase 2A scheduling rules.
 4. Spawn one fresh source-extraction subagent per work queue batch.
 5. Each source-extraction subagent must read its assigned source document bodies in full.
 6. Each subagent extracts atom candidates from the source first, then assigns candidate ownership only after the source-backed atom list is clear.
 7. Candidate ownership may name a planned change/capability, `unassigned`, `candidate-new-change`, `candidate-new-capability`, `contextual`, or `non-direct`.
 8. Do not ask a subagent to simulate one planned change across all source documents. Do not produce per-change canonical atom ledgers in Phase 2.
-9. After all source-extraction subagents finish, spawn one fresh Phase 2 index/report subagent to aggregate the Phase 2 extraction outputs into `phase-works/phase-2/source-obligation-atoms/index.md` and `phase-works/phase-2/phase-2-agent-report.md`.
-10. The index/report subagent must treat existing `.atoms.md` files as raw extraction evidence. It may report blockers for missing or malformed files, but it must not repair, reinterpret, or extend their atom content.
-11. After the aggregate exists, generate `phase-works/phase-2/source-obligation-review/index.html` from the manifest, source documents, and raw `.atoms.md` ledgers. Prefer the bundled helper `scripts/phase2_obligation_review_app.py` unless a project-specific equivalent already exists.
+9. After all source-extraction subagents finish, run the fresh Phase 2 index/report subagent described in Output Ownership.
+10. The index/report subagent may report blockers for missing or malformed files, but it must not repair, reinterpret, or extend atom content.
+11. After the aggregate exists, generate the Phase 2C review app. Prefer the bundled helper `scripts/phase2_obligation_review_app.py` unless a project-specific equivalent already exists.
 12. Do not read Phase 3, Phase 4, or Phase 5 outputs while performing Phase 2 extraction, aggregation, or review app generation.
 
 Use deterministic source filenames:

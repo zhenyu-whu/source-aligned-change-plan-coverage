@@ -1,6 +1,6 @@
 # Phase 1: Initial Source-Aligned Change Plan
 
-Phase 1 creates the initial top-level OpenSpec change/capability framework from the user-specified source documents. It must enumerate and read every source document under the user-specified source roots before slicing the plan. The Phase 1 framework is a source-informed slicing hypothesis that Phase 5 may refit after obligation atoms are normalized and Phase 4 source-window grounding is complete. It does not create concrete OpenSpec changes, proposals, specs, designs, tasks, acceptance artifacts, obligation atom ledgers, line-range anchors, coverage statuses, or a backlog of evidence items waiting for Phase 2.
+Phase 1 creates the initial top-level OpenSpec change/capability framework from a full read of the user-specified source documents. The framework is a source-informed slicing hypothesis that Phase 5 may refit after obligation atoms are normalized and Phase 4 source-window grounding is complete. It must not create concrete OpenSpec changes, proposals, specs, designs, tasks, acceptance artifacts, obligation atom ledgers, line-range anchors, coverage statuses, or a backlog of evidence items waiting for Phase 2.
 
 Write the Phase 1 plan snapshot to:
 
@@ -38,7 +38,7 @@ Plan a set of scientific, verifiable, iterative OpenSpec changes from a full rea
 
 Each change should represent a reviewable, implementable, verifiable, archivable system behavior change. Do not mechanically split by technical module, database table, page, component, SDK, queue, or prototype scenario.
 
-Use only the documents or directories the user specifies. For every specified source root, enumerate all source documents and read every source document body before producing the initial framework. Do not read or rely on the current `openspec/` directory, existing specs, existing changes, archive history, or custom artifacts unless the user explicitly includes them as input.
+Use only the documents or directories the user specifies. Enumerate and read every source document body before producing the initial framework. Do not read or rely on the current `openspec/` directory, existing specs, existing changes, archive history, or custom artifacts unless the user explicitly includes them as input.
 
 If the specified source set is too large to read safely, return a blocker instead of sampling. The Phase 1 framework is only valid when it is based on a full-source read.
 
@@ -157,12 +157,12 @@ Source-backed domain behavior found during Phase 1 should be sliced into busines
 6. Identify long-lived behavior capabilities with English kebab-case ids. Capabilities should be broader than one implementation unit unless the source set proves a terminal boundary.
 7. Generate candidate vertical changes from user/system loops, not from the capability list.
 8. For each candidate change, identify the direct increment it contributes to each involved capability, and classify that relation as `New` or `Modified`.
-9. Filter, merge, or reslice candidates using the Closed-loop Test, Change Complexity Calibration, the Split Challenge, the Capability Shape Challenge, and the anti one-to-one mapping rule.
+9. Filter, merge, or reslice candidates using the Closed-loop Test, Change Complexity Calibration, Split Challenge, Capability Shape Challenge, and anti one-to-one mapping rule.
 10. Order changes by real behavior dependencies, prioritizing the earliest minimal runnable loop.
 11. Build a capability progression matrix that shows how each change advances each capability.
 12. Mark key scenarios, non-goals, risks, conflicts, and deferred content from the input documents.
 13. Add concise `Source evidence` hints only to justify the planned slice. These hints may name source paths, headings, section numbers, decision IDs, route/page/object names, APIs, commands, DTOs, entities, tables, jobs, events, assets, environments, or verification anchors.
-14. Do not extract or enumerate every source-backed requirement in Phase 1. Do not create obligation atom ledgers, line ranges, anchor tables, coverage statuses, "pending Phase 2" evidence lists, or evidence counts. If a hint is only semantic, keep it as a short non-canonical plan clue; Phase 2 owns source-first atom extraction, Phase 3 owns coverage normalization, Phase 4 owns source-window grounding, and Phase 5 owns final plan refit.
+14. Keep Phase 1 evidence hints short and non-canonical. Do not extract or enumerate every source-backed requirement, and do not create obligation atom ledgers, line ranges, anchor tables, coverage statuses, "pending Phase 2" evidence lists, or evidence counts. Phase 2 owns source-first atom extraction, Phase 3 owns coverage normalization, Phase 4 owns source-window grounding, and Phase 5 owns final plan refit.
 
 ## Output
 

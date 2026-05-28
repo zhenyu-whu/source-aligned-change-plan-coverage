@@ -31,7 +31,7 @@ Write Phase 4 artifacts directly under `openspec/orchestrate/phase-works/phase-4
 - `openspec/orchestrate/phase-works/phase-4/source-window-grounding-issues.md`
 - `openspec/orchestrate/phase-works/phase-4/phase-4-agent-report.md`
 
-`phase-works/phase-4/source-window-dossiers/` is copied review evidence. It is not a new extraction pass and must not replace the original source documents, source atom ledgers, global atom index, or Phase 5 final packets as source of truth.
+The scope rules below make the authority boundary explicit: `phase-works/phase-4/source-window-dossiers/` is copied review evidence, not a replacement for original source documents, source atom ledgers, the global atom index, or Phase 5 final packets.
 
 ## Artifact Language Gate
 
