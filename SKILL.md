@@ -23,8 +23,10 @@ Final plan invariants:
 
 - Final changes are implementation units for later `openspec-propose` and `openspec-apply-change`, not only conceptual product loops. Closed-loop coherence is necessary but not sufficient; implementation-ready complexity must pass Phase 5 rules.
 - Capability progression labels must be recomputed from final direct atom ownership. Dependency-only, preserve-only, upstream-baseline, downstream-constraint, contextual, evidence-only, and non-goal mentions do not count as capability advancement.
+- Non-direct atoms still survive into downstream work. Any atom classified as dependency, contextual, evidence-burden, preserve/reference, later-change, explicit non-goal, or another non-direct relation must be preserved as an explicit `GA-####` row in the owning final change packet's context/evidence/dependency/non-goal handling, unless it has no final owner change and is globally contextual/non-coverage. Non-direct rows must not be lost, truncated, represented only by `atom-plan-mapping.md`, or collapsed into summary rows such as `additional-context`.
 - Pre-business foundation is a narrow exception. A final plan may have at most one zero-domain engineering bootstrap before the first production business/user workflow by default; later standalone non-business changes need an independently runnable operational loop.
 - Later `openspec-propose` and `openspec-apply-change` work must consume final change packets, not isolated source atom rows. Earlier changes provide realized baseline contracts for later changes, but must not absorb all future global obligations.
+- Capability views are direct-advancement views only. They may not contain dependency-only, contextual-only, evidence-burden, preserve/reference, later-change, explicit non-goal, or upstream-baseline rows; those rows belong in final change packets and the full `atom-plan-mapping.md`.
 
 ## Artifact Language Gate
 
@@ -57,7 +59,7 @@ openspec/orchestrate/
 │   └── <change-slug>/
 │       ├── <change-slug>.md                # final change packet derived from global atoms
 │       └── capability-anchors/
-│           └── <capability-slug>.md        # final capability view scoped to this change
+│           └── <capability-slug>.md        # direct-atom capability view scoped to this change
 └── phase-works/
     ├── phase-1/
     │   ├── change-plan.md                  # Phase 1 snapshot; root change-plan.md is the promoted latest copy
@@ -129,6 +131,8 @@ Optional bundled helper:
 - Phase 3's `change-capability-anchors/obligation-atom-index.md` is the normalized global uniqueness and ownership registry promoted to the proposal-facing root.
 - `phase-works/phase-4/source-window-dossiers/` is copied source-window review evidence, not a new extraction pass or source of truth replacement.
 - Phase 5 derives final change packets and capability views from the global index and Phase 4 source-window semantic profiles; it must not invent atoms without source evidence.
+- Final change packets are the proposal-facing source of truth for both direct scope and non-direct constraints. If a non-direct atom has a final owner change in `atom-plan-mapping.md`, the corresponding final change packet must list that atom explicitly by `GA-####` in the context/dependency/evidence/preserve/non-goal table; a packet may split this into multiple relation-specific tables, but it must not replace explicit atom rows with a count, summary, or link-only placeholder.
+- Final capability views are derived direct-scope views, not complete implementation packets. Later `openspec-propose` must not use a capability view alone to determine scope because non-direct constraints are intentionally excluded from capability advancement.
 - `phase-works/phase-5/change-capability-human-plan.md` is a human-facing synthesis, not a replacement for source-window dossiers, source atom ledgers, the global atom index, or final change packets.
 
 ## Reference Files
@@ -172,7 +176,7 @@ The main agent only orchestrates, checks interface-level outputs, and starts the
    - `grounded`: source-window dossiers and semantic profiles are complete enough for Phase 5.
    - `needs-coverage-recheck`: grounding exposed missing/broad/conflicting source obligations that require a fresh Phase 3 pass.
    - `blocked`: source documents, source boundaries, or product decisions are insufficient for safe grounding.
-6. Phase 5: after Phase 4 returns `grounded`, spawn a fresh subagent to refit the change/capability plan from the stable global atom index and Phase 4 source-window semantic profiles. It finalizes artifact projection for each direct atom, writes the current `phase-works/phase-5/` refit packet without any pass/iteration subdirectory, updates the latest effective root `change-plan.md` when needed, derives final `change-capability-anchors/<change-slug>/` packets, writes Phase 5 trace files under `phase-works/phase-5/`, and ends with:
+6. Phase 5: after Phase 4 returns `grounded`, spawn a fresh subagent to refit the change/capability plan from the stable global atom index and Phase 4 source-window semantic profiles. It finalizes artifact projection for each direct atom, writes the current `phase-works/phase-5/` refit packet without any pass/iteration subdirectory, updates the latest effective root `change-plan.md` when needed, derives final `change-capability-anchors/<change-slug>/` packets, explicitly carries every owner-scoped non-direct atom into the relevant final change packet, writes Phase 5 trace files under `phase-works/phase-5/`, and ends with:
    - `accepted`: the Phase 1 framework remains coherent after source-window and atom-level review.
    - `adjusted`: the framework was refit and all atom mappings remain traceable.
    - `needs-coverage-recheck`: the refit exposed missing/broad/conflicting source obligations that require a fresh Phase 3 pass.
@@ -205,7 +209,10 @@ After each phase, check only interface facts:
 - Phase 5 refit decisions cite Phase 4 source-window dossier evidence when changing, splitting, merging, reordering, or renaming changes/capabilities. A decision justified only by atom count, capability count, or terse atom summaries fails the gate unless the relevant source windows are explicitly cited as not adding further semantic distinction.
 - Every Phase 5 final change must pass the Source Window Semantic Grounding Gate: cite source windows, summarize their combined business/system semantics, explain why the atoms belong together, justify roadmap order, state a manual acceptance scenario, and explain all contextual/dependency/evidence/non-goal handling before atom ownership is finalized.
 - Final change packets contain direct owning atoms, final artifact projection, contextual atoms, upstream realized baseline, downstream constraints, non-goals, evidence burden, and links back to the global atom index and source atom files.
+- Every non-direct atom row in `atom-plan-mapping.md` whose `Final Owner Change` is a real final change must appear explicitly by `GA-####` in that change's final packet context/dependency/evidence/preserve/non-goal handling. No final packet may replace owner-scoped non-direct atoms with only a count, summary row, `additional-context`, or a link back to the mapping.
 - Final packets, capability views, Phase 5 mapping, and root `change-plan.md` preserve `GA-####` IDs, direct atom projection, unique direct ownership, and non-`contextual-only` direct rows.
 - Final capability advancement surfaces agree: Capability Map `First change`, progression matrix, roadmap `New`/`Modified`, final packets, `change-capability-anchors/index.md`, capability views, and human plan. Non-direct relations must not appear as capability advancement.
+- Final capability view files exist exactly for direct capabilities advanced by each change. They must include all and only direct atoms for that change/capability pair; dependency-only, contextual-only, evidence-burden, preserve/reference, later-change, explicit non-goal, and upstream-baseline atoms must stay out of capability views and remain explicit in the final change packet.
+- Phase 5's final consistency checks must verify packet-level non-direct coverage: for every `atom-plan-mapping.md` row with a non-direct relation and real `Final Owner Change`, the corresponding final change packet contains that exact `GA-####` row; for every capability view, every row is direct and has a matching direct row in the final change packet.
 - Phase 5 complexity, source-window grounding, capability-coupling, and foundation/business-first gates pass according to `references/phase-5-targeted-plan-adjustment.md`, or Phase 5 records a blocker or explicit source-backed exception where that reference allows one.
 - No `openspec-propose` run starts before Phase 5 reaches `accepted` or `adjusted`.

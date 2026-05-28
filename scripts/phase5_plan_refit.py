@@ -754,14 +754,10 @@ def render_packet(
     if not context_items:
         lines.append("| `None` | `None` | `None` | `None` | 本 change 没有专属 contextual row。 | 仅消费 upstream baseline 与全局非目标 guard。 |\n")
     else:
-        for item in context_items[:60]:
+        for item in context_items:
             lines.append(
                 f"| `{item.source.atom_id}` / `{item.mapping.final_relation}` | `{item.source.source_document}` | `{item.source.lines}` | "
                 f"`{item.mapping.final_relation}` | {md(item.source.source_fact)} | {md(item.mapping.reason)} |\n"
-            )
-        if len(context_items) > 60:
-            lines.append(
-                f"| `additional-context` | `atom-plan-mapping.md` | `multiple` | `reference` | 还有 {len(context_items) - 60} 个上下文/非目标 row 映射到本 change。 | 以完整 mapping 表为准，本 packet 不重复展开宽表。 |\n"
             )
     order = {item.slug: pos for pos, item in enumerate(changes)}
     previous = [item.slug for item in changes if order[item.slug] < order[change.slug]]
@@ -1015,6 +1011,10 @@ def write_outputs(
         write_text(work_dir / "change-plan-adjustments.md", adjustments)
 
     anchors = output_orchestrate_dir / "change-capability-anchors"
+    ensure_dir(anchors)
+    for child in anchors.iterdir():
+        if child.is_dir():
+            shutil.rmtree(child)
     for change in changes:
         change_dir = anchors / change.slug
         cap_dir = change_dir / "capability-anchors"

@@ -380,6 +380,7 @@ Rules:
 
 - Only direct `New` or `Modified` advancement belongs in matrix cells.
 - Dependency, preserve, reference-only, and contextual relations belong in notes, not matrix cells.
+- Matrix exclusion is not coverage exclusion. Every excluded non-direct atom that has a final owner change must still appear explicitly in that change's final packet context/dependency/evidence/preserve/non-goal handling.
 - Each non-empty cell must be backed by one or more global atom ids.
 - First and later non-empty cells must follow the Capability Relation Invariants and match roadmap relation labels plus final packet ownership.
 - The matrix must pass the Change/Capability Coupling Gate. A mostly diagonal matrix requires source-backed exceptions, not silence.
@@ -466,7 +467,9 @@ Context table:
 | Global Atom ID / Relation | Source Document | Lines | Context Type | Affects Current Design Because | Handling |
 | --- | --- | --- | --- | --- | --- |
 
-Each `change-capability-anchors/<change-slug>/capability-anchors/<capability-slug>.md` file is a derived view. It must include only atoms from the final change packet that directly advance or materially constrain that capability.
+The context table, or relation-specific equivalent tables in the same final packet, must include every non-direct row from `atom-plan-mapping.md` whose `Final Owner Change` is this change. This includes contextual, dependency, evidence-burden, preserve/reference, explicit non-goal, later-change, and other non-direct relations. Each such atom must appear as its own explicit `GA-####` row with source document, line range, relation/context type, why it affects the current design or scope, and handling. Do not truncate, summarize, aggregate, or replace explicit non-direct atom rows with count-only rows, `additional-context`, or link-only placeholders. If the table is large, split it by relation type inside the same packet while preserving one explicit row per atom.
+
+Each `change-capability-anchors/<change-slug>/capability-anchors/<capability-slug>.md` file is a derived direct-advancement view. It must include only direct atoms from the final change packet whose final owner capability is this capability. Non-direct constraints that materially affect the change stay in the final change packet, not in capability views.
 
 Capability atom table:
 
@@ -475,10 +478,11 @@ Capability atom table:
 
 Derived-view invariants:
 
-- Every capability row must have a matching row or context relation in the final change packet.
+- Every capability row must have a matching direct row in the final change packet.
 - Every direct atom whose owner capability is this capability must appear in the capability file.
 - Capability files must not rename atoms, change source line ranges, change artifact projection, or independently split/merge source facts.
 - The set of capability files under a change must exactly match the direct capabilities advanced by that change. Extra files for dependency-only, preserve-only, or contextual-only capabilities are not allowed.
+- Capability files must not contain contextual, dependency, evidence-burden, preserve/reference, explicit non-goal, later-change, upstream-baseline, or other non-direct rows. Those rows are excluded from capability advancement but must remain explicit in the owning final change packet.
 
 ## Final Capability Relation Consistency Check
 
@@ -493,6 +497,8 @@ Rules:
 
 - All comparison columns must satisfy the Capability Relation Invariants.
 - No capability may appear in `change-capability-anchors/index.md` unless at least one direct atom in that change packet has that capability as final owner.
+- Packet-level non-direct coverage must be checked before Phase 5 can return `accepted` or `adjusted`: every non-direct `atom-plan-mapping.md` row with a real `Final Owner Change` must be present as an explicit `GA-####` row in that change's final packet context/dependency/evidence/preserve/non-goal handling.
+- Capability-view purity must be checked before Phase 5 can return `accepted` or `adjusted`: every capability view row must be `direct`, every row must have a matching direct packet row, and no non-direct atom may appear only in a capability view.
 - If stale labels are the only problem, repair the Phase 5 artifacts without changing Phase 2 or Phase 3 evidence.
 - If the mismatch shows that final direct atom ownership itself is ambiguous or contradictory, return `needs-coverage-recheck` or `blocked`; do not mark Phase 5 `accepted` or `adjusted`.
 
@@ -511,9 +517,9 @@ Rules:
 11. If adjusted, update root `openspec/orchestrate/change-plan.md` to the latest effective plan after the Phase 5 snapshot and mapping are written.
 12. Write `phase-works/phase-5/capability-progression-review.md`, `change-complexity-review.md`, and `plan-refit-decision-log.md`.
 13. If the status is `adjusted`, `needs-coverage-recheck`, or `blocked`, write `phase-works/phase-5/change-plan-adjustments.md` with the plan-impact and next-action summary.
-14. Derive final `change-capability-anchors/<change-slug>/` packets and capability views from the global atom index, source-window refit trace, and final plan when the status is `accepted` or `adjusted`.
+14. Derive final `change-capability-anchors/<change-slug>/` packets and capability views from the global atom index, source-window refit trace, and final plan when the status is `accepted` or `adjusted`. Final change packets must explicitly list every owner-scoped non-direct atom; capability views must include only direct atoms.
 15. Write `change-capability-anchors/index.md`.
-16. Run the Final Capability Relation Consistency Check. Repair stale `First change`, matrix cells, roadmap `New`/`Modified` labels, final anchors index rows, capability views, and human-plan summaries before proceeding.
+16. Run the Final Capability Relation Consistency Check and packet-level non-direct coverage check. Repair stale `First change`, matrix cells, roadmap `New`/`Modified` labels, final anchors index rows, capability views, final packet context/evidence/dependency/non-goal rows, and human-plan summaries before proceeding.
 17. Write `phase-works/phase-5/change-capability-human-plan.md` as a readable synthesis of final change packets and capability progression when the status is `accepted` or `adjusted`.
 18. Write `phase-works/phase-5/phase-5-agent-report.md` and `phase-works/phase-5/alignment-final-report.md`.
 19. Run a local artifact consistency check by inspection or deterministic parsing before finishing.
@@ -573,6 +579,8 @@ It must also include:
 - confirmation that every direct global atom has exactly one final owner change/capability
 - confirmation that every direct global atom has final artifact projection
 - confirmation that `design-obligation` and `verification-obligation` atoms were not forced into `spec-requirement`
+- confirmation that every owner-scoped non-direct atom in `atom-plan-mapping.md` appears explicitly in the owning final change packet and was not represented only by a count, summary, `additional-context`, capability view, or link-only placeholder
+- confirmation that capability views contain only direct atoms and that non-direct constraints are preserved in final change packets rather than capability views
 - confirmation that final capability relations are direct `New` or `Modified` advancement only
 - confirmation that Capability Map `First change`, progression matrix first cells, roadmap `New`/`Modified` labels, final packet capability ownership, capability views, anchor index, and human plan all agree after the refit
 - confirmation that the final plan is not a diagonal or same-name change/capability roadmap unless every exception is source-backed and recorded
