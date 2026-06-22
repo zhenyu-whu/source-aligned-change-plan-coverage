@@ -35,7 +35,7 @@ Write Phase 4 artifacts directly under `openspec/orchestrate/phase-works/phase-4
 
 The scope rules below make the authority boundary explicit: `phase-works/phase-4/source-window-dossiers/` is copied review evidence, not a replacement for original source documents, source atom ledgers, the global atom index, or Phase 5 final packets.
 
-After the writer finishes, Phase 4 must pass the reviewer/repair loop from `references/reviewer-repair-loop.md`: run the phase validator, run the grounding reviewer, apply targeted Phase 4 repair if needed, rerun validator, rerun reviewer, then continue only after pass.
+After the writer finishes, Phase 4 must pass the reviewer/repair loop from `references/reviewer-repair-loop.md`: the main agent runs the phase validator, spawns a fresh independent grounding reviewer subagent, spawns a fresh independent Phase 4 repair-writer subagent if artifact changes are needed, reruns validator, spawns a fresh independent reviewer again after repair, then continues only after pass.
 
 ## Artifact Language Gate
 

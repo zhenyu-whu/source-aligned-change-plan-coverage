@@ -50,7 +50,7 @@ Phase 3 may add precise missing source-backed atoms to `obligation-atom-index.md
 
 After the Phase 3 semantic outputs exist, generate `phase-works/phase-3/coverage-review-app/index.html` as the deterministic static human review app defined below. It may render source bodies and Phase 3 outputs, but must not add atoms, change atom IDs, reinterpret coverage, decide duplicate/ownership issues, or write Phase 4/Phase 5 artifacts.
 
-After the writer finishes, Phase 3 must pass the reviewer/repair loop from `references/reviewer-repair-loop.md`: run the phase validator, run the coverage reviewer, apply targeted Phase 3 repair if needed, rerun validator, rerun reviewer, then continue only after pass.
+After the writer finishes, Phase 3 must pass the reviewer/repair loop from `references/reviewer-repair-loop.md`: the main agent runs the phase validator, spawns a fresh independent coverage reviewer subagent, spawns a fresh independent Phase 3 repair-writer subagent if artifact changes are needed, reruns validator, spawns a fresh independent reviewer again after repair, then continues only after pass.
 
 ## Artifact Language Gate
 
@@ -162,7 +162,7 @@ Evaluate in this order:
 18. Build compact global statistics across source documents, global atoms, meaningful missing atoms, duplicate findings, broad-atom split findings, non-coverage classifications, ownership ambiguities, gaps, and conflicts.
 19. Write `trace/phase-3.trace.json` according to `references/trace-sidecar-contract.md`.
 20. Generate `phase-works/phase-3/coverage-review-app/index.html` from the source documents and Phase 3 artifacts. Prefer the bundled helper `scripts/phase3_coverage_review_app.py` unless a project-specific equivalent already exists.
-21. Run `validate_source_aligned_orchestrate.py --phase phase-3`, then run the Phase 3 reviewer/repair loop.
+21. Run `validate_source_aligned_orchestrate.py --phase phase-3`, then run the Phase 3 reviewer/repair loop with independent reviewer and repair-writer subagents.
 22. Decide whether coverage normalization is complete or blocked.
 
 ## Phase 3 Human Review App

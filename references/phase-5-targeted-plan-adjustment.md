@@ -51,7 +51,7 @@ If Phase 5 accepts the input plan unchanged, still write the current Phase 5 pac
 
 `phase-works/phase-2/source-obligation-atoms/`, `change-capability-anchors/obligation-atom-index.md`, and `phase-works/phase-4/source-window-dossiers/` are upstream evidence. Do not edit them in Phase 5.
 
-After the writer finishes, Phase 5 must pass the reviewer/repair loop from `references/reviewer-repair-loop.md`: run the phase validator, run the refit reviewer, apply targeted Phase 5 repair if needed, rerun validator, rerun reviewer, then run the final integration reviewer before handing off to `openspec-propose`.
+After the writer finishes, Phase 5 must pass the reviewer/repair loop from `references/reviewer-repair-loop.md`: the main agent runs the phase validator, spawns a fresh independent refit reviewer subagent, spawns a fresh independent Phase 5 repair-writer subagent if artifact changes are needed, reruns validator, spawns a fresh independent reviewer again after repair, then spawns a fresh independent final integration reviewer before handing off to `openspec-propose`.
 
 Phase 4 source-window dossiers and semantic profiles are the source-grounding input for Phase 5. `source-window-refit-trace.md` is the Phase 5 decision trace that explains how those input source-window profiles were transformed into final changes/capabilities: which original atoms stayed together, moved, split, merged, became contextual/dependency/evidence/non-goal, and why the adjusted unit remains a truthful engineering delivery slice.
 

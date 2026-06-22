@@ -26,7 +26,7 @@ Use single-level filenames under `phase-works/phase-2/source-obligation-atoms/`:
 
 These files are immutable after Phase 2 completes. If later phases discover missing atoms, duplicate facts, source-window grounding issues, or ownership changes, they record them in the Phase 3 global atom index, Phase 4 grounding artifacts, and Phase 5 refit artifacts; they must not rewrite the original Phase 2 source atom files.
 
-After the writer finishes, Phase 2 must pass the reviewer/repair loop from `references/reviewer-repair-loop.md`: run the phase validator, run the source extraction reviewer, apply targeted Phase 2 repair if needed, rerun validator, rerun reviewer, then freeze raw `.atoms.md/.json` only after pass.
+After the writer finishes, Phase 2 must pass the reviewer/repair loop from `references/reviewer-repair-loop.md`: the main agent runs the phase validator, spawns a fresh independent source extraction reviewer subagent, spawns a fresh independent Phase 2 repair-writer subagent if artifact changes are needed, reruns validator, spawns a fresh independent reviewer again after repair, then freezes raw `.atoms.md/.json` only after pass.
 
 ## Output Ownership
 
@@ -158,7 +158,7 @@ Phase 2 must be reviewable as a set of source document extractions.
 10. The index/report subagent may report blockers for missing or malformed files, but it must not repair, reinterpret, or extend atom content.
 11. Write each source atom JSON sidecar and `trace/phase-2.trace.json` according to `references/trace-sidecar-contract.md`.
 12. After the aggregate exists, generate the Phase 2C review app. Prefer the bundled helper `scripts/phase2_obligation_review_app.py` unless a project-specific equivalent already exists.
-13. Run `validate_source_aligned_orchestrate.py --phase phase-2`, then run the Phase 2 reviewer/repair loop before freezing Phase 2.
+13. Run `validate_source_aligned_orchestrate.py --phase phase-2`, then run the Phase 2 reviewer/repair loop with independent reviewer and repair-writer subagents before freezing Phase 2.
 14. Do not read Phase 3, Phase 4, or Phase 5 outputs while performing Phase 2 extraction, aggregation, or review app generation.
 
 Use deterministic source filenames:

@@ -32,7 +32,7 @@ Write the canonical Phase 1 trace sidecar to:
 openspec/orchestrate/trace/phase-1.trace.json
 ```
 
-After the writer finishes, Phase 1 must pass the reviewer/repair loop from `references/reviewer-repair-loop.md`: run the phase validator, run the Phase 1 reviewer, apply targeted Phase 1 repair if needed, rerun validator, rerun reviewer, then continue only after pass.
+After the writer finishes, Phase 1 must pass the reviewer/repair loop from `references/reviewer-repair-loop.md`: the main agent runs the phase validator, spawns a fresh independent Phase 1 reviewer subagent, spawns a fresh independent Phase 1 repair-writer subagent if artifact changes are needed, reruns validator, spawns a fresh independent reviewer again after repair, then continues only after pass.
 
 ## Artifact Language Gate
 

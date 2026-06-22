@@ -7,14 +7,36 @@
 每个 Phase 完成顺序固定为：
 
 ```text
-phase writer/subagent
--> phase validator
--> phase reviewer
--> phase repair-writer/subagent
--> rerun validator
--> rerun reviewer
+phase writer subagent
+-> main-agent phase validator
+-> fresh independent phase reviewer subagent
+-> fresh independent phase repair-writer subagent if artifact changes are needed
+-> main-agent rerun validator
+-> fresh independent phase reviewer subagent after every repair
 -> pass 后进入下一 Phase
 ```
+
+如果 reviewer 判定无修复项，可以跳过 repair-writer subagent，但必须在 reviewer report 和 phase trace 中记录 `repair-not-needed`。一旦需要修改任何 artifact，repair 必须由 fresh independent repair-writer subagent 执行，不能由 writer、reviewer 或主 agent 直接补写。
+
+## Independence Rules
+
+- Reviewer 和 repair-writer 都必须由主 agent 单独 spawn fresh subagent，且必须使用 `model=GPT-5.5` 和 `reasoningEffort=xhigh`。
+- Reviewer subagent 必须与 phase writer subagent 不同；repair-writer subagent 必须与 phase writer subagent、所有 reviewer subagent 都不同。
+- Writer subagent 的自检、最终回复、agent report、trace 字段或 “reviewer passed” 文案不满足 reviewer 步骤。
+- Validator 通过不满足 reviewer 步骤；validator 只提供 reviewer 输入之一。
+- Reviewer subagent 对被审 artifact 只读，只能写入或追加本 Phase 的 reviewer report，不得修改被审 artifact，不得执行 repair，不得推进下一 Phase。
+- Repair-writer subagent 只能根据 validator issues 和 reviewer report 修改本 Phase 允许的 artifact，并写入或追加本 Phase 的 repair report；不得重新解释上游 frozen evidence，不得推进下一 Phase。
+- Reviewer 和 repair-writer 都是 leaf worker，不得 spawn、调用、委派任何嵌套 AI subagent、`codex exec`、multi-agent worker 或其他 agentic reasoning 子进程。
+- 每次 repair 后必须重新运行 validator，并重新 spawn fresh independent reviewer subagent。不得复用同一个 reviewer subagent 通过 `send_input` 进行复审。
+
+## Required Evidence
+
+每个 Phase 在进入下一 Phase 前必须有可审计 evidence：
+
+- `phase-works/phase-<n>/phase-<n>-reviewer-report.md`：必需。每次 reviewer run 必须保留 reviewer subagent identity、writer subagent identity 或 writer 来源、validator input status、只读检查范围、findings、accepted warnings、是否需要 repair、最终 pass/block 决定。
+- `phase-works/phase-<n>/phase-<n>-repair-report.md`：仅当发生 artifact 修改时必需。每次 repair run 必须保留 repair subagent identity、被消费的 validator/reviewer findings、修改文件、保留的不变量、未修复项和 blockers。
+- `trace/phase-<n>.trace.json` 应记录 reviewer/repair loop 摘要，但 trace 摘要不能替代 reviewer report 或 repair report。
+- `trace/manifest.json` 只能在 validator 和 independent reviewer 均通过后将该 Phase 标记为可进入下一阶段。
 
 ## Authority Rules
 
