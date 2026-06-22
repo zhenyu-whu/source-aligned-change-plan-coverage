@@ -20,6 +20,16 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Dict, Iterable, List, Optional, Sequence, Tuple
 
+from source_aligned_trace_lib import (
+    ATOM_PLAN_MAPPING_SCHEMA,
+    FINAL_PACKET_INDEX_SCHEMA,
+    PHASE_TRACE_SCHEMAS,
+    TRACE_CONTRACT_VERSION,
+    parse_line_ranges,
+    sha256_file,
+    write_json,
+)
+
 
 TABLE_SEPARATOR_RE = re.compile(r"^:?-{3,}:?$")
 GLOBAL_ATOM_ID_RE = re.compile(r"^GA-\d{4}$")
@@ -218,7 +228,68 @@ def load_global_atoms(path: Path) -> Dict[str, AtomRow]:
     return atoms
 
 
+def load_global_atoms_json(path: Path) -> Dict[str, AtomRow]:
+    data = json.loads(path.read_text(encoding="utf-8"))
+    atoms: Dict[str, AtomRow] = {}
+    for raw in data.get("global-atoms", []):
+        if not isinstance(raw, dict):
+            continue
+        atom_id = normalize_code(str(raw.get("global-atom-id", "")))
+        if not atom_id:
+            continue
+        if not GLOBAL_ATOM_ID_RE.match(atom_id):
+            raise ValueError(f"global atom index JSON 中的 Global Atom ID 必须匹配 GA-####: {atom_id}")
+        if atom_id in atoms:
+            raise ValueError(f"global atom index JSON 中存在重复 ID: {atom_id}")
+        atoms[atom_id] = AtomRow(
+            atom_id=atom_id,
+            source_document=normalize_code(str(raw.get("source-document", ""))),
+            lines=normalize_code(str(raw.get("lines", ""))),
+            atom_type=normalize_code(str(raw.get("atom-type", ""))),
+            source_fact=str(raw.get("source-fact", "")),
+            normativity=normalize_code(str(raw.get("normativity", ""))),
+            coverage_status=normalize_code(str(raw.get("coverage-status", ""))),
+            artifact_projection=normalize_code(str(raw.get("artifact-projection", ""))),
+            owner_change=normalize_code(str(raw.get("owner-change", ""))),
+            owner_capability=normalize_code(str(raw.get("owner-capability", ""))),
+            source_atom_origins=normalize_code(str(raw.get("source-atom-origins", ""))),
+            atom_relation=normalize_code(str(raw.get("atom-relation", ""))),
+            propose_use=str(raw.get("propose-use", "")),
+            evidence_need=normalize_code(str(raw.get("evidence-need", ""))),
+            review_judgment=str(raw.get("review-judgment", "")),
+        )
+    if not atoms:
+        raise ValueError(f"{path} 中没有 global atom row")
+    return atoms
+
+
 def load_mapping(path: Path) -> Dict[str, MappingRow]:
+    if path.suffix == ".json":
+        data = json.loads(path.read_text(encoding="utf-8"))
+        mapping: Dict[str, MappingRow] = {}
+        for raw in data.get("rows", []):
+            if not isinstance(raw, dict):
+                continue
+            atom_id = normalize_code(str(raw.get("global-atom-id", "")))
+            if not atom_id:
+                continue
+            if not GLOBAL_ATOM_ID_RE.match(atom_id):
+                raise ValueError(f"Phase 5 mapping JSON 中的 Global Atom ID 必须匹配 GA-####: {atom_id}")
+            if atom_id in mapping:
+                raise ValueError(f"Phase 5 mapping JSON 中存在重复 ID: {atom_id}")
+            mapping[atom_id] = MappingRow(
+                atom_id=atom_id,
+                final_change=normalize_code(str(raw.get("final-owner-change", ""))),
+                final_capability=normalize_code(str(raw.get("final-owner-capability", ""))),
+                final_projection=normalize_code(str(raw.get("final-artifact-projection", ""))),
+                final_relation=normalize_code(str(raw.get("final-relation", ""))),
+                plan_decision=str(raw.get("plan-decision", "")),
+                reason=str(raw.get("reason", "")),
+            )
+        if not mapping:
+            raise ValueError(f"{path} 中没有 Phase 5 mapping row")
+        return mapping
+
     rows = parse_table(path, ["Global Atom ID", "Final Owner Change", "Final Relation"])
     mapping: Dict[str, MappingRow] = {}
     for raw in rows:
@@ -299,9 +370,12 @@ def parse_capabilities(config: Dict[str, object]) -> List[CapabilityDef]:
 
 
 def latest_mapping(orchestrate_dir: Path) -> Path:
+    mapping_path = orchestrate_dir / "phase-works/phase-5/atom-plan-mapping.json"
+    if mapping_path.exists():
+        return mapping_path
     mapping_path = orchestrate_dir / "phase-works/phase-5/atom-plan-mapping.md"
     if not mapping_path.exists():
-        raise ValueError(f"缺少 Phase 5 mapping: {mapping_path}")
+        raise ValueError(f"缺少 Phase 5 mapping JSON/Markdown: {mapping_path}")
     return mapping_path
 
 
@@ -406,6 +480,103 @@ def ids_for(items: Sequence[FinalAtom], limit: int = 12) -> str:
     if len(atom_ids) > limit:
         return ", ".join(code(atom_id) for atom_id in atom_ids[:limit]) + f" 等 {len(atom_ids)} 个"
     return ", ".join(code(atom_id) for atom_id in atom_ids)
+
+
+def mapping_json_rows(final_atoms: Sequence[FinalAtom]) -> List[Dict[str, object]]:
+    rows: List[Dict[str, object]] = []
+    for item in final_atoms:
+        source = item.source
+        mapping = item.mapping
+        _, line_ranges, _, _ = parse_line_ranges(source.lines)
+        rows.append(
+            {
+                "global-atom-id": source.atom_id,
+                "source-document": source.source_document,
+                "lines": source.lines,
+                "line-ranges": line_ranges,
+                "phase-3-owner-status": f"{source.owner_change} / {source.coverage_status}",
+                "phase-3-artifact-projection": source.artifact_projection,
+                "final-owner-change": mapping.final_change,
+                "final-owner-capability": mapping.final_capability,
+                "final-artifact-projection": mapping.final_projection,
+                "final-relation": mapping.final_relation,
+                "plan-decision": mapping.plan_decision,
+                "reason": mapping.reason,
+            }
+        )
+    return rows
+
+
+def write_mapping_json(path: Path, final_atoms: Sequence[FinalAtom], artifact_path: Path) -> None:
+    write_json(
+        path,
+        {
+            "trace-schema": ATOM_PLAN_MAPPING_SCHEMA,
+            "trace-contract-version": TRACE_CONTRACT_VERSION,
+            "artifact-path": artifact_path.as_posix(),
+            "rows": mapping_json_rows(final_atoms),
+        },
+    )
+
+
+def render_mapping_markdown(final_atoms: Sequence[FinalAtom]) -> str:
+    lines = [
+        "# Atom Plan Mapping\n\n",
+        "| Global Atom ID | Source Document | Lines | Phase 3 Owner / Status | Phase 3 Artifact Projection | Final Owner Change | Final Owner Capability | Final Artifact Projection | Final Relation | Plan Decision | Reason |\n",
+        "| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |\n",
+    ]
+    for item in final_atoms:
+        source = item.source
+        mapping = item.mapping
+        lines.append(
+            f"| `{source.atom_id}` | `{source.source_document}` | `{source.lines}` | "
+            f"`{source.owner_change} / {source.coverage_status}` | `{source.artifact_projection}` | "
+            f"`{mapping.final_change}` | `{mapping.final_capability}` | `{mapping.final_projection}` | "
+            f"`{mapping.final_relation}` | `{mapping.plan_decision}` | {md(mapping.reason)} |\n"
+        )
+    lines.append("\n## Language Self-Check\n\n本文解释内容已按 Artifact Language Gate 检查为简体中文。\n")
+    return "".join(lines)
+
+
+def orchestrate_rel(output_orchestrate_dir: Path, path: Path) -> str:
+    try:
+        return (Path("openspec/orchestrate") / path.relative_to(output_orchestrate_dir)).as_posix()
+    except ValueError:
+        return path.as_posix()
+
+
+def write_final_packet_index(
+    output_orchestrate_dir: Path,
+    work_dir: Path,
+    changes: Sequence[ChangeDef],
+    by_change: Dict[str, List[FinalAtom]],
+    by_context: Dict[str, List[FinalAtom]],
+) -> Path:
+    packets: List[Dict[str, object]] = []
+    anchors = output_orchestrate_dir / "change-capability-anchors"
+    for change in changes:
+        packet_path = anchors / change.slug / f"{change.slug}.md"
+        cap_paths = sorted((anchors / change.slug / "capability-anchors").glob("*.md"))
+        packets.append(
+            {
+                "change": change.slug,
+                "packet-path": orchestrate_rel(output_orchestrate_dir, packet_path),
+                "packet-digest": sha256_file(packet_path) if packet_path.exists() else "",
+                "direct-atom-ids": sorted(item.source.atom_id for item in by_change[change.slug]),
+                "owner-scoped-non-direct-atom-ids": sorted(item.source.atom_id for item in by_context[change.slug]),
+                "capability-view-paths": [orchestrate_rel(output_orchestrate_dir, path) for path in cap_paths],
+            }
+        )
+    path = work_dir / "final-packet-index.json"
+    write_json(
+        path,
+        {
+            "trace-schema": FINAL_PACKET_INDEX_SCHEMA,
+            "trace-contract-version": TRACE_CONTRACT_VERSION,
+            "packets": packets,
+        },
+    )
+    return path
 
 
 def atom_groups(items: Sequence[FinalAtom]) -> str:
@@ -939,6 +1110,9 @@ def render_phase5_report(
         "openspec/orchestrate/phase-works/phase-5/source-window-refit-trace.md",
         "openspec/orchestrate/phase-works/phase-5/change-plan.md",
         "openspec/orchestrate/phase-works/phase-5/atom-plan-mapping.md",
+        "openspec/orchestrate/phase-works/phase-5/atom-plan-mapping.json",
+        "openspec/orchestrate/phase-works/phase-5/final-packet-index.json",
+        "openspec/orchestrate/trace/phase-5.trace.json",
         "openspec/orchestrate/phase-works/phase-5/capability-progression-review.md",
         "openspec/orchestrate/phase-works/phase-5/change-complexity-review.md",
         "openspec/orchestrate/phase-works/phase-5/plan-refit-decision-log.md",
@@ -974,8 +1148,20 @@ def write_outputs(
 
     ensure_dir(work_dir)
     output_mapping = work_dir / "atom-plan-mapping.md"
-    if output_mapping.resolve() != mapping_path.resolve():
-        shutil.copyfile(mapping_path, output_mapping)
+    output_mapping_json = work_dir / "atom-plan-mapping.json"
+    if mapping_path.suffix == ".json":
+        if output_mapping_json.resolve() != mapping_path.resolve():
+            shutil.copyfile(mapping_path, output_mapping_json)
+        markdown_sibling = mapping_path.with_suffix(".md")
+        if markdown_sibling.exists():
+            if output_mapping.resolve() != markdown_sibling.resolve():
+                shutil.copyfile(markdown_sibling, output_mapping)
+        else:
+            write_text(output_mapping, render_mapping_markdown(final_atoms))
+    else:
+        if output_mapping.resolve() != mapping_path.resolve():
+            shutil.copyfile(mapping_path, output_mapping)
+        write_mapping_json(output_mapping_json, final_atoms, output_mapping)
     output_config = work_dir / config_path.name
     if output_config.resolve() != config_path.resolve():
         shutil.copyfile(config_path, output_config)
@@ -1034,8 +1220,73 @@ def write_outputs(
         work_dir / "alignment-final-report.md",
         render_alignment_report(capabilities, direct_items, cap_changes),
     )
+    final_packet_index = write_final_packet_index(output_orchestrate_dir, work_dir, changes, by_change, by_context)
+    trace_path = output_orchestrate_dir / "trace/phase-5.trace.json"
+    write_json(
+        trace_path,
+        {
+            "trace-schema": PHASE_TRACE_SCHEMAS["phase-5"],
+            "trace-contract-version": TRACE_CONTRACT_VERSION,
+            "status": status,
+            "atom-plan-mapping-path": orchestrate_rel(output_orchestrate_dir, output_mapping_json),
+            "final-packet-index-path": orchestrate_rel(output_orchestrate_dir, final_packet_index),
+            "complexity-summaries": [],
+            "capability-progression-summaries": [],
+            "validator-gate-outcomes": [],
+            "reviewer-gate-outcomes": [],
+        },
+    )
     report = render_phase5_report(config, status, output_mapping, changes, by_change)
     write_text(work_dir / "phase-5-agent-report.md", report)
+
+
+def validate_rendered_outputs(output_orchestrate_dir: Path, final_atoms: Sequence[FinalAtom]) -> List[str]:
+    errors: List[str] = []
+    anchors = output_orchestrate_dir / "change-capability-anchors"
+    direct_by_owner: Dict[Tuple[str, str], List[str]] = defaultdict(list)
+    for item in final_atoms:
+        mapping = item.mapping
+        atom_id = item.source.atom_id
+        if mapping.final_relation == "direct":
+            direct_by_owner[(mapping.final_change, mapping.final_capability)].append(atom_id)
+
+    for item in final_atoms:
+        atom_id = item.source.atom_id
+        mapping = item.mapping
+        change = mapping.final_change
+        if not change or change == "None":
+            continue
+        packet_path = anchors / change / f"{change}.md"
+        if not packet_path.exists():
+            errors.append(f"{atom_id} final owner change 缺少 packet: {packet_path}")
+            continue
+        packet_text = packet_path.read_text(encoding="utf-8")
+        if atom_id not in packet_text:
+            if mapping.final_relation == "direct":
+                errors.append(f"{atom_id} direct atom 未出现在 final packet: {packet_path}")
+            else:
+                errors.append(f"{atom_id} owner-scoped non-direct atom 未出现在 final packet: {packet_path}")
+
+    for (change, capability), atom_ids in sorted(direct_by_owner.items()):
+        if not change or change == "None" or not capability or capability == "None":
+            continue
+        view_path = anchors / change / "capability-anchors" / f"{capability}.md"
+        if not view_path.exists():
+            errors.append(f"{change}/{capability} 缺少 capability view: {view_path}")
+            continue
+        text = view_path.read_text(encoding="utf-8")
+        for atom_id in atom_ids:
+            if atom_id not in text:
+                errors.append(f"{atom_id} 缺失于 capability view: {view_path}")
+        for found in re.findall(r"GA-\d{4}", text):
+            owner = next((item.mapping for item in final_atoms if item.source.atom_id == found), None)
+            if owner is None:
+                errors.append(f"{view_path} 包含未知 atom: {found}")
+            elif owner.final_relation != "direct":
+                errors.append(f"{view_path} 包含 non-direct atom: {found}")
+            elif owner.final_change != change or owner.final_capability != capability:
+                errors.append(f"{view_path} 包含不属于该 capability 的 atom: {found}")
+    return errors
 
 
 def print_config_template(final_atoms: Sequence[FinalAtom]) -> None:
@@ -1080,11 +1331,12 @@ def build_parser() -> argparse.ArgumentParser:
         description="Validate and render mechanical Phase 5 plan-refit artifacts from a reviewed mapping/config."
     )
     parser.add_argument("--orchestrate-dir", default="openspec/orchestrate", type=Path)
-    parser.add_argument("--mapping", type=Path, help="Reviewed phase-works/phase-5/atom-plan-mapping.md. Defaults to that path.")
+    parser.add_argument("--mapping", type=Path, help="Reviewed phase-works/phase-5/atom-plan-mapping.json or .md. Defaults to JSON sidecar when present.")
     parser.add_argument("--config", type=Path, help="Reviewed Phase 5 JSON config. Defaults to mapping sibling phase5-refit.config.json.")
     parser.add_argument("--output-orchestrate-dir", type=Path, help="Write outputs to this orchestrate dir instead of --orchestrate-dir.")
     parser.add_argument("--write", action="store_true", help="Write rendered artifacts. Without this flag the script only checks inputs.")
     parser.add_argument("--no-root-update", action="store_true", help="Do not update output root change-plan.md.")
+    parser.add_argument("--validate-rendered", action="store_true", help="Validate final packets, capability views, and anchor index against atom-plan-mapping JSON/Markdown.")
     parser.add_argument("--print-config-template", action="store_true", help="Print a JSON config template inferred from mapping and exit.")
     return parser
 
@@ -1096,7 +1348,11 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
     config_path = args.config or default_config_path(mapping_path)
     output_orchestrate_dir = args.output_orchestrate_dir or orchestrate_dir
 
-    atoms = load_global_atoms(orchestrate_dir / "change-capability-anchors/obligation-atom-index.md")
+    global_index_json = orchestrate_dir / "change-capability-anchors/obligation-atom-index.json"
+    if global_index_json.exists():
+        atoms = load_global_atoms_json(global_index_json)
+    else:
+        atoms = load_global_atoms(orchestrate_dir / "change-capability-anchors/obligation-atom-index.md")
     mapping = load_mapping(mapping_path)
     final_atoms = join_atoms(atoms, mapping)
 
@@ -1121,6 +1377,13 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
             final_atoms=final_atoms,
             no_root_update=args.no_root_update,
         )
+
+    if args.validate_rendered:
+        rendered_errors = validate_rendered_outputs(output_orchestrate_dir, final_atoms)
+        if rendered_errors:
+            for error in rendered_errors:
+                print(f"error: {error}", file=sys.stderr)
+            return 1
 
     direct_count = sum(1 for item in final_atoms if item.mapping.final_relation == "direct")
     print(f"Phase 5 check passed: atoms={len(final_atoms)} direct={direct_count} changes={len(changes)} capabilities={len(capabilities)}")

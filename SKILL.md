@@ -48,14 +48,22 @@ All workflow artifacts belong under `openspec/orchestrate/`.
 
 ## Output Layout
 
-Keep the root small and proposal-facing. The proposal-facing root entries are the latest effective plan and the final atom/change packets; `phase-works/` is the single trace container for phase work. Later `openspec-propose` should normally read `change-plan.md` and the relevant `change-capability-anchors/` packet, and only follow `phase-works/` links when it needs trace evidence. All phase working documents, reports, reviews, raw extraction ledgers, and intermediate manifests live under `phase-works/`, with one subdirectory per phase.
+Keep the root small and proposal-facing. The proposal-facing root entries are the latest effective plan and the final atom/change packets; `trace/` contains canonical JSON sidecars for validation/debugging; `phase-works/` contains reviewer-facing phase work. Later `openspec-propose` should normally read `change-plan.md` and the relevant `change-capability-anchors/` packet, and only follow `trace/` or `phase-works/` links when it needs trace evidence. All phase working documents, reports, reviews, raw extraction ledgers, and intermediate manifests live under `phase-works/`, with one subdirectory per phase.
 
 ```text
 openspec/orchestrate/
 ├── change-plan.md                         # latest effective plan for openspec-propose
+├── trace/
+│   ├── manifest.json                       # canonical trace manifest and digests
+│   ├── phase-1.trace.json
+│   ├── phase-2.trace.json
+│   ├── phase-3.trace.json
+│   ├── phase-4.trace.json
+│   └── phase-5.trace.json
 ├── change-capability-anchors/
 │   ├── index.md                           # final index of change packets
 │   ├── obligation-atom-index.md            # normalized global atom registry
+│   ├── obligation-atom-index.json          # canonical global atom trace sidecar
 │   └── <change-slug>/
 │       ├── <change-slug>.md                # final change packet derived from global atoms
 │       └── capability-anchors/
@@ -69,7 +77,8 @@ openspec/orchestrate/
     │   ├── source-obligation-atoms/
     │   │   ├── index.md                    # Phase 2 index/report subagent summary
     │   │   ├── work-queue.md               # lightweight batching plan; not coverage evidence
-    │   │   └── <source-relative-path>.atoms.md
+    │   │   ├── <source-relative-path>.atoms.md
+    │   │   └── <source-relative-path>.atoms.json
     │   ├── source-obligation-review/
     │   │   └── index.html                  # static human review app for source lines and atom annotations
     │   └── phase-2-agent-report.md
@@ -79,6 +88,7 @@ openspec/orchestrate/
     │   │   └── <source-relative-path>.coverage.md
     │   ├── phase-3-trace/
     │   │   ├── source-to-global-atom-map.md
+    │   │   ├── source-to-global-atom-map.json
     │   │   ├── source-remainder-review.md
     │   │   ├── duplicate-ownership-review.md
     │   │   └── atom-normalization-decision-log.md
@@ -90,6 +100,7 @@ openspec/orchestrate/
     │   ├── input-change-plan.md
     │   ├── source-window-dossiers/
     │   │   ├── index.md                   # source-window dossier index for human review and refit grounding
+    │   │   ├── source-window-index.json   # canonical source-window trace sidecar
     │   │   ├── by-input-change/
     │   │   │   └── <input-change-slug>.md # original source windows grouped by initial change
     │   │   └── by-input-capability/
@@ -102,6 +113,8 @@ openspec/orchestrate/
         ├── source-window-refit-trace.md
         ├── change-plan.md                  # Phase 5 snapshot; promoted to root after accepted/adjusted
         ├── atom-plan-mapping.md
+        ├── atom-plan-mapping.json
+        ├── final-packet-index.json
         ├── capability-progression-review.md
         ├── change-complexity-review.md
         ├── plan-refit-decision-log.md
@@ -111,7 +124,7 @@ openspec/orchestrate/
         └── alignment-final-report.md
 ```
 
-Use single-level filenames under `phase-works/phase-2/source-obligation-atoms/` and `phase-works/phase-3/source-doc-coverage/`: derive the name from the source document path, remove the extension, replace path separators with `--`, and add `.atoms.md` or `.coverage.md`.
+Use single-level filenames under `phase-works/phase-2/source-obligation-atoms/` and `phase-works/phase-3/source-doc-coverage/`: derive the name from the source document path, remove the extension, replace path separators with `--`, and add `.atoms.md` plus `.atoms.json`, or `.coverage.md`.
 
 Do not create `pass-*`, `iteration-*`, or similarly numbered Phase 4 or Phase 5 subdirectories. Phase 4 writes one current source-window grounding packet directly under `phase-works/phase-4/`. Phase 5 writes one current refit packet directly under `phase-works/phase-5/`. If Phase 4 or Phase 5 returns `needs-coverage-recheck`, the fresh Phase 3, Phase 4, and Phase 5 runs update the current phase work directories; introduce archival history only if the user explicitly asks for it.
 
@@ -119,6 +132,9 @@ Optional bundled helper:
 
 ```text
 .codex/skills/source-aligned-change-plan-coverage/scripts/
+├── source_aligned_trace_lib.py # shared trace/parser/digest/issue helpers
+├── backfill_source_aligned_trace.py # legacy Markdown -> JSON sidecar backfill
+├── validate_source_aligned_orchestrate.py # canonical trace validator
 ├── phase2_obligation_review_app.py # mechanical Phase 2 static review app generator
 ├── phase3_coverage_review_app.py # mechanical Phase 3 static review app generator
 ├── phase3_line_range_audit.py   # mechanical Phase 3 candidate uncovered/overlap helper
@@ -127,15 +143,21 @@ Optional bundled helper:
 
 ## Artifact Authority
 
+- JSON trace sidecars are the canonical validator input. Markdown artifacts remain Chinese reviewer-facing mirrors and proposal-facing content surfaces, but machine validation reads JSON first.
 - Phase 2 source atom files are immutable raw extraction evidence.
-- Phase 3's `change-capability-anchors/obligation-atom-index.md` is the normalized global uniqueness and ownership registry promoted to the proposal-facing root.
+- Phase 3's `change-capability-anchors/obligation-atom-index.md` is the reviewer/proposal-facing normalized global uniqueness and ownership registry; `change-capability-anchors/obligation-atom-index.json` is the canonical trace sidecar.
 - `phase-works/phase-4/source-window-dossiers/` is copied source-window review evidence, not a new extraction pass or source of truth replacement.
 - Phase 5 derives final change packets and capability views from the global index and Phase 4 source-window semantic profiles; it must not invent atoms without source evidence.
-- Final change packets are the proposal-facing source of truth for both direct scope and non-direct constraints. If a non-direct atom has a final owner change in `atom-plan-mapping.md`, the corresponding final change packet must list that atom explicitly by `GA-####` in the context/dependency/evidence/preserve/non-goal table; a packet may split this into multiple relation-specific tables, but it must not replace explicit atom rows with a count, summary, or link-only placeholder.
+- Final change packets are the proposal-facing source of truth for both direct scope and non-direct constraints. If a non-direct atom has a final owner change in canonical `atom-plan-mapping.json` or its `atom-plan-mapping.md` mirror, the corresponding final change packet must list that atom explicitly by `GA-####` in the context/dependency/evidence/preserve/non-goal table; a packet may split this into multiple relation-specific tables, but it must not replace explicit atom rows with a count, summary, or link-only placeholder.
 - Final capability views are derived direct-scope views, not complete implementation packets. Later `openspec-propose` must not use a capability view alone to determine scope because non-direct constraints are intentionally excluded from capability advancement.
 - `phase-works/phase-5/change-capability-human-plan.md` is a human-facing synthesis, not a replacement for source-window dossiers, source atom ledgers, the global atom index, or final change packets.
 
 ## Reference Files
+
+Always read these two references before entering the workflow:
+
+- Trace sidecar contract: `references/trace-sidecar-contract.md`
+- Reviewer/repair loop: `references/reviewer-repair-loop.md`
 
 Read these references only when entering the matching phase:
 
@@ -167,22 +189,24 @@ The main agent only orchestrates, checks interface-level outputs, and starts the
 
 ## Workflow
 
-1. Create `openspec/orchestrate/`, `change-capability-anchors/`, `phase-works/phase-1/`, `phase-works/phase-2/source-obligation-atoms/`, `phase-works/phase-2/source-obligation-review/`, `phase-works/phase-3/source-doc-coverage/`, `phase-works/phase-3/phase-3-trace/`, `phase-works/phase-3/coverage-review-app/`, `phase-works/phase-4/source-window-dossiers/by-input-change/`, `phase-works/phase-4/source-window-dossiers/by-input-capability/`, and `phase-works/phase-5/`.
-2. Phase 1: if there is no current `change-plan.md`, spawn a fresh subagent to enumerate and read every source document, write `phase-works/phase-1/source-doc-manifest.md`, write `phase-works/phase-1/change-plan.md`, promote the latest effective plan to root `change-plan.md`, and generate the initial change/capability framework using the Phase 1 reference.
-3. Phase 2: create the lightweight work queue, spawn source-extraction subagents by source document or source-document batch, write one `<source>.atoms.md` file per read-full source document, run the fresh Phase 2 index/report subagent, then generate `phase-works/phase-2/source-obligation-review/index.html` as the deterministic static review app.
-4. Phase 3: spawn a fresh subagent to normalize Phase 2 atoms into `change-capability-anchors/obligation-atom-index.md`, audit source remainders, add precise missing atoms to the global index, split broad atoms, resolve duplicates/ambiguous ownership, assign normalized artifact projection, write all per-source coverage files and Phase 3 trace files under `phase-works/phase-3/`, then generate `phase-works/phase-3/coverage-review-app/index.html` as a deterministic static review app for source coverage, source-to-global mapping, risk queue, and global registry review, and decide:
+1. Create `openspec/orchestrate/`, `trace/`, `change-capability-anchors/`, `phase-works/phase-1/`, `phase-works/phase-2/source-obligation-atoms/`, `phase-works/phase-2/source-obligation-review/`, `phase-works/phase-3/source-doc-coverage/`, `phase-works/phase-3/phase-3-trace/`, `phase-works/phase-3/coverage-review-app/`, `phase-works/phase-4/source-window-dossiers/by-input-change/`, `phase-works/phase-4/source-window-dossiers/by-input-capability/`, and `phase-works/phase-5/`.
+2. Phase 1: if there is no current `change-plan.md`, spawn a fresh subagent to enumerate and read every source document, write `phase-works/phase-1/source-doc-manifest.md`, write `phase-works/phase-1/change-plan.md`, write `trace/phase-1.trace.json`, promote the latest effective plan to root `change-plan.md`, and generate the initial change/capability framework using the Phase 1 reference. Then run validator, reviewer, targeted repair if needed, validator again, and reviewer again before Phase 2.
+3. Phase 2: create the lightweight work queue, spawn source-extraction subagents by source document or source-document batch, write one `<source>.atoms.md` and `<source>.atoms.json` file per read-full source document, run the fresh Phase 2 index/report subagent, write `trace/phase-2.trace.json`, then generate `phase-works/phase-2/source-obligation-review/index.html` as the deterministic static review app. Then run validator, reviewer, targeted repair if needed, validator again, and reviewer again; after pass, freeze raw `.atoms.md/.json`.
+4. Phase 3: spawn a fresh subagent to normalize Phase 2 atoms into `change-capability-anchors/obligation-atom-index.md` and `.json`, audit source remainders, add precise missing atoms to the global index, split broad atoms, resolve duplicates/ambiguous ownership, assign normalized artifact projection, write all per-source coverage files and Phase 3 trace files under `phase-works/phase-3/`, write `phase-works/phase-3/phase-3-trace/source-to-global-atom-map.json` and `trace/phase-3.trace.json`, then generate `phase-works/phase-3/coverage-review-app/index.html` as a deterministic static review app for source coverage, source-to-global mapping, risk queue, and global registry review, run validator/reviewer/repair loop, and decide:
    - `coverage-complete`: every production-meaningful source obligation is represented by exactly one direct global atom or has a justified non-direct/non-coverage status.
    - `blocked`: source docs, atom evidence, ownership boundaries, or conflicts are insufficient for a stable global atom index.
-5. Phase 4: after `coverage-complete`, spawn a fresh subagent to generate source-window dossiers and semantic profiles from the stable global atom index and the original source documents. It writes `phase-works/phase-4/source-window-dossiers/` for every input change and input capability by copying the original source windows referenced by Phase 2/3 atoms, then writes `source-window-semantic-profile-review.md`, `source-window-grounding-issues.md`, and `phase-4-agent-report.md`, and ends with:
+5. Phase 4: after `coverage-complete`, spawn a fresh subagent to generate source-window dossiers and semantic profiles from the stable global atom index and the original source documents. It writes `phase-works/phase-4/source-window-dossiers/` for every input change and input capability by copying the original source windows referenced by Phase 2/3 atoms, then writes `source-window-index.json`, `source-window-semantic-profile-review.md`, `source-window-grounding-issues.md`, `phase-4-agent-report.md`, `trace/phase-4.trace.json`, runs validator/reviewer/repair loop, and ends with:
    - `grounded`: source-window dossiers and semantic profiles are complete enough for Phase 5.
    - `needs-coverage-recheck`: grounding exposed missing/broad/conflicting source obligations that require a fresh Phase 3 pass.
    - `blocked`: source documents, source boundaries, or product decisions are insufficient for safe grounding.
-6. Phase 5: after Phase 4 returns `grounded`, spawn a fresh subagent to refit the change/capability plan from the stable global atom index and Phase 4 source-window semantic profiles. It finalizes artifact projection for each direct atom, writes the current `phase-works/phase-5/` refit packet without any pass/iteration subdirectory, updates the latest effective root `change-plan.md` when needed, derives final `change-capability-anchors/<change-slug>/` packets, explicitly carries every owner-scoped non-direct atom into the relevant final change packet, writes Phase 5 trace files under `phase-works/phase-5/`, and ends with:
+6. Phase 5: after Phase 4 returns `grounded`, spawn a fresh subagent to refit the change/capability plan from the stable global atom index and Phase 4 source-window semantic profiles. It finalizes artifact projection for each direct atom, writes the current `phase-works/phase-5/` refit packet without any pass/iteration subdirectory, writes `atom-plan-mapping.md`, `atom-plan-mapping.json`, `final-packet-index.json`, and `trace/phase-5.trace.json`, updates the latest effective root `change-plan.md` when needed, derives final `change-capability-anchors/<change-slug>/` packets, explicitly carries every owner-scoped non-direct atom into the relevant final change packet, runs validator/reviewer/repair loop, and ends with:
    - `accepted`: the Phase 1 framework remains coherent after source-window and atom-level review.
    - `adjusted`: the framework was refit and all atom mappings remain traceable.
    - `needs-coverage-recheck`: the refit exposed missing/broad/conflicting source obligations that require a fresh Phase 3 pass.
    - `blocked`: a user decision or broad reanalysis is required.
 7. Continue Phase 3 -> Phase 4 -> Phase 5 until Phase 5 returns `accepted`, `adjusted`, or `blocked`, or Phase 4 returns `blocked`.
+
+After every phase validator/reviewer pass, update `trace/manifest.json` with phase statuses and artifact digests.
 
 Do not start `openspec-propose` from this workflow until Phase 5 returns `accepted` or `adjusted` and final change packets exist.
 
@@ -191,21 +215,23 @@ Do not start `openspec-propose` from this workflow until Phase 5 returns `accept
 After each phase, check only interface facts:
 
 - Required directories and reports exist under `openspec/orchestrate/`.
+- Required JSON sidecars exist and pass `validate_source_aligned_orchestrate.py` for the completed phase.
+- Reviewer findings have addressed validator warnings or recorded an explicit accepted warning rationale.
 - Phase reports state the input docs, output files, and blockers.
 - Generated artifacts pass the Artifact Language Gate. If a phase output fails only the language gate, treat the phase as interface-incomplete and run a targeted language repair that preserves IDs, paths, enum/status values, line ranges, atom mappings, ownership decisions, and source quotes.
 - Phase 1 outputs contain root `change-plan.md`, `phase-works/phase-1/change-plan.md`, `phase-works/phase-1/source-doc-manifest.md`, and `phase-works/phase-1/phase-1-agent-report.md`; the manifest lists every source document under the specified roots with full-read status, or Phase 1 reports a blocker.
-- Phase 2 outputs contain `phase-works/phase-2/source-obligation-atoms/work-queue.md`, `phase-works/phase-2/source-obligation-atoms/index.md`, one `phase-works/phase-2/source-obligation-atoms/<source>.atoms.md` file for every source document listed as `read-full`, `phase-works/phase-2/source-obligation-review/index.html`, and `phase-works/phase-2/phase-2-agent-report.md`.
+- Phase 2 outputs contain `phase-works/phase-2/source-obligation-atoms/work-queue.md`, `phase-works/phase-2/source-obligation-atoms/index.md`, one `phase-works/phase-2/source-obligation-atoms/<source>.atoms.md` and `.atoms.json` file for every source document listed as `read-full`, `phase-works/phase-2/source-obligation-review/index.html`, `trace/phase-2.trace.json`, and `phase-works/phase-2/phase-2-agent-report.md`.
 - Phase 2 reports include the Phase 2 index/report subagent identity/status, a work queue summary, and a source-extraction trace showing every manifest source document was assigned exactly one canonical extraction owner, read in full by that owner, atom candidates found, candidate artifact projections recorded, source remainders recorded, candidate ownership mappings, unassigned atoms, gaps, duplicate-risk notes, and blockers.
 - The Phase 2 review app is self-contained or otherwise directly openable from disk, includes every manifest `read-full` source document, renders source paths as a document tree, renders original source content with line numbers, and renders annotation cards or margin notes for every parsed obligation atom row with `Source Atom ID`, `Lines`, `Atom Type`, candidate status/projection/owner fields, and `Source Fact` as the reviewer-facing summary.
-- Phase 3 outputs contain `change-capability-anchors/obligation-atom-index.md`, `phase-works/phase-3/source-doc-manifest.md`, one `phase-works/phase-3/source-doc-coverage/<source>.coverage.md` file for every source document listed in the manifest, all `phase-works/phase-3/phase-3-trace/*.md` files, `phase-works/phase-3/coverage-review-app/index.html`, `phase-works/phase-3/coverage-review.md`, and `phase-works/phase-3/phase-3-agent-report.md`.
+- Phase 3 outputs contain `change-capability-anchors/obligation-atom-index.md`, `change-capability-anchors/obligation-atom-index.json`, `phase-works/phase-3/source-doc-manifest.md`, one `phase-works/phase-3/source-doc-coverage/<source>.coverage.md` file for every source document listed in the manifest, all `phase-works/phase-3/phase-3-trace/*.md` files, `phase-works/phase-3/phase-3-trace/source-to-global-atom-map.json`, `trace/phase-3.trace.json`, `phase-works/phase-3/coverage-review-app/index.html`, `phase-works/phase-3/coverage-review.md`, and `phase-works/phase-3/phase-3-agent-report.md`.
 - The Phase 3 review app is self-contained or otherwise directly openable from disk, includes every Phase 3 source document, renders original source content with line numbers and effective `GA-####` annotations, includes source-to-global mapping filters, a risk queue for duplicate/broad/ownership/Phase 5 refit handoff items, and a searchable global atom registry. The app is only a review aid and must not replace `obligation-atom-index.md`, per-source coverage files, trace files, or `coverage-review.md` as source of truth.
 - Every Phase 3 global atom ID in `obligation-atom-index.md` must match `GA-####`; no alternate global prefix or source-local ID may be used as a `Global Atom ID`.
 - Phase 3 reports include per-source-document obligation coverage summaries, normalized global atom synthesis, normalized artifact projection distribution, missing atom findings, duplicate/ownership resolutions, broad-atom split decisions, non-coverage classifications, and source-backed obligations not mapped to any change or capability.
 - Phase 3 outputs contain `Decision: coverage-complete` or `Decision: blocked`.
-- Phase 4 outputs contain the current `phase-works/phase-4/` grounding packet, including `input-change-plan.md`, `source-window-dossiers/index.md`, source-window dossier files for every input change and input capability with atom-backed source windows, `source-window-semantic-profile-review.md`, `source-window-grounding-issues.md`, and `phase-4-agent-report.md`.
+- Phase 4 outputs contain the current `phase-works/phase-4/` grounding packet, including `input-change-plan.md`, `source-window-dossiers/index.md`, `source-window-dossiers/source-window-index.json`, source-window dossier files for every input change and input capability with atom-backed source windows, `source-window-semantic-profile-review.md`, `source-window-grounding-issues.md`, `trace/phase-4.trace.json`, and `phase-4-agent-report.md`.
 - Phase 4 reports state whether source-window grounding completed, which input changes/capabilities were covered, which atom-backed source windows were copied, which source semantics create Phase 5 refit pressure, whether grounding issues remain, and whether a Phase 3 recheck is required.
 - Phase 4 must not write final change packets, final capability views, `atom-plan-mapping.md`, final `change-plan.md`, or root `openspec/orchestrate/change-plan.md`.
-- Phase 5 outputs contain the current `phase-works/phase-5/` refit packet, including `input-change-plan.md`, `source-window-refit-trace.md`, `change-plan.md`, `atom-plan-mapping.md`, `capability-progression-review.md`, `change-complexity-review.md`, `plan-refit-decision-log.md`, `phase-5-agent-report.md`, and `alignment-final-report.md`; when the status is `accepted` or `adjusted`, they also contain final `change-capability-anchors/index.md`, final per-change packets, final capability views, and `phase-works/phase-5/change-capability-human-plan.md`.
+- Phase 5 outputs contain the current `phase-works/phase-5/` refit packet, including `input-change-plan.md`, `source-window-refit-trace.md`, `change-plan.md`, `atom-plan-mapping.md`, `atom-plan-mapping.json`, `final-packet-index.json`, `trace/phase-5.trace.json`, `capability-progression-review.md`, `change-complexity-review.md`, `plan-refit-decision-log.md`, `phase-5-agent-report.md`, and `alignment-final-report.md`; when the status is `accepted` or `adjusted`, they also contain final `change-capability-anchors/index.md`, final per-change packets, final capability views, and `phase-works/phase-5/change-capability-human-plan.md`.
 - Phase 5 reports state whether the initial plan was accepted or adjusted, which Phase 4 source-window semantic profiles and atom groups drove plan changes, how artifact projection was finalized, how capability progression was evaluated, how implementation-ready change complexity was evaluated, how the change/capability coupling audit was evaluated, which over-budget triggers were split/deferred/blocked, which atoms moved or changed status/projection, and whether a Phase 3 recheck is required.
 - Phase 5 refit decisions cite Phase 4 source-window dossier evidence when changing, splitting, merging, reordering, or renaming changes/capabilities. A decision justified only by atom count, capability count, or terse atom summaries fails the gate unless the relevant source windows are explicitly cited as not adding further semantic distinction.
 - Every Phase 5 final change must pass the Source Window Semantic Grounding Gate: cite source windows, summarize their combined business/system semantics, explain why the atoms belong together, justify roadmap order, state a manual acceptance scenario, and explain all contextual/dependency/evidence/non-goal handling before atom ownership is finalized.

@@ -236,6 +236,43 @@ def parse_atom_ledger(atom_file: Path) -> Tuple[List[Dict[str, object]], List[st
     return [], [f"atom ledger table not found: {atom_file}"]
 
 
+def parse_atom_json(atom_json: Path) -> Tuple[List[Dict[str, object]], List[str]]:
+    if not atom_json.exists():
+        return [], [f"trace sidecar not found, fallback to Markdown: {atom_json}"]
+    data = json.loads(atom_json.read_text(encoding="utf-8"))
+    atoms: List[Dict[str, object]] = []
+    warnings: List[str] = []
+    for row in data.get("source-atoms", []):
+        if not isinstance(row, dict):
+            warnings.append(f"invalid source-atoms row in {atom_json}")
+            continue
+        atom_id = normalize_code(str(row.get("source-atom-id", "")))
+        ranges = row.get("line-ranges", [])
+        if not isinstance(ranges, list):
+            ranges = []
+        atoms.append(
+            {
+                "id": atom_id,
+                "sourceDocument": normalize_code(str(row.get("source-document", ""))),
+                "lines": normalize_code(str(row.get("lines", ""))),
+                "ranges": ranges,
+                "atomType": squash(row.get("atom-type", "")),
+                "sourceFact": squash(row.get("source-fact", "")),
+                "normativity": squash(row.get("normativity", "")),
+                "candidateStatus": squash(row.get("candidate-status", "")),
+                "candidateArtifactProjection": squash(row.get("candidate-artifact-projection", "")),
+                "candidateOwnerChange": squash(row.get("candidate-owner-change", "")),
+                "candidateOwnerCapability": squash(row.get("candidate-owner-capability", "")),
+                "roles": squash(row.get("roles", "")),
+                "rationale": squash(row.get("rationale", "")),
+                "proposeUse": squash(row.get("propose-use", "")),
+                "evidenceNeed": squash(row.get("evidence-need", "")),
+                "atomFile": str(atom_json),
+            }
+        )
+    return atoms, warnings
+
+
 def parse_headings(source_lines: Sequence[str]) -> List[Dict[str, object]]:
     headings: List[Dict[str, object]] = []
     for index, line in enumerate(source_lines, start=1):
@@ -274,7 +311,11 @@ def build_data(repo_root: Path, orchestrate_dir: Path) -> Dict[str, object]:
             warnings.append(f"missing source document: {source.path}")
 
         atom_file = atom_root / source_atom_file_name(source.path)
-        atoms, atom_warnings = parse_atom_ledger(atom_file)
+        atom_json = atom_file.with_suffix(".json")
+        atoms, atom_warnings = parse_atom_json(atom_json)
+        if not atom_json.exists():
+            atoms, markdown_warnings = parse_atom_ledger(atom_file)
+            atom_warnings.extend(markdown_warnings)
         warnings.extend(atom_warnings)
         for atom in atoms:
             status_counts[str(atom.get("candidateStatus", ""))] += 1

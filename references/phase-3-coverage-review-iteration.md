@@ -31,13 +31,16 @@ Write current copies only:
 - `openspec/orchestrate/phase-works/phase-3/source-doc-manifest.md`
 - `openspec/orchestrate/phase-works/phase-3/source-doc-coverage/<source-relative-path-without-extension>.coverage.md` for every source document listed in the manifest
 - `openspec/orchestrate/change-capability-anchors/obligation-atom-index.md`
+- `openspec/orchestrate/change-capability-anchors/obligation-atom-index.json`
 - `openspec/orchestrate/phase-works/phase-3/phase-3-trace/source-to-global-atom-map.md`
+- `openspec/orchestrate/phase-works/phase-3/phase-3-trace/source-to-global-atom-map.json`
 - `openspec/orchestrate/phase-works/phase-3/phase-3-trace/source-remainder-review.md`
 - `openspec/orchestrate/phase-works/phase-3/phase-3-trace/duplicate-ownership-review.md`
 - `openspec/orchestrate/phase-works/phase-3/phase-3-trace/atom-normalization-decision-log.md`
 - `openspec/orchestrate/phase-works/phase-3/coverage-review-app/index.html`
 - `openspec/orchestrate/phase-works/phase-3/coverage-review.md`
 - `openspec/orchestrate/phase-works/phase-3/phase-3-agent-report.md`
+- `openspec/orchestrate/trace/phase-3.trace.json`
 
 Use a single-level filename for per-source files. Derive it from the source document path as listed in the manifest, remove the file extension, replace path separators with `--`, and add `.coverage.md`. Do not create nested directories under `phase-works/phase-3/source-doc-coverage/`.
 
@@ -46,6 +49,8 @@ Phase 3 may add precise missing source-backed atoms to `obligation-atom-index.md
 `phase-works/phase-3/phase-3-trace/` records the current Phase 3 intermediate audit trail. These files are review aids, not source of truth. They must be overwritten on each fresh Phase 3 run and must be consistent with the final `obligation-atom-index.md`, per-source coverage files, and `phase-works/phase-3/coverage-review.md`.
 
 After the Phase 3 semantic outputs exist, generate `phase-works/phase-3/coverage-review-app/index.html` as the deterministic static human review app defined below. It may render source bodies and Phase 3 outputs, but must not add atoms, change atom IDs, reinterpret coverage, decide duplicate/ownership issues, or write Phase 4/Phase 5 artifacts.
+
+After the writer finishes, Phase 3 must pass the reviewer/repair loop from `references/reviewer-repair-loop.md`: run the phase validator, run the coverage reviewer, apply targeted Phase 3 repair if needed, rerun validator, rerun reviewer, then continue only after pass.
 
 ## Artifact Language Gate
 
@@ -139,23 +144,26 @@ Evaluate in this order:
 6. Build a semantic duplicate review across extracted atoms. Same source document/range, equivalent source facts, equivalent state/action/verification obligations, or identical propose use are duplicate candidates until reviewed.
 7. Split broad atoms when one Phase 2 row covers multiple mandatory UI/flow/data/verification obligations. Each split atom must keep source evidence and a source-local origin or Phase 3 missing-atom finding id.
 8. Build `change-capability-anchors/obligation-atom-index.md` with one global atom per production obligation and one normalized artifact projection per global atom.
-9. Write `phase-works/phase-3/phase-3-trace/source-to-global-atom-map.md`, mapping every Phase 2 atom/context row to exactly one global atom id, relation, non-direct status, or blocker.
-10. Write `phase-works/phase-3/phase-3-trace/duplicate-ownership-review.md`, preserving every duplicate, broad-atom, overlap, and ownership candidate considered and its resolution.
-11. For each source document in the manifest, create or update the matching `phase-works/phase-3/source-doc-coverage/<source>.coverage.md` file before writing the final global review.
-12. For each source document, inspect obligation-bearing sections and verify atom completeness:
+9. Write `change-capability-anchors/obligation-atom-index.json` as the canonical global atom trace sidecar.
+10. Write `phase-works/phase-3/phase-3-trace/source-to-global-atom-map.md` and `.json`, mapping every Phase 2 atom/context row to exactly one global atom id, relation, non-direct status, or blocker.
+11. Write `phase-works/phase-3/phase-3-trace/duplicate-ownership-review.md`, preserving every duplicate, broad-atom, overlap, and ownership candidate considered and its resolution.
+12. For each source document in the manifest, create or update the matching `phase-works/phase-3/source-doc-coverage/<source>.coverage.md` file before writing the final global review.
+13. For each source document, inspect obligation-bearing sections and verify atom completeness:
     - For pages/objects: page role, route, entry, exit, layout constraints with behavior impact, every named state, state triggers, display, primary actions, disabled actions, recovery, interaction rules, object dependencies, action labels that define behavior, acceptance criteria, responsive behavior, and non-goals.
     - For flow/state/system docs: lifecycle stages, allowed transitions, overlay/blocking rules, fixture fields, scenario ids, verification matrix rows, interaction outcomes, and preserve boundaries.
     - For architecture/product docs: data facts, access/privacy rules, runtime/deployment requirements, background execution rules, external integration boundaries, failure/recovery rules, observability/audit rules, and verification requirements.
-13. Identify source ranges outside every Phase 2 atom or source anchor range. Read those candidate ranges plus necessary local context and classify them:
+14. Identify source ranges outside every Phase 2 atom or source anchor range. Read those candidate ranges plus necessary local context and classify them:
     - ignore blank lines, table separators, decorative separators, generated table-of-contents lines, and pure formatting
     - ignore background prose, repeated summaries, discarded options, and purely explanatory text unless it defines a production behavior, boundary, data fact, verification obligation, deployment requirement, auth/privacy rule, failure path, or preserve constraint
     - record each remaining meaningful uncovered source obligation as a missing atom and add it to the global index when precise enough
-14. Write `phase-works/phase-3/phase-3-trace/source-remainder-review.md`, listing every candidate remaining source range reviewed, how it was discovered, read scope, semantic classification, whether it contains a production obligation, and the resulting atom/status/finding.
-15. Identify atoms whose owner change/capability cannot be resolved without source-window grounding and plan refit. Mark them `phase-5-refit-required` instead of forcing them into the Phase 1 framework.
-16. Write `phase-works/phase-3/phase-3-trace/atom-normalization-decision-log.md`, preserving every candidate finding considered, the decision for each, and whether Phase 5 must resolve final placement.
-17. Build compact global statistics across source documents, global atoms, meaningful missing atoms, duplicate findings, broad-atom split findings, non-coverage classifications, ownership ambiguities, gaps, and conflicts.
-18. Generate `phase-works/phase-3/coverage-review-app/index.html` from the source documents and Phase 3 artifacts. Prefer the bundled helper `scripts/phase3_coverage_review_app.py` unless a project-specific equivalent already exists.
-19. Decide whether coverage normalization is complete or blocked.
+15. Write `phase-works/phase-3/phase-3-trace/source-remainder-review.md`, listing every candidate remaining source range reviewed, how it was discovered, read scope, semantic classification, whether it contains a production obligation, and the resulting atom/status/finding.
+16. Identify atoms whose owner change/capability cannot be resolved without source-window grounding and plan refit. Mark them `phase-5-refit-required` instead of forcing them into the Phase 1 framework.
+17. Write `phase-works/phase-3/phase-3-trace/atom-normalization-decision-log.md`, preserving every candidate finding considered, the decision for each, and whether Phase 5 must resolve final placement.
+18. Build compact global statistics across source documents, global atoms, meaningful missing atoms, duplicate findings, broad-atom split findings, non-coverage classifications, ownership ambiguities, gaps, and conflicts.
+19. Write `trace/phase-3.trace.json` according to `references/trace-sidecar-contract.md`.
+20. Generate `phase-works/phase-3/coverage-review-app/index.html` from the source documents and Phase 3 artifacts. Prefer the bundled helper `scripts/phase3_coverage_review_app.py` unless a project-specific equivalent already exists.
+21. Run `validate_source_aligned_orchestrate.py --phase phase-3`, then run the Phase 3 reviewer/repair loop.
+22. Decide whether coverage normalization is complete or blocked.
 
 ## Phase 3 Human Review App
 
@@ -182,7 +190,7 @@ python3 .codex/skills/source-aligned-change-plan-coverage/scripts/phase3_coverag
   --orchestrate-dir openspec/orchestrate
 ```
 
-The helper reads source document bodies, `phase-works/phase-3/source-doc-manifest.md`, all per-source `.coverage.md` files, all four `phase-3-trace/*.md` files, `change-capability-anchors/obligation-atom-index.md`, and `phase-works/phase-3/coverage-review.md`, then writes `phase-works/phase-3/coverage-review-app/index.html`. Its output is reviewer-facing only and must not be treated as the source of truth for Phase 4 or Phase 5.
+The helper reads source document bodies, `phase-works/phase-3/source-doc-manifest.md`, all per-source `.coverage.md` files, all Phase 3 trace files, preferably `change-capability-anchors/obligation-atom-index.json` and `phase-3-trace/source-to-global-atom-map.json`, and `phase-works/phase-3/coverage-review.md`, then writes `phase-works/phase-3/coverage-review-app/index.html`. It falls back to Markdown trace with a warning during migration. Its output is reviewer-facing only and must not be treated as the source of truth for Phase 4 or Phase 5.
 
 ## Required Tables
 

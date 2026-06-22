@@ -30,12 +30,15 @@ Write the current refit packet directly under `openspec/orchestrate/phase-works/
 - `openspec/orchestrate/phase-works/phase-5/source-window-refit-trace.md`
 - `openspec/orchestrate/phase-works/phase-5/change-plan.md`
 - `openspec/orchestrate/phase-works/phase-5/atom-plan-mapping.md`
+- `openspec/orchestrate/phase-works/phase-5/atom-plan-mapping.json`
+- `openspec/orchestrate/phase-works/phase-5/final-packet-index.json`
 - `openspec/orchestrate/phase-works/phase-5/capability-progression-review.md`
 - `openspec/orchestrate/phase-works/phase-5/change-complexity-review.md`
 - `openspec/orchestrate/phase-works/phase-5/plan-refit-decision-log.md`
 - `openspec/orchestrate/phase-works/phase-5/change-plan-adjustments.md` only when the status is `adjusted`, `needs-coverage-recheck`, or `blocked`
 - `openspec/orchestrate/phase-works/phase-5/phase-5-agent-report.md`
 - `openspec/orchestrate/phase-works/phase-5/alignment-final-report.md`
+- `openspec/orchestrate/trace/phase-5.trace.json`
 
 When the status is `accepted` or `adjusted`, also write final consume-ready artifacts:
 
@@ -48,11 +51,13 @@ If Phase 5 accepts the input plan unchanged, still write the current Phase 5 pac
 
 `phase-works/phase-2/source-obligation-atoms/`, `change-capability-anchors/obligation-atom-index.md`, and `phase-works/phase-4/source-window-dossiers/` are upstream evidence. Do not edit them in Phase 5.
 
+After the writer finishes, Phase 5 must pass the reviewer/repair loop from `references/reviewer-repair-loop.md`: run the phase validator, run the refit reviewer, apply targeted Phase 5 repair if needed, rerun validator, rerun reviewer, then run the final integration reviewer before handing off to `openspec-propose`.
+
 Phase 4 source-window dossiers and semantic profiles are the source-grounding input for Phase 5. `source-window-refit-trace.md` is the Phase 5 decision trace that explains how those input source-window profiles were transformed into final changes/capabilities: which original atoms stayed together, moved, split, merged, became contextual/dependency/evidence/non-goal, and why the adjusted unit remains a truthful engineering delivery slice.
 
 ## Recommended Mechanical Helper
 
-For reruns or large Phase 5 refits, prefer the bundled deterministic renderer instead of pasting a long one-off Python heredoc. The Phase 5 subagent still owns the semantic decisions: it must review the Phase 4 source-window dossiers, review the global atom index, decide the final roadmap, write or update the reviewed `atom-plan-mapping.md`, and prepare a JSON config that states final changes, capabilities, split analyses, decisions, adjustments, and report findings. The helper only validates and renders mechanical artifacts from those reviewed inputs.
+For reruns or large Phase 5 refits, prefer the bundled deterministic renderer instead of pasting a long one-off Python heredoc. The Phase 5 subagent still owns the semantic decisions: it must review the Phase 4 source-window dossiers, review the global atom index, decide the final roadmap, write or update the reviewed `atom-plan-mapping.json` plus Markdown mirror, and prepare a JSON config that states final changes, capabilities, split analyses, decisions, adjustments, and report findings. The helper only validates and renders mechanical artifacts from those reviewed inputs.
 
 Do not run the helper as a substitute for Phase 4 source-window grounding. `phase-works/phase-4/source-window-dossiers/`, `phase-works/phase-4/source-window-semantic-profile-review.md`, and `phase-works/phase-5/source-window-refit-trace.md` must be written and reviewed before helper-rendered final packets are treated as valid.
 
@@ -61,7 +66,7 @@ Suggested flow:
 ```bash
 python3 .codex/skills/source-aligned-change-plan-coverage/scripts/phase5_plan_refit.py \
   --orchestrate-dir openspec/orchestrate \
-  --mapping openspec/orchestrate/phase-works/phase-5/atom-plan-mapping.md \
+  --mapping openspec/orchestrate/phase-works/phase-5/atom-plan-mapping.json \
   --print-config-template > openspec/orchestrate/phase-works/phase-5/phase5-refit.config.json
 ```
 
@@ -72,17 +77,28 @@ python3 -m py_compile .codex/skills/source-aligned-change-plan-coverage/scripts/
 
 python3 .codex/skills/source-aligned-change-plan-coverage/scripts/phase5_plan_refit.py \
   --orchestrate-dir openspec/orchestrate \
-  --mapping openspec/orchestrate/phase-works/phase-5/atom-plan-mapping.md \
+  --mapping openspec/orchestrate/phase-works/phase-5/atom-plan-mapping.json \
   --config openspec/orchestrate/phase-works/phase-5/phase5-refit.config.json
 
 python3 .codex/skills/source-aligned-change-plan-coverage/scripts/phase5_plan_refit.py \
   --orchestrate-dir openspec/orchestrate \
-  --mapping openspec/orchestrate/phase-works/phase-5/atom-plan-mapping.md \
+  --mapping openspec/orchestrate/phase-works/phase-5/atom-plan-mapping.json \
   --config openspec/orchestrate/phase-works/phase-5/phase5-refit.config.json \
-  --write
+  --write \
+  --validate-rendered
 ```
 
 Use `--output-orchestrate-dir /tmp/phase5-check/openspec/orchestrate` for a dry render into a temporary tree when reviewing the generated files before overwriting the active orchestration outputs. Do not treat the helper output as valid unless the subagent has reviewed the config and the main-agent gates pass. If validation fails, repair the mapping/config or return `needs-coverage-recheck`/`blocked`; do not weaken checks in the script.
+
+After helper render or manual edits, run:
+
+```bash
+python3 .codex/skills/source-aligned-change-plan-coverage/scripts/validate_source_aligned_orchestrate.py \
+  --orchestrate-dir openspec/orchestrate \
+  --phase phase-5 \
+  --complete \
+  --json
+```
 
 ## Artifact Language Gate
 

@@ -175,7 +175,38 @@ def source_path_to_coverage_name(source_path: str) -> str:
 
 
 def parse_global_atoms(orchestrate_dir: Path, warnings: List[str]) -> List[Dict[str, object]]:
+    json_path = orchestrate_dir / "change-capability-anchors/obligation-atom-index.json"
+    if json_path.exists():
+        data = json.loads(json_path.read_text(encoding="utf-8"))
+        atoms: List[Dict[str, object]] = []
+        for row in data.get("global-atoms", []):
+            if not isinstance(row, dict):
+                warnings.append(f"{json_path.name}: invalid global-atoms row")
+                continue
+            atoms.append(
+                {
+                    "globalAtomId": normalize_code(str(row.get("global-atom-id", ""))),
+                    "sourceDocument": normalize_code(str(row.get("source-document", ""))),
+                    "lines": normalize_code(str(row.get("lines", ""))),
+                    "ranges": row.get("line-ranges", []),
+                    "atomType": squash(row.get("atom-type", "")),
+                    "sourceFact": squash(row.get("source-fact", "")),
+                    "normativity": squash(row.get("normativity", "")),
+                    "coverageStatus": squash(row.get("coverage-status", "")),
+                    "artifactProjection": squash(row.get("artifact-projection", "")),
+                    "ownerChange": normalize_code(str(row.get("owner-change", ""))),
+                    "ownerCapability": normalize_code(str(row.get("owner-capability", ""))),
+                    "sourceAtomOrigins": normalize_code(str(row.get("source-atom-origins", ""))),
+                    "atomRelation": normalize_code(str(row.get("atom-relation", ""))),
+                    "proposeUse": squash(row.get("propose-use", "")),
+                    "evidenceNeed": squash(row.get("evidence-need", "")),
+                    "reviewJudgment": squash(row.get("review-judgment", "")),
+                }
+            )
+        return atoms
+
     path = orchestrate_dir / "change-capability-anchors/obligation-atom-index.md"
+    warnings.append(f"{path.name}: JSON trace missing; fallback to Markdown global atom index")
     rows = table_rows(
         path,
         [
@@ -217,8 +248,42 @@ def parse_global_atoms(orchestrate_dir: Path, warnings: List[str]) -> List[Dict[
     return atoms
 
 
-def parse_mapping(orchestrate_dir: Path) -> List[Dict[str, str]]:
+def parse_mapping(orchestrate_dir: Path, warnings: Optional[List[str]] = None) -> List[Dict[str, str]]:
+    json_path = orchestrate_dir / "phase-works/phase-3/phase-3-trace/source-to-global-atom-map.json"
+    if json_path.exists():
+        data = json.loads(json_path.read_text(encoding="utf-8"))
+        output: List[Dict[str, str]] = []
+        for row in data.get("rows", []):
+            if not isinstance(row, dict):
+                continue
+            relation = (
+                row.get("global-atom-id")
+                or row.get("global-relation")
+                or row.get("non-coverage-status")
+                or row.get("blocker")
+                or ""
+            )
+            output.append(
+                {
+                    "sourceDocument": normalize_code(str(row.get("source-document", ""))),
+                    "sourceAtomId": normalize_code(str(row.get("source-atom-id", ""))),
+                    "lines": normalize_code(str(row.get("lines", ""))),
+                    "candidateStatus": squash(row.get("candidate-status", "")),
+                    "candidateArtifactProjection": squash(row.get("candidate-artifact-projection", "")),
+                    "candidateOwnerChange": normalize_code(str(row.get("candidate-owner-change", ""))),
+                    "candidateOwnerCapability": normalize_code(str(row.get("candidate-owner-capability", ""))),
+                    "globalAtomIdOrRelation": normalize_code(str(relation)),
+                    "globalCoverageStatus": squash(row.get("global-coverage-status", "")),
+                    "globalArtifactProjection": squash(row.get("global-artifact-projection", "")),
+                    "reviewDecision": squash(row.get("review-decision", "")),
+                    "reason": squash(row.get("reason", "")),
+                }
+            )
+        return output
+
     path = orchestrate_dir / "phase-works/phase-3/phase-3-trace/source-to-global-atom-map.md"
+    if warnings is not None:
+        warnings.append(f"{path.name}: JSON trace missing; fallback to Markdown source-to-global map")
     rows = table_rows(
         path,
         [
@@ -562,7 +627,7 @@ def build_data(repo_root: Path, orchestrate_dir: Path) -> Dict[str, object]:
         ],
     )
     global_atoms = parse_global_atoms(orchestrate_dir, warnings)
-    mapping_rows = parse_mapping(orchestrate_dir)
+    mapping_rows = parse_mapping(orchestrate_dir, warnings)
     duplicate_rows = parse_duplicate_review(orchestrate_dir)
     coverage_review = parse_coverage_review(orchestrate_dir)
     handoff_rows = coverage_review.get("handoffs", [])

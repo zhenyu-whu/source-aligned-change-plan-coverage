@@ -139,6 +139,60 @@ def parse_source_rows(markdown_path: Path) -> List[EvidenceRow]:
     return rows
 
 
+def parse_source_rows_from_trace(json_path: Path) -> List[EvidenceRow]:
+    data = json.loads(json_path.read_text(encoding="utf-8"))
+    rows: List[EvidenceRow] = []
+    for index, raw in enumerate(data.get("source-atoms", []), start=1):
+        if not isinstance(raw, dict):
+            continue
+        source_document = normalize_cell(str(raw.get("source-document", "")))
+        line_spec = normalize_cell(str(raw.get("lines", "")))
+        row_id = normalize_cell(str(raw.get("source-atom-id", "")))
+        if not source_document or not line_spec or not row_id:
+            continue
+        rows.append(
+            EvidenceRow(
+                origin="atom",
+                file=str(json_path),
+                table_line=index,
+                source_document=source_document,
+                row_id=row_id,
+                lines=line_spec,
+                raw_lines=line_spec,
+                source_fact=str(raw.get("source-fact", "")),
+                status=str(raw.get("candidate-status", "")),
+                candidate_owner_change=str(raw.get("candidate-owner-change", "")),
+                candidate_owner_capability=str(raw.get("candidate-owner-capability", "")),
+                roles=str(raw.get("roles", "")),
+            )
+        )
+    for index, raw in enumerate(data.get("source-anchors", []), start=1):
+        if not isinstance(raw, dict):
+            continue
+        source_document = normalize_cell(str(raw.get("source-document", "")))
+        line_spec = normalize_cell(str(raw.get("lines", "")))
+        row_id = normalize_cell(str(raw.get("source-atom-ids", raw.get("anchor", ""))))
+        if not source_document or not line_spec or not row_id:
+            continue
+        rows.append(
+            EvidenceRow(
+                origin="anchor",
+                file=str(json_path),
+                table_line=index,
+                source_document=source_document,
+                row_id=row_id,
+                lines=line_spec,
+                raw_lines=line_spec,
+                source_fact=str(raw.get("source-phrase", "")),
+                status=str(raw.get("candidate-status", "")),
+                candidate_owner_change=str(raw.get("candidate-owners", raw.get("owner-change", ""))),
+                candidate_owner_capability="",
+                roles=str(raw.get("roles", "")),
+            )
+        )
+    return rows
+
+
 def parse_line_ranges(row: EvidenceRow) -> Tuple[List[Tuple[int, int]], List[str], List[str]]:
     ranges: List[Tuple[int, int]] = []
     errors: List[str] = []
@@ -180,6 +234,14 @@ def iter_source_atom_files(orchestrate_dir: Path) -> Iterable[Path]:
     for atom_file in sorted(atom_root.glob("*.atoms.md")):
         if atom_file.name != "index.md":
             yield atom_file
+
+
+def iter_source_atom_trace_files(orchestrate_dir: Path) -> Iterable[Path]:
+    atom_root = orchestrate_dir / "phase-works/phase-2/source-obligation-atoms"
+    if not atom_root.exists():
+        return
+    for atom_file in sorted(atom_root.glob("*.atoms.json")):
+        yield atom_file
 
 
 def merge_ranges(ranges: List[ParsedRange]) -> List[Tuple[int, int]]:
@@ -259,6 +321,8 @@ def main() -> int:
     parser.add_argument("--orchestrate-dir", default="openspec/orchestrate")
     parser.add_argument("--workspace-root", default=".")
     parser.add_argument("--pretty", action="store_true")
+    parser.add_argument("--from-trace", dest="from_trace", action="store_true", default=True, help="Read Phase 2 .atoms.json sidecars. This is the default.")
+    parser.add_argument("--from-markdown", dest="from_trace", action="store_false", help="Read legacy Phase 2 .atoms.md files instead of JSON trace.")
     args = parser.parse_args()
 
     orchestrate_dir = Path(args.orchestrate_dir)
@@ -269,9 +333,11 @@ def main() -> int:
     rows_read = 0
     files_read = 0
 
-    for atom_file in iter_source_atom_files(orchestrate_dir):
+    atom_files = iter_source_atom_trace_files(orchestrate_dir) if args.from_trace else iter_source_atom_files(orchestrate_dir)
+    for atom_file in atom_files:
         files_read += 1
-        for row in parse_source_rows(atom_file):
+        source_rows = parse_source_rows_from_trace(atom_file) if args.from_trace else parse_source_rows(atom_file)
+        for row in source_rows:
             rows_read += 1
             if ";" in row.source_document:
                 malformed.append({"row": asdict(row), "errors": ["multiple source documents in one row"]})

@@ -26,6 +26,14 @@ Write the Phase 1 report to:
 openspec/orchestrate/phase-works/phase-1/phase-1-agent-report.md
 ```
 
+Write the canonical Phase 1 trace sidecar to:
+
+```text
+openspec/orchestrate/trace/phase-1.trace.json
+```
+
+After the writer finishes, Phase 1 must pass the reviewer/repair loop from `references/reviewer-repair-loop.md`: run the phase validator, run the Phase 1 reviewer, apply targeted Phase 1 repair if needed, rerun validator, rerun reviewer, then continue only after pass.
+
 ## Artifact Language Gate
 
 Apply the skill-level Artifact Language Gate to every Phase 1 output. Keep fixed headings, table headers, field labels, capability ids, change slugs, paths, commands, and exact source terms as required, but write all agent-authored explanations in Simplified Chinese. This includes assumptions, conflicts, behavior-boundary descriptions, capability increment cells, roadmap field values, risk-check answers, source-evidence hint explanations, archive-readiness notes, and the Phase 1 report.
@@ -163,6 +171,7 @@ Source-backed domain behavior found during Phase 1 should be sliced into busines
 12. Mark key scenarios, non-goals, risks, conflicts, and deferred content from the input documents.
 13. Add concise `Source evidence` hints only to justify the planned slice. These hints may name source paths, headings, section numbers, decision IDs, route/page/object names, APIs, commands, DTOs, entities, tables, jobs, events, assets, environments, or verification anchors.
 14. Keep Phase 1 evidence hints short and non-canonical. Do not extract or enumerate every source-backed requirement, and do not create obligation atom ledgers, line ranges, anchor tables, coverage statuses, "pending Phase 2" evidence lists, or evidence counts. Phase 2 owns source-first atom extraction, Phase 3 owns coverage normalization, Phase 4 owns source-window grounding, and Phase 5 owns final plan refit.
+15. Write `trace/phase-1.trace.json` according to `references/trace-sidecar-contract.md` and run `validate_source_aligned_orchestrate.py --phase phase-1`.
 
 ## Output
 

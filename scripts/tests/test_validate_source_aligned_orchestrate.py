@@ -1,0 +1,565 @@
+#!/usr/bin/env python3
+# -*- coding: utf-8 -*-
+
+from __future__ import annotations
+
+import json
+import subprocess
+import sys
+import tempfile
+import unittest
+from pathlib import Path
+
+SCRIPT_DIR = Path(__file__).resolve().parents[1]
+sys.path.insert(0, str(SCRIPT_DIR))
+
+from source_aligned_trace_lib import (  # noqa: E402
+    ATOM_PLAN_MAPPING_SCHEMA,
+    FINAL_PACKET_INDEX_SCHEMA,
+    GLOBAL_ATOM_INDEX_SCHEMA,
+    MANIFEST_SCHEMA,
+    PHASE_TRACE_SCHEMAS,
+    SOURCE_ATOMS_SCHEMA,
+    SOURCE_TO_GLOBAL_MAP_SCHEMA,
+    SOURCE_WINDOW_INDEX_SCHEMA,
+    TRACE_CONTRACT_VERSION,
+    sha256_file,
+    sha256_text,
+    write_json,
+)
+from validate_source_aligned_orchestrate import validate  # noqa: E402
+
+
+class SourceAlignedValidatorTest(unittest.TestCase):
+    def setUp(self) -> None:
+        self.tmp = tempfile.TemporaryDirectory()
+        self.root = Path(self.tmp.name)
+        self.orchestrate = self.root / "openspec/orchestrate"
+        self.script = SCRIPT_DIR / "validate_source_aligned_orchestrate.py"
+        self._build_valid_fixture()
+
+    def tearDown(self) -> None:
+        self.tmp.cleanup()
+
+    def _write(self, path: str, text: str) -> Path:
+        target = self.root / path
+        target.parent.mkdir(parents=True, exist_ok=True)
+        target.write_text(text, encoding="utf-8")
+        return target
+
+    def _source_sha(self) -> str:
+        return sha256_file(self.root / "docs/source.md")
+
+    def _build_valid_fixture(self) -> None:
+        source = "\n".join(f"line {i}" for i in range(1, 21)) + "\n"
+        self._write("docs/source.md", source)
+        self._write("openspec/orchestrate/change-plan.md", "# Plan\n")
+        self._write("openspec/orchestrate/phase-works/phase-1/change-plan.md", "# Phase 1 Plan\n")
+        self._write(
+            "openspec/orchestrate/phase-works/phase-1/source-doc-manifest.md",
+            "| Source Document | Read Status | Source Role | Coarse Topics / Paths | Notes |\n"
+            "| --- | --- | --- | --- | --- |\n"
+            "| docs/source.md | read-full | main | topic | note |\n",
+        )
+        self._write("openspec/orchestrate/phase-works/phase-1/phase-1-agent-report.md", "ok\n")
+        self._write(
+            "openspec/orchestrate/phase-works/phase-2/source-obligation-atoms/work-queue.md",
+            "| Batch | Source Documents | Canonical Owner |\n"
+            "| --- | --- | --- |\n"
+            "| B1 | docs/source.md | owner-a |\n",
+        )
+        self._write(
+            "openspec/orchestrate/phase-works/phase-2/source-obligation-atoms/docs--source.atoms.md",
+            "| Source Atom ID | Source Document | Lines | Atom Type | Source Fact | Normativity | Candidate Status | Candidate Artifact Projection | Candidate Owner Change | Candidate Owner Capability | Roles | Rationale | Propose Use | Evidence Need |\n"
+            "| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |\n"
+            "| atom.one | docs/source.md | L1-L2 | behavior | fact one | must | direct-candidate | spec-requirement | change-a | cap-a | primary | why | use | unit |\n"
+            "| atom.two | docs/source.md | L3-L4 | explicit-non-goal | fact two | must-not | explicit-non-goal | spec-guard | change-a | cap-a | non-goal | why | use | none |\n",
+        )
+        self._write("openspec/orchestrate/phase-works/phase-2/source-obligation-atoms/index.md", "index\n")
+        self._write("openspec/orchestrate/phase-works/phase-2/phase-2-agent-report.md", "ok\n")
+        self._write("openspec/orchestrate/phase-works/phase-3/coverage-review.md", "Decision: coverage-complete\n")
+        self._write("openspec/orchestrate/phase-works/phase-4/phase-4-agent-report.md", "Phase 4 Status: grounded\n")
+        self._write("openspec/orchestrate/phase-works/phase-5/phase-5-agent-report.md", "Phase 5 Status: adjusted\n")
+        self._write("openspec/orchestrate/change-capability-anchors/index.md", "index\n")
+        self._write(
+            "openspec/orchestrate/change-capability-anchors/obligation-atom-index.md",
+            "| Global Atom ID | Source Document | Lines | Atom Type | Source Fact | Normativity | Coverage Status | Artifact Projection | Owner Change | Owner Capability | Source Atom Origins | Atom Relation | Propose Use | Evidence Need | Review Judgment |\n"
+            "| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |\n"
+            "| GA-0001 | docs/source.md | L1-L2 | behavior | fact one | must | direct | spec-requirement | change-a | cap-a | atom.one | direct | use | unit | ok |\n"
+            "| GA-0002 | docs/source.md | L3-L4 | explicit-non-goal | fact two | must-not | explicit-non-goal | spec-guard | change-a | cap-a | atom.two | non-goal | use | none | ok |\n",
+        )
+        self._write(
+            "openspec/orchestrate/phase-works/phase-5/atom-plan-mapping.md",
+            "| Global Atom ID | Source Document | Lines | Phase 3 Owner / Status | Phase 3 Artifact Projection | Final Owner Change | Final Owner Capability | Final Artifact Projection | Final Relation | Plan Decision | Reason |\n"
+            "| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |\n"
+            "| GA-0001 | docs/source.md | L1-L2 | change-a / direct | spec-requirement | change-a | cap-a | spec-requirement | direct | direct-owner | reason |\n"
+            "| GA-0002 | docs/source.md | L3-L4 | change-a / explicit-non-goal | spec-guard | change-a | cap-a | spec-guard | non-goal | scoped-non-direct | reason |\n",
+        )
+        self._write(
+            "openspec/orchestrate/change-capability-anchors/change-a/change-a.md",
+            "# change-a\n\n| Global Atom ID | Relation |\n| --- | --- |\n| GA-0001 | direct |\n| GA-0002 | non-goal |\n",
+        )
+        self._write(
+            "openspec/orchestrate/change-capability-anchors/change-a/capability-anchors/cap-a.md",
+            "# cap-a\n\n| Global Atom ID | Relation |\n| --- | --- |\n| GA-0001 | direct |\n",
+        )
+        self._write(
+            "openspec/orchestrate/phase-works/phase-5/change-complexity-review.md",
+            "| Change | Direct Atom Count | Budget Status |\n| --- | --- | --- |\n| change-a | 1 | within-target |\n",
+        )
+
+        self._write_json_sidecars()
+
+    def _write_json_sidecars(self) -> None:
+        source_sha = self._source_sha()
+        write_json(
+            self.orchestrate / "trace/phase-1.trace.json",
+            {
+                "trace-schema": PHASE_TRACE_SCHEMAS["phase-1"],
+                "trace-contract-version": TRACE_CONTRACT_VERSION,
+                "source-documents": [
+                    {
+                        "source-document": "docs/source.md",
+                        "read-status": "read-full",
+                        "source-role": "main",
+                        "coarse-topics-paths": "topic",
+                        "notes": "note",
+                        "line-count": 20,
+                        "source-sha256": source_sha,
+                    }
+                ],
+                "change-plan": {
+                    "phase-plan-path": "openspec/orchestrate/phase-works/phase-1/change-plan.md",
+                    "root-plan-path": "openspec/orchestrate/change-plan.md",
+                    "phase-plan-sha256": sha256_file(self.orchestrate / "phase-works/phase-1/change-plan.md"),
+                    "root-plan-sha256": sha256_file(self.orchestrate / "change-plan.md"),
+                },
+            },
+        )
+        source_atoms = [
+            {
+                "source-atom-id": "atom.one",
+                "source-document": "docs/source.md",
+                "lines": "L1-L2",
+                "line-ranges": [{"start": 1, "end": 2}],
+                "atom-type": "behavior",
+                "source-fact": "fact one",
+                "normativity": "must",
+                "candidate-status": "direct-candidate",
+                "candidate-artifact-projection": "spec-requirement",
+                "candidate-owner-change": "change-a",
+                "candidate-owner-capability": "cap-a",
+                "roles": "primary",
+                "rationale": "why",
+                "propose-use": "use",
+                "evidence-need": "unit",
+            },
+            {
+                "source-atom-id": "atom.two",
+                "source-document": "docs/source.md",
+                "lines": "L3-L4",
+                "line-ranges": [{"start": 3, "end": 4}],
+                "atom-type": "explicit-non-goal",
+                "source-fact": "fact two",
+                "normativity": "must-not",
+                "candidate-status": "explicit-non-goal",
+                "candidate-artifact-projection": "spec-guard",
+                "candidate-owner-change": "change-a",
+                "candidate-owner-capability": "cap-a",
+                "roles": "non-goal",
+                "rationale": "why",
+                "propose-use": "use",
+                "evidence-need": "none",
+            },
+        ]
+        write_json(
+            self.orchestrate / "phase-works/phase-2/source-obligation-atoms/docs--source.atoms.json",
+            {
+                "trace-schema": SOURCE_ATOMS_SCHEMA,
+                "trace-contract-version": TRACE_CONTRACT_VERSION,
+                "source-document": "docs/source.md",
+                "source-sha256": source_sha,
+                "read-status": "read-full",
+                "canonical-owner": "owner-a",
+                "source-atoms": source_atoms,
+                "source-anchors": [],
+                "section-inventory": [],
+                "blockers": [],
+            },
+        )
+        write_json(
+            self.orchestrate / "trace/phase-2.trace.json",
+            {
+                "trace-schema": PHASE_TRACE_SCHEMAS["phase-2"],
+                "trace-contract-version": TRACE_CONTRACT_VERSION,
+                "work-queue-path": "openspec/orchestrate/phase-works/phase-2/source-obligation-atoms/work-queue.md",
+                "sources": [],
+            },
+        )
+        global_atoms = [
+            {
+                "global-atom-id": "GA-0001",
+                "source-document": "docs/source.md",
+                "lines": "L1-L2",
+                "line-ranges": [{"start": 1, "end": 2}],
+                "atom-type": "behavior",
+                "source-fact": "fact one",
+                "normativity": "must",
+                "coverage-status": "direct",
+                "artifact-projection": "spec-requirement",
+                "owner-change": "change-a",
+                "owner-capability": "cap-a",
+                "source-atom-origins": "atom.one",
+                "origins": ["atom.one"],
+                "atom-relation": "direct",
+                "propose-use": "use",
+                "evidence-need": "unit",
+                "review-judgment": "ok",
+            },
+            {
+                "global-atom-id": "GA-0002",
+                "source-document": "docs/source.md",
+                "lines": "L3-L4",
+                "line-ranges": [{"start": 3, "end": 4}],
+                "atom-type": "explicit-non-goal",
+                "source-fact": "fact two",
+                "normativity": "must-not",
+                "coverage-status": "explicit-non-goal",
+                "artifact-projection": "spec-guard",
+                "owner-change": "change-a",
+                "owner-capability": "cap-a",
+                "source-atom-origins": "atom.two",
+                "origins": ["atom.two"],
+                "atom-relation": "non-goal",
+                "propose-use": "use",
+                "evidence-need": "none",
+                "review-judgment": "ok",
+            },
+        ]
+        write_json(
+            self.orchestrate / "change-capability-anchors/obligation-atom-index.json",
+            {
+                "trace-schema": GLOBAL_ATOM_INDEX_SCHEMA,
+                "trace-contract-version": TRACE_CONTRACT_VERSION,
+                "artifact-path": "openspec/orchestrate/change-capability-anchors/obligation-atom-index.md",
+                "global-atoms": global_atoms,
+            },
+        )
+        write_json(
+            self.orchestrate / "phase-works/phase-3/phase-3-trace/source-to-global-atom-map.json",
+            {
+                "trace-schema": SOURCE_TO_GLOBAL_MAP_SCHEMA,
+                "trace-contract-version": TRACE_CONTRACT_VERSION,
+                "artifact-path": "openspec/orchestrate/phase-works/phase-3/phase-3-trace/source-to-global-atom-map.md",
+                "rows": [
+                    {
+                        "source-document": "docs/source.md",
+                        "source-atom-id": "atom.one",
+                        "lines": "L1-L2",
+                        "line-ranges": [{"start": 1, "end": 2}],
+                        "candidate-status": "direct-candidate",
+                        "candidate-artifact-projection": "spec-requirement",
+                        "candidate-owner-change": "change-a",
+                        "candidate-owner-capability": "cap-a",
+                        "global-atom-id": "GA-0001",
+                        "global-coverage-status": "direct",
+                        "global-artifact-projection": "spec-requirement",
+                        "review-decision": "global-atom-created",
+                        "reason": "ok",
+                    },
+                    {
+                        "source-document": "docs/source.md",
+                        "source-atom-id": "atom.two",
+                        "lines": "L3-L4",
+                        "line-ranges": [{"start": 3, "end": 4}],
+                        "candidate-status": "explicit-non-goal",
+                        "candidate-artifact-projection": "spec-guard",
+                        "candidate-owner-change": "change-a",
+                        "candidate-owner-capability": "cap-a",
+                        "global-atom-id": "GA-0002",
+                        "global-coverage-status": "explicit-non-goal",
+                        "global-artifact-projection": "spec-guard",
+                        "review-decision": "non-direct-status",
+                        "reason": "ok",
+                    },
+                ],
+            },
+        )
+        write_json(
+            self.orchestrate / "trace/phase-3.trace.json",
+            {
+                "trace-schema": PHASE_TRACE_SCHEMAS["phase-3"],
+                "trace-contract-version": TRACE_CONTRACT_VERSION,
+                "decision": "coverage-complete",
+                "source-classifications": [],
+            },
+        )
+        window_text = "\n".join(["line 1", "line 2"])
+        write_json(
+            self.orchestrate / "phase-works/phase-4/source-window-dossiers/source-window-index.json",
+            {
+                "trace-schema": SOURCE_WINDOW_INDEX_SCHEMA,
+                "trace-contract-version": TRACE_CONTRACT_VERSION,
+                "status": "grounded",
+                "windows": [
+                    {
+                        "window-id": "SW-001",
+                        "input-unit": "change-a",
+                        "unit-type": "input-change",
+                        "source-document": "docs/source.md",
+                        "lines": "L1-L2",
+                        "line-ranges": [{"start": 1, "end": 2}],
+                        "context-line-ranges": [],
+                        "linked-global-atom-ids": ["GA-0001"],
+                        "dossier-path": "openspec/orchestrate/phase-works/phase-4/source-window-dossiers/by-input-change/change-a.md",
+                        "source-sha256": source_sha,
+                        "window-text-sha256": sha256_text(window_text),
+                    }
+                ],
+                "semantic-profiles": [],
+                "grounding-issues": [],
+            },
+        )
+        self._write("openspec/orchestrate/phase-works/phase-4/source-window-dossiers/by-input-change/change-a.md", "dossier\n")
+        write_json(
+            self.orchestrate / "trace/phase-4.trace.json",
+            {
+                "trace-schema": PHASE_TRACE_SCHEMAS["phase-4"],
+                "trace-contract-version": TRACE_CONTRACT_VERSION,
+                "status": "grounded",
+                "source-window-index-path": "openspec/orchestrate/phase-works/phase-4/source-window-dossiers/source-window-index.json",
+            },
+        )
+        write_json(
+            self.orchestrate / "phase-works/phase-5/atom-plan-mapping.json",
+            {
+                "trace-schema": ATOM_PLAN_MAPPING_SCHEMA,
+                "trace-contract-version": TRACE_CONTRACT_VERSION,
+                "artifact-path": "openspec/orchestrate/phase-works/phase-5/atom-plan-mapping.md",
+                "rows": [
+                    {
+                        "global-atom-id": "GA-0001",
+                        "source-document": "docs/source.md",
+                        "lines": "L1-L2",
+                        "line-ranges": [{"start": 1, "end": 2}],
+                        "phase-3-owner-status": "change-a / direct",
+                        "phase-3-artifact-projection": "spec-requirement",
+                        "final-owner-change": "change-a",
+                        "final-owner-capability": "cap-a",
+                        "final-artifact-projection": "spec-requirement",
+                        "final-relation": "direct",
+                        "plan-decision": "direct-owner",
+                        "reason": "reason",
+                    },
+                    {
+                        "global-atom-id": "GA-0002",
+                        "source-document": "docs/source.md",
+                        "lines": "L3-L4",
+                        "line-ranges": [{"start": 3, "end": 4}],
+                        "phase-3-owner-status": "change-a / explicit-non-goal",
+                        "phase-3-artifact-projection": "spec-guard",
+                        "final-owner-change": "change-a",
+                        "final-owner-capability": "cap-a",
+                        "final-artifact-projection": "spec-guard",
+                        "final-relation": "non-goal",
+                        "plan-decision": "scoped-non-direct",
+                        "reason": "reason",
+                    },
+                ],
+            },
+        )
+        write_json(
+            self.orchestrate / "phase-works/phase-5/final-packet-index.json",
+            {
+                "trace-schema": FINAL_PACKET_INDEX_SCHEMA,
+                "trace-contract-version": TRACE_CONTRACT_VERSION,
+                "packets": [
+                    {
+                        "change": "change-a",
+                        "packet-path": "openspec/orchestrate/change-capability-anchors/change-a/change-a.md",
+                        "packet-digest": sha256_file(self.orchestrate / "change-capability-anchors/change-a/change-a.md"),
+                        "direct-atom-ids": ["GA-0001"],
+                        "owner-scoped-non-direct-atom-ids": ["GA-0002"],
+                        "capability-view-paths": [
+                            "openspec/orchestrate/change-capability-anchors/change-a/capability-anchors/cap-a.md"
+                        ],
+                    }
+                ],
+            },
+        )
+        write_json(
+            self.orchestrate / "trace/phase-5.trace.json",
+            {
+                "trace-schema": PHASE_TRACE_SCHEMAS["phase-5"],
+                "trace-contract-version": TRACE_CONTRACT_VERSION,
+                "status": "adjusted",
+                "atom-plan-mapping-path": "openspec/orchestrate/phase-works/phase-5/atom-plan-mapping.json",
+                "final-packet-index-path": "openspec/orchestrate/phase-works/phase-5/final-packet-index.json",
+                "complexity-summaries": [],
+                "capability-progression-summaries": [],
+                "validator-gate-outcomes": [],
+                "reviewer-gate-outcomes": [],
+            },
+        )
+        self._write_manifest()
+
+    def _write_manifest(self) -> None:
+        specs = [
+            ("openspec/orchestrate/trace/phase-1.trace.json", PHASE_TRACE_SCHEMAS["phase-1"], "phase-1"),
+            ("openspec/orchestrate/trace/phase-2.trace.json", PHASE_TRACE_SCHEMAS["phase-2"], "phase-2"),
+            ("openspec/orchestrate/change-capability-anchors/obligation-atom-index.json", GLOBAL_ATOM_INDEX_SCHEMA, "phase-3"),
+            ("openspec/orchestrate/phase-works/phase-3/phase-3-trace/source-to-global-atom-map.json", SOURCE_TO_GLOBAL_MAP_SCHEMA, "phase-3"),
+            ("openspec/orchestrate/trace/phase-3.trace.json", PHASE_TRACE_SCHEMAS["phase-3"], "phase-3"),
+            ("openspec/orchestrate/phase-works/phase-4/source-window-dossiers/source-window-index.json", SOURCE_WINDOW_INDEX_SCHEMA, "phase-4"),
+            ("openspec/orchestrate/trace/phase-4.trace.json", PHASE_TRACE_SCHEMAS["phase-4"], "phase-4"),
+            ("openspec/orchestrate/phase-works/phase-5/atom-plan-mapping.json", ATOM_PLAN_MAPPING_SCHEMA, "phase-5"),
+            ("openspec/orchestrate/phase-works/phase-5/final-packet-index.json", FINAL_PACKET_INDEX_SCHEMA, "phase-5"),
+            ("openspec/orchestrate/trace/phase-5.trace.json", PHASE_TRACE_SCHEMAS["phase-5"], "phase-5"),
+        ]
+        artifacts = []
+        for trace_path, schema, phase in specs:
+            artifacts.append(
+                {
+                    "artifact-path": trace_path.replace(".json", ".md"),
+                    "trace-path": trace_path,
+                    "trace-schema": schema,
+                    "sha256": sha256_file(self.root / trace_path),
+                    "phase": phase,
+                    "role": "trace",
+                }
+            )
+        write_json(
+            self.orchestrate / "trace/manifest.json",
+            {
+                "trace-schema": MANIFEST_SCHEMA,
+                "trace-contract-version": TRACE_CONTRACT_VERSION,
+                "orchestrate-dir": "openspec/orchestrate",
+                "phase-statuses": {
+                    "phase-1": "present",
+                    "phase-2": "present",
+                    "phase-3": "coverage-complete",
+                    "phase-4": "grounded",
+                    "phase-5": "adjusted",
+                },
+                "artifacts": artifacts,
+            },
+        )
+
+    def _validate(self, complete: bool = True) -> dict:
+        return validate(self.orchestrate, self.root, "all", complete, False)
+
+    def assert_error(self, rule_id: str) -> None:
+        result = self._validate()
+        self.assertFalse(result["ok"], result)
+        self.assertTrue(any(issue["rule_id"] == rule_id for issue in result["issues"]), result)
+
+    def test_minimal_valid_orchestrate_passes(self) -> None:
+        result = self._validate()
+        self.assertTrue(result["ok"], result)
+
+    def test_phase2_work_queue_missing_source_fails(self) -> None:
+        self._write(
+            "openspec/orchestrate/phase-works/phase-2/source-obligation-atoms/work-queue.md",
+            "| Batch | Source Documents | Canonical Owner |\n| --- | --- | --- |\n",
+        )
+        self.assert_error("phase2-work-queue-coverage")
+
+    def test_phase2_direct_candidate_contextual_only_fails(self) -> None:
+        path = self.orchestrate / "phase-works/phase-2/source-obligation-atoms/docs--source.atoms.json"
+        data = json.loads(path.read_text(encoding="utf-8"))
+        data["source-atoms"][0]["candidate-artifact-projection"] = "contextual-only"
+        write_json(path, data)
+        self._write_manifest()
+        self.assert_error("phase2-direct-contextual-only")
+
+    def test_phase3_duplicate_ga_fails(self) -> None:
+        path = self.orchestrate / "change-capability-anchors/obligation-atom-index.json"
+        data = json.loads(path.read_text(encoding="utf-8"))
+        data["global-atoms"].append(dict(data["global-atoms"][0]))
+        write_json(path, data)
+        self._write_manifest()
+        self.assert_error("phase3-ga-duplicate")
+
+    def test_phase3_source_to_global_map_missing_atom_fails(self) -> None:
+        path = self.orchestrate / "phase-works/phase-3/phase-3-trace/source-to-global-atom-map.json"
+        data = json.loads(path.read_text(encoding="utf-8"))
+        data["rows"] = data["rows"][:1]
+        write_json(path, data)
+        self._write_manifest()
+        self.assert_error("phase3-map-coverage")
+
+    def test_phase4_source_hash_mismatch_fails(self) -> None:
+        path = self.orchestrate / "phase-works/phase-4/source-window-dossiers/source-window-index.json"
+        data = json.loads(path.read_text(encoding="utf-8"))
+        data["windows"][0]["source-sha256"] = "bad"
+        write_json(path, data)
+        self._write_manifest()
+        self.assert_error("phase4-source-sha")
+
+    def test_phase5_mapping_missing_global_atom_fails(self) -> None:
+        path = self.orchestrate / "phase-works/phase-5/atom-plan-mapping.json"
+        data = json.loads(path.read_text(encoding="utf-8"))
+        data["rows"] = data["rows"][:1]
+        write_json(path, data)
+        self._write_manifest()
+        self.assert_error("phase5-mapping-coverage")
+
+    def test_phase5_non_direct_atom_missing_from_packet_fails(self) -> None:
+        self._write(
+            "openspec/orchestrate/change-capability-anchors/change-a/change-a.md",
+            "# change-a\n\n| Global Atom ID | Relation |\n| --- | --- |\n| GA-0001 | direct |\n",
+        )
+        self._write_manifest()
+        self.assert_error("phase5-final-non-direct-packet")
+
+    def test_capability_view_contains_non_direct_atom_fails(self) -> None:
+        self._write(
+            "openspec/orchestrate/change-capability-anchors/change-a/capability-anchors/cap-a.md",
+            "# cap-a\n\n| Global Atom ID | Relation |\n| --- | --- |\n| GA-0001 | direct |\n| GA-0002 | non-goal |\n",
+        )
+        self.assert_error("phase5-capability-view-non-direct")
+
+    def test_markdown_json_drift_fails(self) -> None:
+        self._write(
+            "openspec/orchestrate/phase-works/phase-2/source-obligation-atoms/docs--source.atoms.md",
+            "| Source Atom ID | Source Document | Lines | Atom Type | Source Fact | Normativity | Candidate Status | Candidate Artifact Projection | Candidate Owner Change | Candidate Owner Capability | Roles | Rationale | Propose Use | Evidence Need |\n"
+            "| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |\n"
+            "| atom.one | docs/source.md | L1-L2 | behavior | drifted fact | must | direct-candidate | spec-requirement | change-a | cap-a | primary | why | use | unit |\n"
+            "| atom.two | docs/source.md | L3-L4 | explicit-non-goal | fact two | must-not | explicit-non-goal | spec-guard | change-a | cap-a | non-goal | why | use | none |\n",
+        )
+        self.assert_error("markdown-json-drift")
+
+    def test_strict_warnings_returns_non_zero(self) -> None:
+        self._write(
+            "openspec/orchestrate/phase-works/phase-2/source-obligation-atoms/docs--source.atoms.md",
+            "| Source Atom ID | Source Document | Lines | Atom Type | Source Fact | Normativity | Candidate Status | Candidate Artifact Projection | Candidate Owner Change | Candidate Owner Capability | Roles | Rationale | Propose Use | Evidence Need |\n"
+            "| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |\n"
+            "| atom.one | docs/source.md | `L1-L2` | behavior | fact one | must | direct-candidate | spec-requirement | change-a | cap-a | primary | why | use | unit |\n"
+            "| atom.two | docs/source.md | L3-L4 | explicit-non-goal | fact two | must-not | explicit-non-goal | spec-guard | change-a | cap-a | non-goal | why | use | none |\n",
+        )
+        proc = subprocess.run(
+            [
+                sys.executable,
+                str(self.script),
+                "--orchestrate-dir",
+                str(self.orchestrate),
+                "--workspace-root",
+                str(self.root),
+                "--phase",
+                "all",
+                "--complete",
+                "--json",
+                "--strict-warnings",
+            ],
+            text=True,
+            capture_output=True,
+            check=False,
+        )
+        self.assertNotEqual(proc.returncode, 0, proc.stdout)
+        payload = json.loads(proc.stdout)
+        self.assertEqual(payload["error-count"], 0, payload)
+        self.assertGreater(payload["warning-count"], 0, payload)
+
+
+if __name__ == "__main__":
+    unittest.main()

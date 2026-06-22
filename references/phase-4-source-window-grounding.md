@@ -25,13 +25,17 @@ Write Phase 4 artifacts directly under `openspec/orchestrate/phase-works/phase-4
 
 - `openspec/orchestrate/phase-works/phase-4/input-change-plan.md`
 - `openspec/orchestrate/phase-works/phase-4/source-window-dossiers/index.md`
+- `openspec/orchestrate/phase-works/phase-4/source-window-dossiers/source-window-index.json`
 - `openspec/orchestrate/phase-works/phase-4/source-window-dossiers/by-input-change/<input-change-slug>.md`
 - `openspec/orchestrate/phase-works/phase-4/source-window-dossiers/by-input-capability/<input-capability-slug>.md`
 - `openspec/orchestrate/phase-works/phase-4/source-window-semantic-profile-review.md`
 - `openspec/orchestrate/phase-works/phase-4/source-window-grounding-issues.md`
 - `openspec/orchestrate/phase-works/phase-4/phase-4-agent-report.md`
+- `openspec/orchestrate/trace/phase-4.trace.json`
 
 The scope rules below make the authority boundary explicit: `phase-works/phase-4/source-window-dossiers/` is copied review evidence, not a replacement for original source documents, source atom ledgers, the global atom index, or Phase 5 final packets.
+
+After the writer finishes, Phase 4 must pass the reviewer/repair loop from `references/reviewer-repair-loop.md`: run the phase validator, run the grounding reviewer, apply targeted Phase 4 repair if needed, rerun validator, rerun reviewer, then continue only after pass.
 
 ## Artifact Language Gate
 
@@ -93,6 +97,8 @@ Each `by-input-capability/<input-capability-slug>.md` dossier must include:
 - direct, contextual, dependency, evidence, and non-goal atom groupings
 - behavior-boundary semantic profile: what behavior it owns, what it must not own, where it first becomes directly testable, and which later changes appear to add source-backed deltas
 
+Also write `source-window-dossiers/source-window-index.json` according to `references/trace-sidecar-contract.md`. It is the canonical machine-readable index of dossier windows, linked `GA-####` ids, source hashes, line ranges, window text hashes, semantic profiles, grounding issues, and Phase 4 status.
+
 ## Semantic Profile Review
 
 Write `source-window-semantic-profile-review.md` with one row per input change and input capability:
@@ -145,6 +151,7 @@ It must also include:
 - confirmation that Phase 4 did not edit Phase 2/3 evidence or the global atom index
 - confirmation that Phase 4 did not decide final change/capability ownership
 - confirmation that every Phase 4 artifact passed the Artifact Language Gate
+- confirmation that `source-window-index.json` and `trace/phase-4.trace.json` were written and passed validator
 - next required step: `Start Phase 5`, `Run Phase 3 again`, or `Blocked`
 
 ## Completion
