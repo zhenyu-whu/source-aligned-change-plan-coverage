@@ -36,12 +36,20 @@ from source_aligned_trace_lib import (
     squash,
 )
 
+FINAL_PHASE5_STATUSES = {"accepted", "adjusted"}
+
 
 def rel(path: Path, repo_root: Path) -> str:
     try:
         return path.resolve().relative_to(repo_root.resolve()).as_posix()
     except ValueError:
         return path.as_posix()
+
+
+def phase_status_value(value: object) -> str:
+    if isinstance(value, dict):
+        return normalize_code(value.get("status") or value.get("decision") or "")
+    return normalize_code(value)
 
 
 def json_obj(path: Path, reporter: IssueReporter, schema: str | None = None) -> Dict[str, object]:
@@ -105,13 +113,37 @@ def phase1_sources(orchestrate_dir: Path, repo_root: Path) -> List[Dict[str, obj
     return sources if isinstance(sources, list) else []
 
 
-def validate_manifest(orchestrate_dir: Path, repo_root: Path, reporter: IssueReporter) -> None:
+def validate_manifest(orchestrate_dir: Path, repo_root: Path, reporter: IssueReporter, complete: bool = False) -> None:
     path = orchestrate_dir / "trace/manifest.json"
     data = json_obj(path, reporter, MANIFEST_SCHEMA)
     if not data:
         return
     if data.get("orchestrate-dir") != rel(orchestrate_dir, repo_root):
         reporter.error("manifest-orchestrate-dir", path, "orchestrate-dir does not match CLI --orchestrate-dir")
+    phase_statuses = data.get("phase-statuses")
+    if not isinstance(phase_statuses, dict):
+        reporter.error("manifest-phase-statuses", path, "phase-statuses must be an object")
+        phase_statuses = {}
+    phase5_status = phase_status_value(phase_statuses.get("phase-5"))
+    phase5_trace_path = orchestrate_dir / "trace/phase-5.trace.json"
+    if phase5_trace_path.exists():
+        try:
+            phase5_trace = read_json(phase5_trace_path)
+            trace_status = phase_status_value(phase5_trace.get("status") or phase5_trace.get("decision"))
+        except Exception:  # noqa: BLE001
+            trace_status = ""
+        if phase5_status and trace_status and phase5_status != trace_status:
+            reporter.error(
+                "manifest-phase-status-drift",
+                path,
+                f"phase-statuses.phase-5 must match trace/phase-5.trace.json status {trace_status}, got {phase5_status}",
+            )
+    if complete and phase5_status not in FINAL_PHASE5_STATUSES:
+        reporter.error(
+            "manifest-phase5-complete-status",
+            path,
+            f"--complete requires phase-statuses.phase-5 accepted/adjusted, got {phase5_status or 'missing'}",
+        )
     artifacts = data.get("artifacts")
     if not isinstance(artifacts, list):
         reporter.error("manifest-artifacts", path, "artifacts must be an array")
@@ -550,7 +582,7 @@ def validate(orchestrate_dir: Path, repo_root: Path, phase: str, complete: bool,
         reporter.error("orchestrate-dir", orchestrate_dir, "orchestrate directory does not exist")
         return reporter.result()
 
-    validate_manifest(orchestrate_dir, repo_root, reporter)
+    validate_manifest(orchestrate_dir, repo_root, reporter, complete=complete)
     phases = ["phase-1", "phase-2", "phase-3", "phase-4", "phase-5"] if phase == "all" else [phase]
     if "phase-1" in phases:
         validate_phase_1(orchestrate_dir, repo_root, reporter)

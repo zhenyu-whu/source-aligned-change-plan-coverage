@@ -215,7 +215,7 @@ The main agent only orchestrates, checks interface-level outputs, and starts the
    - `blocked`: a user decision or broad reanalysis is required.
 7. Continue Phase 3 -> Phase 4 -> Phase 5 until Phase 5 returns `accepted`, `adjusted`, or `blocked`, or Phase 4 returns `blocked`.
 
-After every phase validator/reviewer pass, update `trace/manifest.json` with phase statuses and artifact digests.
+After every phase validator/reviewer pass, update `trace/manifest.json` with canonical phase decisions from the phase trace sidecars plus artifact digests. `phase-statuses` must not store reviewer-loop workflow states. In particular, `phase-statuses.phase-5` must match `trace/phase-5.trace.json.status`; proposal-ready handoff requires both values to be `accepted` or `adjusted`.
 
 Do not start `openspec-propose` from this workflow until Phase 5 returns `accepted` or `adjusted` and final change packets exist.
 

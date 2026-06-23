@@ -629,3 +629,5 @@ Use `needs-coverage-recheck` when Phase 5 exposes missing, over-broad, conflicti
 Use `blocked` when the adjustment needs source boundaries, product decisions, or broad reanalysis that Phase 5 is not allowed to perform.
 
 After `accepted` or `adjusted`, `openspec-propose` may start from the final change packets. After `needs-coverage-recheck`, the main agent must spawn a fresh Phase 3 review subagent, then fresh Phase 4 grounding and Phase 5 refit subagents. Do not start `openspec-propose` directly from `needs-coverage-recheck` or `blocked`.
+
+For `openspec-propose` handoff, write the final Phase 5 decision to both `trace/phase-5.trace.json.status` and `trace/manifest.json` `phase-statuses.phase-5`. These two values must match exactly. `phase-statuses.phase-5` is the Phase 5 final handoff decision, not the validator/reviewer/repair-loop workflow state.

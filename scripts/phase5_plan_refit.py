@@ -40,6 +40,7 @@ DIRECT_PROJECTIONS = {
     "verification-obligation",
 }
 FAILURE_TYPES = {"recovery", "failure-path", "disabled-action"}
+PHASE5_STATUSES = {"accepted", "adjusted", "needs-coverage-recheck", "blocked"}
 
 
 @dataclass(frozen=True)
@@ -1139,6 +1140,11 @@ def write_outputs(
     no_root_update: bool,
 ) -> None:
     status = str(config.get("status") or "adjusted")
+    if status not in PHASE5_STATUSES:
+        raise ValueError(
+            "Phase 5 config status 必须是 accepted、adjusted、needs-coverage-recheck 或 blocked，"
+            f"不能使用 validator/reviewer/repair 流程态: {status}"
+        )
     work_dir = output_orchestrate_dir / "phase-works/phase-5"
     rel_work_dir = Path("openspec/orchestrate/phase-works/phase-5")
     by_change = direct_by_change(final_atoms, changes)

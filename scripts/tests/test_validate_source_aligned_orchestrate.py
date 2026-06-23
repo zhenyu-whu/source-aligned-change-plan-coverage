@@ -457,6 +457,20 @@ class SourceAlignedValidatorTest(unittest.TestCase):
         result = self._validate()
         self.assertTrue(result["ok"], result)
 
+    def test_manifest_phase5_status_must_match_phase5_trace(self) -> None:
+        path = self.orchestrate / "trace/manifest.json"
+        data = json.loads(path.read_text(encoding="utf-8"))
+        data["phase-statuses"]["phase-5"] = "accepted"
+        write_json(path, data)
+        self.assert_error("manifest-phase-status-drift")
+
+    def test_manifest_phase5_complete_status_must_be_handoff_status(self) -> None:
+        path = self.orchestrate / "trace/manifest.json"
+        data = json.loads(path.read_text(encoding="utf-8"))
+        data["phase-statuses"]["phase-5"] = "reviewer-passed"
+        write_json(path, data)
+        self.assert_error("manifest-phase5-complete-status")
+
     def test_phase2_work_queue_missing_source_fails(self) -> None:
         self._write(
             "openspec/orchestrate/phase-works/phase-2/source-obligation-atoms/work-queue.md",

@@ -49,6 +49,8 @@ Required fields:
 - `phase-statuses`
 - `artifacts[]`
 
+`phase-statuses` records canonical phase decisions from phase trace sidecars, not reviewer-loop workflow states. When `trace/phase-5.trace.json.status` exists, `phase-statuses.phase-5` must be identical to it. For a proposal-ready handoff, both values must be `accepted` or `adjusted`; do not write `reviewer-passed`, `validator-passed`, `repair-not-needed`, `present`, or other workflow/status bookkeeping into `phase-statuses.phase-5`.
+
 Each artifact row must include:
 
 - `artifact-path`

@@ -54,7 +54,21 @@ def file_line_count(repo_root: Path, source_document: str) -> int:
     return len(path.read_text(encoding="utf-8").splitlines()) if path.exists() else 0
 
 
+def trace_phase_status(orchestrate_dir: Path, phase: str) -> str:
+    path = orchestrate_dir / f"trace/{phase}.trace.json"
+    if not path.exists():
+        return ""
+    try:
+        data = read_json(path)
+    except Exception:  # noqa: BLE001
+        return ""
+    return normalize_code(data.get("status") or data.get("decision") or "")
+
+
 def phase_status(orchestrate_dir: Path, phase: str) -> str:
+    trace_status = trace_phase_status(orchestrate_dir, phase)
+    if trace_status:
+        return trace_status
     candidates = {
         "phase-3": orchestrate_dir / "phase-works/phase-3/coverage-review.md",
         "phase-4": orchestrate_dir / "phase-works/phase-4/phase-4-agent-report.md",
