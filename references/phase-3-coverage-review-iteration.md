@@ -20,7 +20,8 @@ Source anchors and line ranges remain useful for navigation and mechanical check
 - `openspec/orchestrate/phase-works/phase-1/source-doc-manifest.md`
 - `openspec/orchestrate/phase-works/phase-2/source-obligation-atoms/work-queue.md`
 - `openspec/orchestrate/phase-works/phase-2/source-obligation-atoms/index.md`
-- `openspec/orchestrate/phase-works/phase-2/source-obligation-atoms/<source>.atoms.md`
+- `openspec/orchestrate/phase-works/phase-2/source-obligation-atoms/<source>.atoms.json` as canonical extraction evidence
+- `openspec/orchestrate/phase-works/phase-2/source-obligation-atoms/<source>.atoms.md` as reviewer mirror
 - User-specified source document roots or exact source paths, for manifest verification and targeted semantic reads.
 - Required mechanical helper/input shape: `.codex/skills/source-aligned-change-plan-coverage/scripts/phase3_line_range_audit.py` or equivalent Phase 3 code must compute Phase 2 atom/anchor line coverage for every `read-full` source document and preserve the result in `source-remainder-review.json`.
 
@@ -163,7 +164,7 @@ Evaluate in this order:
 18. Build compact global statistics across source documents, global atoms, meaningful missing atoms, duplicate findings, broad-atom split findings, non-coverage classifications, ownership ambiguities, gaps, and conflicts.
 19. Write `trace/phase-3.trace.json` according to `references/trace-sidecar-contract.md`, including the canonical source remainder review path.
 20. Generate `phase-works/phase-3/coverage-review-app/index.html` from the source documents and Phase 3 artifacts. Prefer the bundled helper `scripts/phase3_coverage_review_app.py` unless a project-specific equivalent already exists.
-21. Run `validate_source_aligned_orchestrate.py --phase phase-3`, then run the Phase 3 reviewer/repair loop with independent reviewer and repair-writer subagents.
+21. The main orchestrating agent refreshes `trace/manifest.json`, runs `validate_source_aligned_orchestrate.py --phase phase-3`, then runs the Phase 3 reviewer/repair loop with independent reviewer and repair-writer subagents.
 22. Decide whether coverage normalization is complete or blocked.
 
 ## Phase 3 Human Review App
@@ -295,6 +296,8 @@ And a Phase 5 refit handoff table:
 Use `coverage-complete` only when every source document under the specified roots is manifest-classified, every production-meaningful source obligation has exactly one global atom or justified non-coverage status, every source range without atoms is classified as production-safe non-atom content in `source-remainder-review.json`, there are no unclassified atoms, no unresolved duplicate obligations, no broad atom compression findings left unsplit or justified, no blocking conflicts, and every Phase 5 placement question is explicitly handed off.
 
 Additionally, use `coverage-complete` only when every source document listed in `phase-works/phase-3/source-doc-manifest.md` has a matching `phase-works/phase-3/source-doc-coverage/<source>.coverage.md` file, all Phase 3 trace files including `source-remainder-review.json` exist and reconcile with the final review, and `phase-works/phase-3/coverage-review-app/index.html` exists as a review aid over the final Phase 3 outputs.
+
+`coverage-review-app/index.html`, `coverage-review.md`, and `phase-3-agent-report.md` are required interface artifacts. JSON sidecars remain the canonical validator input; Markdown files and the review app are reviewer-facing mirrors and must not be used as a replacement for canonical JSON.
 
 Use `blocked` when source documents conflict, source roots are incomplete, source atom files are missing, atom evidence is too broad to normalize, or the user must decide a boundary before coverage can close.
 

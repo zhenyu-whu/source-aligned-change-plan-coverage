@@ -76,6 +76,7 @@ class SourceAlignedValidatorTest(unittest.TestCase):
             "| atom.two | docs/source.md | L1-L2 | explicit-non-goal | fact two | must-not | explicit-non-goal | spec-guard | change-a | cap-a | non-goal | why | use | none |\n",
         )
         self._write("openspec/orchestrate/phase-works/phase-2/source-obligation-atoms/index.md", "index\n")
+        self._write("openspec/orchestrate/phase-works/phase-2/source-obligation-review/index.html", "<!doctype html>\n")
         self._write("openspec/orchestrate/phase-works/phase-2/phase-2-agent-report.md", "ok\n")
         self._write(
             "openspec/orchestrate/phase-works/phase-3/source-doc-manifest.md",
@@ -100,7 +101,22 @@ class SourceAlignedValidatorTest(unittest.TestCase):
             "| L3-L20 | full-source remainder audit | formatting/background | false | no production obligation |\n",
         )
         self._write("openspec/orchestrate/phase-works/phase-3/coverage-review.md", "Decision: coverage-complete\n")
+        self._write("openspec/orchestrate/phase-works/phase-3/coverage-review-app/index.html", "<!doctype html>\n")
+        self._write("openspec/orchestrate/phase-works/phase-3/phase-3-agent-report.md", "ok\n")
+        self._write("openspec/orchestrate/phase-works/phase-3/phase-3-trace/duplicate-ownership-review.md", "ok\n")
+        self._write("openspec/orchestrate/phase-works/phase-3/phase-3-trace/atom-normalization-decision-log.md", "ok\n")
+        self._write("openspec/orchestrate/phase-works/phase-4/input-change-plan.md", "input\n")
+        self._write("openspec/orchestrate/phase-works/phase-4/source-window-dossiers/index.md", "index\n")
+        self._write("openspec/orchestrate/phase-works/phase-4/source-window-semantic-profile-review.md", "profile\n")
+        self._write("openspec/orchestrate/phase-works/phase-4/source-window-grounding-issues.md", "issues\n")
         self._write("openspec/orchestrate/phase-works/phase-4/phase-4-agent-report.md", "Phase 4 Status: grounded\n")
+        self._write("openspec/orchestrate/phase-works/phase-5/input-change-plan.md", "input\n")
+        self._write("openspec/orchestrate/phase-works/phase-5/source-window-refit-trace.md", "trace\n")
+        self._write("openspec/orchestrate/phase-works/phase-5/change-plan.md", "plan\n")
+        self._write("openspec/orchestrate/phase-works/phase-5/capability-progression-review.md", "progression\n")
+        self._write("openspec/orchestrate/phase-works/phase-5/plan-refit-decision-log.md", "decisions\n")
+        self._write("openspec/orchestrate/phase-works/phase-5/alignment-final-report.md", "alignment\n")
+        self._write("openspec/orchestrate/phase-works/phase-5/change-capability-human-plan.md", "human\n")
         self._write("openspec/orchestrate/phase-works/phase-5/phase-5-agent-report.md", "Phase 5 Status: adjusted\n")
         self._write("openspec/orchestrate/change-capability-anchors/index.md", "index\n")
         self._write(
@@ -139,6 +155,7 @@ class SourceAlignedValidatorTest(unittest.TestCase):
             {
                 "trace-schema": PHASE_TRACE_SCHEMAS["phase-1"],
                 "trace-contract-version": TRACE_CONTRACT_VERSION,
+                "status": "initial-plan-written",
                 "source-documents": [
                     {
                         "source-document": "docs/source.md",
@@ -214,6 +231,7 @@ class SourceAlignedValidatorTest(unittest.TestCase):
             {
                 "trace-schema": PHASE_TRACE_SCHEMAS["phase-2"],
                 "trace-contract-version": TRACE_CONTRACT_VERSION,
+                "status": "source-atoms-written",
                 "work-queue-path": "openspec/orchestrate/phase-works/phase-2/source-obligation-atoms/work-queue.md",
                 "sources": [],
             },
@@ -488,6 +506,8 @@ class SourceAlignedValidatorTest(unittest.TestCase):
         ]
         artifacts = []
         for trace_path, schema, phase in specs:
+            if not (self.root / trace_path).exists():
+                continue
             artifacts.append(
                 {
                     "artifact-path": trace_path.replace(".json", ".md"),
@@ -498,25 +518,30 @@ class SourceAlignedValidatorTest(unittest.TestCase):
                     "role": "trace",
                 }
             )
+        phase_statuses = {}
+        for phase in ("phase-1", "phase-2", "phase-3", "phase-4", "phase-5"):
+            trace_path = self.orchestrate / "trace" / f"{phase}.trace.json"
+            if not trace_path.exists():
+                phase_statuses[phase] = "missing"
+                continue
+            data = json.loads(trace_path.read_text(encoding="utf-8"))
+            phase_statuses[phase] = data.get("status") or data.get("decision") or "missing"
         write_json(
             self.orchestrate / "trace/manifest.json",
             {
                 "trace-schema": MANIFEST_SCHEMA,
                 "trace-contract-version": TRACE_CONTRACT_VERSION,
                 "orchestrate-dir": "openspec/orchestrate",
-                "phase-statuses": {
-                    "phase-1": "present",
-                    "phase-2": "present",
-                    "phase-3": "coverage-complete",
-                    "phase-4": "grounded",
-                    "phase-5": "adjusted",
-                },
+                "phase-statuses": phase_statuses,
                 "artifacts": artifacts,
             },
         )
 
     def _validate(self, complete: bool = True) -> dict:
         return validate(self.orchestrate, self.root, "all", complete, False)
+
+    def _validate_phase(self, phase: str, complete: bool = False) -> dict:
+        return validate(self.orchestrate, self.root, phase, complete, False)
 
     def assert_error(self, rule_id: str) -> None:
         result = self._validate()
@@ -526,6 +551,33 @@ class SourceAlignedValidatorTest(unittest.TestCase):
     def test_minimal_valid_orchestrate_passes(self) -> None:
         result = self._validate()
         self.assertTrue(result["ok"], result)
+
+    def test_phase1_minimal_with_manifest_skeleton_passes(self) -> None:
+        for trace in ("phase-2", "phase-3", "phase-4", "phase-5"):
+            path = self.orchestrate / "trace" / f"{trace}.trace.json"
+            if path.exists():
+                path.unlink()
+        self._write_manifest()
+        result = self._validate_phase("phase-1")
+        self.assertTrue(result["ok"], result)
+
+    def test_manifest_digest_drift_fails(self) -> None:
+        path = self.orchestrate / "trace/phase-1.trace.json"
+        data = json.loads(path.read_text(encoding="utf-8"))
+        data["status"] = "changed-after-manifest"
+        write_json(path, data)
+        result = self._validate_phase("phase-1")
+        self.assertFalse(result["ok"], result)
+        self.assertTrue(any(issue["rule_id"] == "manifest-digest" for issue in result["issues"]), result)
+
+    def test_manifest_present_status_is_rejected(self) -> None:
+        path = self.orchestrate / "trace/manifest.json"
+        data = json.loads(path.read_text(encoding="utf-8"))
+        data["phase-statuses"]["phase-1"] = "present"
+        write_json(path, data)
+        result = self._validate_phase("phase-1")
+        self.assertFalse(result["ok"], result)
+        self.assertTrue(any(issue["rule_id"] == "manifest-phase-status-workflow-state" for issue in result["issues"]), result)
 
     def test_manifest_phase5_status_must_match_phase5_trace(self) -> None:
         path = self.orchestrate / "trace/manifest.json"
@@ -547,6 +599,11 @@ class SourceAlignedValidatorTest(unittest.TestCase):
             "| Batch | Source Documents | Canonical Owner |\n| --- | --- | --- |\n",
         )
         self.assert_error("phase2-work-queue-coverage")
+
+    def test_phase2_missing_source_atom_json_fails(self) -> None:
+        (self.orchestrate / "phase-works/phase-2/source-obligation-atoms/docs--source.atoms.json").unlink()
+        self._write_manifest()
+        self.assert_error("missing-json")
 
     def test_phase2_direct_candidate_contextual_only_fails(self) -> None:
         path = self.orchestrate / "phase-works/phase-2/source-obligation-atoms/docs--source.atoms.json"
@@ -629,6 +686,30 @@ class SourceAlignedValidatorTest(unittest.TestCase):
         self._write_manifest()
         self.assert_error("phase4-source-sha")
 
+    def test_phase4_blocked_allows_empty_windows_with_grounding_issue(self) -> None:
+        trace_path = self.orchestrate / "trace/phase-4.trace.json"
+        trace = json.loads(trace_path.read_text(encoding="utf-8"))
+        trace["status"] = "blocked"
+        write_json(trace_path, trace)
+        index_path = self.orchestrate / "phase-works/phase-4/source-window-dossiers/source-window-index.json"
+        data = json.loads(index_path.read_text(encoding="utf-8"))
+        data["status"] = "blocked"
+        data["windows"] = []
+        data["grounding-issues"] = [{"issue": "source boundary requires decision"}]
+        write_json(index_path, data)
+        self._write("openspec/orchestrate/phase-works/phase-4/phase-4-agent-report.md", "Phase 4 Status: blocked\n")
+        self._write_manifest()
+        result = self._validate_phase("phase-4")
+        self.assertTrue(result["ok"], result)
+
+    def test_phase4_grounded_requires_non_empty_windows(self) -> None:
+        index_path = self.orchestrate / "phase-works/phase-4/source-window-dossiers/source-window-index.json"
+        data = json.loads(index_path.read_text(encoding="utf-8"))
+        data["windows"] = []
+        write_json(index_path, data)
+        self._write_manifest()
+        self.assert_error("phase4-windows")
+
     def test_phase5_mapping_missing_global_atom_fails(self) -> None:
         path = self.orchestrate / "phase-works/phase-5/atom-plan-mapping.json"
         data = json.loads(path.read_text(encoding="utf-8"))
@@ -636,6 +717,38 @@ class SourceAlignedValidatorTest(unittest.TestCase):
         write_json(path, data)
         self._write_manifest()
         self.assert_error("phase5-mapping-coverage")
+
+    def test_phase5_blocked_does_not_require_final_packets(self) -> None:
+        trace_path = self.orchestrate / "trace/phase-5.trace.json"
+        trace = json.loads(trace_path.read_text(encoding="utf-8"))
+        trace["status"] = "blocked"
+        write_json(trace_path, trace)
+        for rel_path in (
+            "phase-works/phase-5/atom-plan-mapping.json",
+            "phase-works/phase-5/atom-plan-mapping.md",
+            "phase-works/phase-5/final-packet-index.json",
+        ):
+            path = self.orchestrate / rel_path
+            if path.exists():
+                path.unlink()
+        self._write("openspec/orchestrate/phase-works/phase-5/change-plan-adjustments.md", "blocked\n")
+        self._write("openspec/orchestrate/phase-works/phase-5/phase-5-agent-report.md", "Phase 5 Status: blocked\n")
+        self._write_manifest()
+        result = self._validate_phase("phase-5")
+        self.assertTrue(result["ok"], result)
+
+    def test_phase5_accepted_requires_final_packet_index(self) -> None:
+        (self.orchestrate / "phase-works/phase-5/final-packet-index.json").unlink()
+        self._write_manifest()
+        self.assert_error("missing-json")
+
+    def test_phase5_direct_owner_requires_final_packet(self) -> None:
+        path = self.orchestrate / "phase-works/phase-5/final-packet-index.json"
+        data = json.loads(path.read_text(encoding="utf-8"))
+        data["packets"] = []
+        write_json(path, data)
+        self._write_manifest()
+        self.assert_error("phase5-final-direct-owner")
 
     def test_phase5_non_direct_atom_missing_from_packet_fails(self) -> None:
         self._write(

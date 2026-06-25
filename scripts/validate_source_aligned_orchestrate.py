@@ -44,6 +44,14 @@ from source_aligned_trace_lib import (
 )
 
 FINAL_PHASE5_STATUSES = {"accepted", "adjusted"}
+NON_FINAL_PHASE4_STATUSES = {"needs-coverage-recheck", "blocked"}
+NON_FINAL_PHASE5_STATUSES = {"needs-coverage-recheck", "blocked"}
+WORKFLOW_PHASE_STATUS_VALUES = {
+    "present",
+    "reviewer-passed",
+    "validator-passed",
+    "repair-not-needed",
+}
 
 
 def rel(path: Path, repo_root: Path) -> str:
@@ -57,6 +65,16 @@ def phase_status_value(value: object) -> str:
     if isinstance(value, dict):
         return normalize_code(value.get("status") or value.get("decision") or "")
     return normalize_code(value)
+
+
+def trace_decision_status(path: Path) -> str:
+    if not path.exists():
+        return ""
+    try:
+        data = read_json(path)
+    except Exception:  # noqa: BLE001
+        return ""
+    return phase_status_value(data.get("status") or data.get("decision"))
 
 
 def json_obj(path: Path, reporter: IssueReporter, schema: str | None = None) -> Dict[str, object]:
@@ -74,6 +92,11 @@ def json_obj(path: Path, reporter: IssueReporter, schema: str | None = None) -> 
     if data.get("trace-contract-version") != TRACE_CONTRACT_VERSION:
         reporter.error("trace-contract-version", path, f"trace-contract-version must be {TRACE_CONTRACT_VERSION}")
     return data
+
+
+def require_file(path: Path, reporter: IssueReporter, rule_id: str, message: str) -> None:
+    if not path.exists():
+        reporter.error(rule_id, path, message)
 
 
 def check_ranges(
@@ -131,20 +154,29 @@ def validate_manifest(orchestrate_dir: Path, repo_root: Path, reporter: IssueRep
     if not isinstance(phase_statuses, dict):
         reporter.error("manifest-phase-statuses", path, "phase-statuses must be an object")
         phase_statuses = {}
-    phase5_status = phase_status_value(phase_statuses.get("phase-5"))
-    phase5_trace_path = orchestrate_dir / "trace/phase-5.trace.json"
-    if phase5_trace_path.exists():
-        try:
-            phase5_trace = read_json(phase5_trace_path)
-            trace_status = phase_status_value(phase5_trace.get("status") or phase5_trace.get("decision"))
-        except Exception:  # noqa: BLE001
-            trace_status = ""
-        if phase5_status and trace_status and phase5_status != trace_status:
+    for phase_name in ("phase-1", "phase-2", "phase-3", "phase-4", "phase-5"):
+        phase_status = phase_status_value(phase_statuses.get(phase_name))
+        if phase_status in WORKFLOW_PHASE_STATUS_VALUES:
+            reporter.error(
+                "manifest-phase-status-workflow-state",
+                path,
+                f"phase-statuses.{phase_name} must be a canonical phase decision/status, not {phase_status}",
+            )
+        trace_path = orchestrate_dir / f"trace/{phase_name}.trace.json"
+        trace_status = trace_decision_status(trace_path)
+        if trace_status and phase_status and phase_status != trace_status:
             reporter.error(
                 "manifest-phase-status-drift",
                 path,
-                f"phase-statuses.phase-5 must match trace/phase-5.trace.json status {trace_status}, got {phase5_status}",
+                f"phase-statuses.{phase_name} must match {rel(trace_path, repo_root)} status {trace_status}, got {phase_status}",
             )
+        if not trace_path.exists() and phase_status and phase_status != "missing":
+            reporter.error(
+                "manifest-phase-status-drift",
+                path,
+                f"phase-statuses.{phase_name} must be missing when {rel(trace_path, repo_root)} is absent, got {phase_status}",
+            )
+    phase5_status = phase_status_value(phase_statuses.get("phase-5"))
     if complete and phase5_status not in FINAL_PHASE5_STATUSES:
         reporter.error(
             "manifest-phase5-complete-status",
@@ -178,6 +210,10 @@ def validate_phase_1(orchestrate_dir: Path, repo_root: Path, reporter: IssueRepo
     data = json_obj(path, reporter, PHASE_TRACE_SCHEMAS["phase-1"])
     if not data:
         return
+    require_file(orchestrate_dir / "change-plan.md", reporter, "phase1-interface-artifact", "root change-plan.md is missing")
+    require_file(orchestrate_dir / "phase-works/phase-1/change-plan.md", reporter, "phase1-interface-artifact", "Phase 1 change-plan.md is missing")
+    require_file(orchestrate_dir / "phase-works/phase-1/source-doc-manifest.md", reporter, "phase1-interface-artifact", "Phase 1 source-doc-manifest.md is missing")
+    require_file(orchestrate_dir / "phase-works/phase-1/phase-1-agent-report.md", reporter, "phase1-interface-artifact", "Phase 1 agent report is missing")
     sources = data.get("source-documents")
     if not isinstance(sources, list) or not sources:
         reporter.error("phase1-source-documents", path, "source-documents must be a non-empty array")
@@ -262,6 +298,10 @@ def validate_phase2_mirror(orchestrate_dir: Path, reporter: IssueReporter) -> No
 def validate_phase_2(orchestrate_dir: Path, repo_root: Path, reporter: IssueReporter) -> None:
     trace_path = orchestrate_dir / "trace/phase-2.trace.json"
     json_obj(trace_path, reporter, PHASE_TRACE_SCHEMAS["phase-2"])
+    require_file(orchestrate_dir / "phase-works/phase-2/source-obligation-atoms/work-queue.md", reporter, "phase2-interface-artifact", "Phase 2 work queue is missing")
+    require_file(orchestrate_dir / "phase-works/phase-2/source-obligation-atoms/index.md", reporter, "phase2-interface-artifact", "Phase 2 atom index is missing")
+    require_file(orchestrate_dir / "phase-works/phase-2/source-obligation-review/index.html", reporter, "phase2-interface-artifact", "Phase 2 review app is missing")
+    require_file(orchestrate_dir / "phase-works/phase-2/phase-2-agent-report.md", reporter, "phase2-interface-artifact", "Phase 2 agent report is missing")
     sources = phase1_sources(orchestrate_dir, repo_root)
     queue_counts = work_queue_counts(orchestrate_dir)
     for source in sources:
@@ -578,6 +618,11 @@ def validate_phase3_remainder_review(
 def validate_phase_3(orchestrate_dir: Path, repo_root: Path, reporter: IssueReporter) -> None:
     phase3_trace = json_obj(orchestrate_dir / "trace/phase-3.trace.json", reporter, PHASE_TRACE_SCHEMAS["phase-3"])
     phase3_decision = phase_status_value(phase3_trace.get("decision") or phase3_trace.get("status"))
+    require_file(orchestrate_dir / "phase-works/phase-3/coverage-review-app/index.html", reporter, "phase3-interface-artifact", "Phase 3 coverage review app is missing")
+    require_file(orchestrate_dir / "phase-works/phase-3/coverage-review.md", reporter, "phase3-interface-artifact", "Phase 3 coverage review is missing")
+    require_file(orchestrate_dir / "phase-works/phase-3/phase-3-agent-report.md", reporter, "phase3-interface-artifact", "Phase 3 agent report is missing")
+    require_file(orchestrate_dir / "phase-works/phase-3/phase-3-trace/duplicate-ownership-review.md", reporter, "phase3-interface-artifact", "Phase 3 duplicate ownership review is missing")
+    require_file(orchestrate_dir / "phase-works/phase-3/phase-3-trace/atom-normalization-decision-log.md", reporter, "phase3-interface-artifact", "Phase 3 normalization decision log is missing")
     validate_phase3_manifest_and_coverage(orchestrate_dir, repo_root, reporter)
     global_atoms = load_global_atoms(orchestrate_dir, reporter)
     index_path = orchestrate_dir / "change-capability-anchors/obligation-atom-index.json"
@@ -624,13 +669,32 @@ def validate_phase_3(orchestrate_dir: Path, repo_root: Path, reporter: IssueRepo
 
 
 def validate_phase_4(orchestrate_dir: Path, repo_root: Path, reporter: IssueReporter) -> None:
-    json_obj(orchestrate_dir / "trace/phase-4.trace.json", reporter, PHASE_TRACE_SCHEMAS["phase-4"])
+    phase4_trace_path = orchestrate_dir / "trace/phase-4.trace.json"
+    phase4_trace = json_obj(phase4_trace_path, reporter, PHASE_TRACE_SCHEMAS["phase-4"])
+    status = phase_status_value(phase4_trace.get("status") or phase4_trace.get("decision"))
+    if status and status not in {"grounded", *NON_FINAL_PHASE4_STATUSES}:
+        reporter.error("phase4-status", phase4_trace_path, f"unsupported Phase 4 status: {status}")
+    require_file(orchestrate_dir / "phase-works/phase-4/input-change-plan.md", reporter, "phase4-interface-artifact", "Phase 4 input change plan is missing")
+    require_file(orchestrate_dir / "phase-works/phase-4/source-window-dossiers/index.md", reporter, "phase4-interface-artifact", "Phase 4 source-window dossier index is missing")
+    require_file(orchestrate_dir / "phase-works/phase-4/source-window-semantic-profile-review.md", reporter, "phase4-interface-artifact", "Phase 4 semantic profile review is missing")
+    require_file(orchestrate_dir / "phase-works/phase-4/source-window-grounding-issues.md", reporter, "phase4-interface-artifact", "Phase 4 grounding issues report is missing")
+    require_file(orchestrate_dir / "phase-works/phase-4/phase-4-agent-report.md", reporter, "phase4-interface-artifact", "Phase 4 agent report is missing")
     global_atoms = load_global_atoms(orchestrate_dir, reporter)
     index_path = orchestrate_dir / "phase-works/phase-4/source-window-dossiers/source-window-index.json"
     data = json_obj(index_path, reporter, SOURCE_WINDOW_INDEX_SCHEMA)
+    index_status = phase_status_value(data.get("status"))
+    if status and index_status and status != index_status:
+        reporter.error("phase4-status-drift", index_path, f"source-window-index status {index_status} differs from phase trace status {status}")
     windows = data.get("windows")
-    if not isinstance(windows, list) or not windows:
-        reporter.error("phase4-windows", index_path, "windows must be a non-empty array")
+    if not isinstance(windows, list):
+        reporter.error("phase4-windows", index_path, "windows must be an array")
+        return
+    if not windows:
+        issues = data.get("grounding-issues")
+        if status == "grounded" or not status:
+            reporter.error("phase4-windows", index_path, "windows must be a non-empty array when Phase 4 is grounded")
+        if status in NON_FINAL_PHASE4_STATUSES and not (isinstance(issues, list) and issues):
+            reporter.error("phase4-grounding-issues", index_path, f"{status} requires non-empty grounding-issues")
         return
     for row in windows:
         if not isinstance(row, dict):
@@ -711,12 +775,18 @@ def validate_final_packets(orchestrate_dir: Path, repo_root: Path, reporter: Iss
         return
 
     direct_by_owner: Dict[tuple[str, str], Set[str]] = {}
+    direct_by_change: Dict[str, Set[str]] = {}
     for atom_id, row in mapping.items():
         if row.get("final-relation") == "direct":
-            key = (str(row.get("final-owner-change", "")), str(row.get("final-owner-capability", "")))
+            change = str(row.get("final-owner-change", ""))
+            capability = str(row.get("final-owner-capability", ""))
+            key = (change, capability)
             direct_by_owner.setdefault(key, set()).add(atom_id)
+            direct_by_change.setdefault(change, set()).add(atom_id)
 
     packet_changes: Set[str] = set()
+    packet_direct_by_change: Dict[str, Set[str]] = {}
+    capability_views_by_owner: Set[tuple[str, str]] = set()
     for packet in packets:
         if not isinstance(packet, dict):
             reporter.error("phase5-final-packet-row", index_path, "packets item must be object")
@@ -733,6 +803,7 @@ def validate_final_packets(orchestrate_dir: Path, repo_root: Path, reporter: Iss
             continue
         text = packet_path.read_text(encoding="utf-8")
         direct_ids = set(packet.get("direct-atom-ids") if isinstance(packet.get("direct-atom-ids"), list) else [])
+        packet_direct_by_change.setdefault(change, set()).update(str(atom_id) for atom_id in direct_ids)
         non_direct_ids = set(
             packet.get("owner-scoped-non-direct-atom-ids")
             if isinstance(packet.get("owner-scoped-non-direct-atom-ids"), list)
@@ -757,6 +828,7 @@ def validate_final_packets(orchestrate_dir: Path, repo_root: Path, reporter: Iss
                 reporter.error("phase5-capability-view-path", index_path, f"capability view missing: {cap_rel}")
                 continue
             cap_slug = cap_path.stem
+            capability_views_by_owner.add((change, cap_slug))
             text_ids = set(extract_ga_ids(cap_path.read_text(encoding="utf-8")))
             expected_ids = direct_by_owner.get((change, cap_slug), set())
             for atom_id in text_ids:
@@ -769,6 +841,18 @@ def validate_final_packets(orchestrate_dir: Path, repo_root: Path, reporter: Iss
             if missing:
                 reporter.error("phase5-capability-view-missing-direct", cap_path, f"capability view missing direct atoms: {', '.join(sorted(missing)[:12])}")
 
+    for change, atom_ids in direct_by_change.items():
+        if change not in packet_changes:
+            reporter.error("phase5-final-direct-owner", index_path, f"direct owner change {change} has no final packet")
+            continue
+        missing_direct = atom_ids - packet_direct_by_change.get(change, set())
+        if missing_direct:
+            reporter.error("phase5-final-direct-packet-index", index_path, f"{change} final packet index missing direct atoms: {', '.join(sorted(missing_direct)[:12])}")
+
+    for change, cap_slug in direct_by_owner:
+        if change in packet_changes and (change, cap_slug) not in capability_views_by_owner:
+            reporter.error("phase5-capability-view-missing-owner", index_path, f"{change}/{cap_slug} has direct atoms but no capability view")
+
     for atom_id, row in mapping.items():
         change = str(row.get("final-owner-change", ""))
         if row.get("final-relation") != "direct" and change and change != "None" and change not in packet_changes:
@@ -776,7 +860,30 @@ def validate_final_packets(orchestrate_dir: Path, repo_root: Path, reporter: Iss
 
 
 def validate_phase_5(orchestrate_dir: Path, repo_root: Path, reporter: IssueReporter, complete: bool = False) -> None:
-    trace = json_obj(orchestrate_dir / "trace/phase-5.trace.json", reporter, PHASE_TRACE_SCHEMAS["phase-5"])
+    trace_path = orchestrate_dir / "trace/phase-5.trace.json"
+    trace = json_obj(trace_path, reporter, PHASE_TRACE_SCHEMAS["phase-5"])
+    status = phase_status_value(trace.get("status") or trace.get("decision"))
+    if status and status not in FINAL_PHASE5_STATUSES | NON_FINAL_PHASE5_STATUSES:
+        reporter.error("phase5-status", trace_path, f"unsupported Phase 5 status: {status}")
+    require_file(orchestrate_dir / "phase-works/phase-5/source-window-refit-trace.md", reporter, "phase5-interface-artifact", "Phase 5 source-window refit trace is missing")
+    require_file(orchestrate_dir / "phase-works/phase-5/phase-5-agent-report.md", reporter, "phase5-interface-artifact", "Phase 5 agent report is missing")
+    if status in NON_FINAL_PHASE5_STATUSES:
+        require_file(orchestrate_dir / "phase-works/phase-5/change-plan-adjustments.md", reporter, "phase5-interface-artifact", f"Phase 5 {status} requires change-plan-adjustments.md")
+        if complete:
+            reporter.error("phase5-complete-status", trace_path, f"--complete requires accepted/adjusted status, got {status}")
+        return
+    if status in FINAL_PHASE5_STATUSES:
+        require_file(orchestrate_dir / "phase-works/phase-5/input-change-plan.md", reporter, "phase5-interface-artifact", "Phase 5 input change plan is missing")
+        require_file(orchestrate_dir / "phase-works/phase-5/change-plan.md", reporter, "phase5-interface-artifact", "Phase 5 change plan is missing")
+        require_file(orchestrate_dir / "phase-works/phase-5/atom-plan-mapping.md", reporter, "phase5-interface-artifact", "Phase 5 atom-plan-mapping.md is missing")
+        require_file(orchestrate_dir / "phase-works/phase-5/atom-plan-mapping.json", reporter, "phase5-interface-artifact", "Phase 5 atom-plan-mapping.json is missing")
+        require_file(orchestrate_dir / "phase-works/phase-5/final-packet-index.json", reporter, "phase5-interface-artifact", "Phase 5 final-packet-index.json is missing")
+        require_file(orchestrate_dir / "phase-works/phase-5/capability-progression-review.md", reporter, "phase5-interface-artifact", "Phase 5 capability progression review is missing")
+        require_file(orchestrate_dir / "phase-works/phase-5/change-complexity-review.md", reporter, "phase5-interface-artifact", "Phase 5 change complexity review is missing")
+        require_file(orchestrate_dir / "phase-works/phase-5/plan-refit-decision-log.md", reporter, "phase5-interface-artifact", "Phase 5 plan refit decision log is missing")
+        require_file(orchestrate_dir / "phase-works/phase-5/alignment-final-report.md", reporter, "phase5-interface-artifact", "Phase 5 alignment final report is missing")
+        require_file(orchestrate_dir / "phase-works/phase-5/change-capability-human-plan.md", reporter, "phase5-interface-artifact", "Phase 5 human plan is missing")
+        require_file(orchestrate_dir / "change-capability-anchors/index.md", reporter, "phase5-interface-artifact", "final change-capability anchor index is missing")
     global_atoms = load_global_atoms(orchestrate_dir, reporter)
     mapping = load_mapping(orchestrate_dir, reporter)
     missing = sorted(set(global_atoms) - set(mapping))

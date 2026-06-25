@@ -69,10 +69,19 @@ def trace_phase_status(orchestrate_dir: Path, phase: str) -> str:
     return normalize_code(data.get("status") or data.get("decision") or "")
 
 
+def fallback_trace_status(phase: str) -> str:
+    return {
+        "phase-1": "initial-plan-written",
+        "phase-2": "source-atoms-written",
+    }.get(phase, "missing")
+
+
 def phase_status(orchestrate_dir: Path, phase: str) -> str:
     trace_status = trace_phase_status(orchestrate_dir, phase)
     if trace_status:
         return trace_status
+    if (orchestrate_dir / f"trace/{phase}.trace.json").exists():
+        return fallback_trace_status(phase)
     candidates = {
         "phase-3": orchestrate_dir / "phase-works/phase-3/coverage-review.md",
         "phase-4": orchestrate_dir / "phase-works/phase-4/phase-4-agent-report.md",
@@ -80,7 +89,7 @@ def phase_status(orchestrate_dir: Path, phase: str) -> str:
     }
     path = candidates.get(phase)
     if not path or not path.exists():
-        return "present" if (orchestrate_dir / f"phase-works/{phase}").exists() else "missing"
+        return "missing"
     for line in path.read_text(encoding="utf-8").splitlines():
         stripped = line.strip()
         if stripped.startswith("Decision:"):
@@ -89,7 +98,16 @@ def phase_status(orchestrate_dir: Path, phase: str) -> str:
             return stripped.split(":", 1)[1].strip()
         if stripped.startswith("Phase 5 Status:"):
             return stripped.split(":", 1)[1].strip()
-    return "present"
+    return "missing"
+
+
+def legacy_status_fallbacks(orchestrate_dir: Path) -> List[str]:
+    phases: List[str] = []
+    for phase in ("phase-1", "phase-2", "phase-3", "phase-4", "phase-5"):
+        trace_path = orchestrate_dir / f"trace/{phase}.trace.json"
+        if trace_path.exists() and not trace_phase_status(orchestrate_dir, phase):
+            phases.append(phase)
+    return phases
 
 
 def manifest_sources(orchestrate_dir: Path, repo_root: Path) -> List[Dict[str, object]]:
@@ -120,6 +138,7 @@ def backfill_phase_1(orchestrate_dir: Path, repo_root: Path, write: bool) -> Opt
     data = {
         "trace-schema": PHASE_TRACE_SCHEMAS["phase-1"],
         "trace-contract-version": TRACE_CONTRACT_VERSION,
+        "status": "initial-plan-written",
         "source-documents": manifest_sources(orchestrate_dir, repo_root),
         "change-plan": {
             "phase-plan-path": rel(phase_plan, repo_root),
@@ -248,6 +267,7 @@ def backfill_phase_2(orchestrate_dir: Path, repo_root: Path, write: bool) -> Opt
     data = {
         "trace-schema": PHASE_TRACE_SCHEMAS["phase-2"],
         "trace-contract-version": TRACE_CONTRACT_VERSION,
+        "status": "source-atoms-written",
         "work-queue-path": rel(atom_root / "work-queue.md", repo_root),
         "sources": source_summaries,
         "phase-report-path": rel(orchestrate_dir / "phase-works/phase-2/phase-2-agent-report.md", repo_root),
@@ -697,8 +717,8 @@ def build_manifest(orchestrate_dir: Path, repo_root: Path, write: bool) -> Path:
         "trace-contract-version": TRACE_CONTRACT_VERSION,
         "orchestrate-dir": rel(orchestrate_dir, repo_root),
         "phase-statuses": {
-            "phase-1": "present" if (orchestrate_dir / "trace/phase-1.trace.json").exists() else "missing",
-            "phase-2": "present" if (orchestrate_dir / "trace/phase-2.trace.json").exists() else "missing",
+            "phase-1": phase_status(orchestrate_dir, "phase-1"),
+            "phase-2": phase_status(orchestrate_dir, "phase-2"),
             "phase-3": phase_status(orchestrate_dir, "phase-3"),
             "phase-4": phase_status(orchestrate_dir, "phase-4"),
             "phase-5": phase_status(orchestrate_dir, "phase-5"),
@@ -734,6 +754,9 @@ def main() -> int:
     print(f"{action} {len(paths)} top-level trace artifacts")
     for path in paths:
         print(path.as_posix())
+    fallbacks = legacy_status_fallbacks(args.orchestrate_dir)
+    if fallbacks:
+        print(f"legacy status fallback used for: {', '.join(fallbacks)}")
     return 0
 
 

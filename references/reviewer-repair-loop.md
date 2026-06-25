@@ -36,7 +36,7 @@ phase writer subagent
 - `phase-works/phase-<n>/phase-<n>-reviewer-report.md`：必需。每次 reviewer run 必须保留 reviewer subagent identity、writer subagent identity 或 writer 来源、validator input status、只读检查范围、findings、accepted warnings、是否需要 repair、最终 pass/block 决定。
 - `phase-works/phase-<n>/phase-<n>-repair-report.md`：仅当发生 artifact 修改时必需。每次 repair run 必须保留 repair subagent identity、被消费的 validator/reviewer findings、修改文件、保留的不变量、未修复项和 blockers。
 - `trace/phase-<n>.trace.json` 应记录 reviewer/repair loop 摘要，但 trace 摘要不能替代 reviewer report 或 repair report。
-- `trace/manifest.json` 只能在 validator 和 independent reviewer 均通过后将该 Phase 标记为可进入下一阶段。
+- `trace/manifest.json` 可以在 validator 前创建或刷新，用于提供当前 trace sidecar digest。只有 validator 和 independent reviewer 均通过后，才可以在 reviewer report、phase trace summary 和 manifest canonical phase decision 中记录该 Phase 可进入下一阶段。
 
 ## Authority Rules
 

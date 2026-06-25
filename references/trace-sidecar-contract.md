@@ -33,14 +33,21 @@ openspec/orchestrate/
     ├── phase-3/phase-3-trace/source-remainder-review.json
     ├── phase-4/source-window-dossiers/source-window-index.json
     └── phase-5/
-        ├── atom-plan-mapping.md
-        ├── atom-plan-mapping.json
-        └── final-packet-index.json
+        ├── source-window-refit-trace.md
+        ├── atom-plan-mapping.md      # accepted/adjusted only
+        ├── atom-plan-mapping.json    # accepted/adjusted only
+        └── final-packet-index.json   # accepted/adjusted only
 ```
 
 ## Manifest
 
 `trace/manifest.json` schema is `source-aligned-orchestrate-manifest-v1`.
+
+Manifest lifecycle:
+
+1. During orchestration directory initialization, create or refresh `trace/manifest.json` as a skeleton manifest. Use `missing` for any phase whose trace sidecar does not exist yet, and include only artifact rows whose `trace-path` currently exists.
+2. Before every `validate_source_aligned_orchestrate.py --phase ...` run, refresh `trace/manifest.json` so every listed artifact row has the current sha256 of its JSON `trace-path`.
+3. After validator and independent reviewer pass, refresh `trace/manifest.json` again so `phase-statuses` records the canonical phase `status` or `decision` from trace sidecars. Do not use reviewer-loop bookkeeping values as phase decisions.
 
 Required fields:
 
@@ -50,7 +57,7 @@ Required fields:
 - `phase-statuses`
 - `artifacts[]`
 
-`phase-statuses` records canonical phase decisions from phase trace sidecars, not reviewer-loop workflow states. When `trace/phase-5.trace.json.status` exists, `phase-statuses.phase-5` must be identical to it. For a proposal-ready handoff, both values must be `accepted` or `adjusted`; do not write `reviewer-passed`, `validator-passed`, `repair-not-needed`, `present`, or other workflow/status bookkeeping into `phase-statuses.phase-5`.
+`phase-statuses` records canonical phase decisions from phase trace sidecars, not reviewer-loop workflow states. Use `missing` for phases with no trace sidecar. For Phase 1 and Phase 2, use the `status` value from `trace/phase-1.trace.json` and `trace/phase-2.trace.json`. For Phase 3, Phase 4, and Phase 5, use `decision` or `status` from the corresponding phase trace. When `trace/phase-5.trace.json.status` exists, `phase-statuses.phase-5` must be identical to it. For a proposal-ready handoff, both values must be `accepted` or `adjusted`; do not write `reviewer-passed`, `validator-passed`, `repair-not-needed`, `present`, or other workflow/status bookkeeping into any `phase-statuses` value.
 
 Each artifact row must include:
 
@@ -61,7 +68,7 @@ Each artifact row must include:
 - `phase`
 - `role`
 
-`sha256` is computed over the JSON trace file at `trace-path`.
+`sha256` is computed over the JSON trace file at `trace-path`. `artifacts[]` must list only rows whose `trace-path` exists at the time the manifest is refreshed.
 
 ## Phase Schemas
 
@@ -114,8 +121,8 @@ Phase 4:
 
 Phase 5:
 
-- `atom-plan-mapping.json`: one row for every global atom with final owner/projection/relation/decision/reason
-- `final-packet-index.json`: per change direct atom IDs, owner-scoped non-direct atom IDs, capability view paths, packet path, and packet digest
+- `atom-plan-mapping.json`: required for `accepted` or `adjusted`; one row for every global atom with final owner/projection/relation/decision/reason
+- `final-packet-index.json`: required for `accepted` or `adjusted`; per change direct atom IDs, owner-scoped non-direct atom IDs, capability view paths, packet path, and packet digest
 - `phase-5.trace.json`: final status, complexity summaries, capability progression summaries, reviewer/validator gate outcomes
 
 ## Validator Commands

@@ -12,11 +12,14 @@ Phase 4 MUST be performed by a fresh independent subagent. It must not rerun Pha
 - `openspec/orchestrate/phase-works/phase-1/change-plan.md`
 - `openspec/orchestrate/phase-works/phase-3/source-doc-manifest.md`
 - `openspec/orchestrate/phase-works/phase-2/source-obligation-atoms/index.md`
-- `openspec/orchestrate/phase-works/phase-2/source-obligation-atoms/*.atoms.md`
-- `openspec/orchestrate/change-capability-anchors/obligation-atom-index.md`
+- `openspec/orchestrate/phase-works/phase-2/source-obligation-atoms/*.atoms.json` as canonical extraction evidence
+- `openspec/orchestrate/phase-works/phase-2/source-obligation-atoms/*.atoms.md` as reviewer mirrors
+- `openspec/orchestrate/change-capability-anchors/obligation-atom-index.json` as canonical global atom index
+- `openspec/orchestrate/change-capability-anchors/obligation-atom-index.md` as reviewer mirror
 - `openspec/orchestrate/phase-works/phase-3/coverage-review.md`
 - `openspec/orchestrate/phase-works/phase-3/source-doc-coverage/*.coverage.md`
-- `openspec/orchestrate/phase-works/phase-3/phase-3-trace/*.md`
+- `openspec/orchestrate/phase-works/phase-3/phase-3-trace/*.json` as canonical Phase 3 trace sidecars
+- `openspec/orchestrate/phase-works/phase-3/phase-3-trace/*.md` as reviewer mirrors
 - Original source document roots or exact source paths.
 
 ## Outputs
@@ -35,7 +38,7 @@ Write Phase 4 artifacts directly under `openspec/orchestrate/phase-works/phase-4
 
 The scope rules below make the authority boundary explicit: `phase-works/phase-4/source-window-dossiers/` is copied review evidence, not a replacement for original source documents, source atom ledgers, the global atom index, or Phase 5 final packets.
 
-After the writer finishes, Phase 4 must pass the reviewer/repair loop from `references/reviewer-repair-loop.md`: the main agent runs the phase validator, spawns a fresh independent grounding reviewer subagent, spawns a fresh independent Phase 4 repair-writer subagent if artifact changes are needed, reruns validator, spawns a fresh independent reviewer again after repair, then continues only after pass.
+After the writer finishes, Phase 4 must pass the reviewer/repair loop from `references/reviewer-repair-loop.md`: the main agent refreshes `trace/manifest.json`, runs the phase validator, spawns a fresh independent grounding reviewer subagent, spawns a fresh independent Phase 4 repair-writer subagent if artifact changes are needed, reruns validator after refreshing the manifest, spawns a fresh independent reviewer again after repair, then continues only after pass.
 
 ## Artifact Language Gate
 
@@ -98,6 +101,8 @@ Each `by-input-capability/<input-capability-slug>.md` dossier must include:
 - behavior-boundary semantic profile: what behavior it owns, what it must not own, where it first becomes directly testable, and which later changes appear to add source-backed deltas
 
 Also write `source-window-dossiers/source-window-index.json` according to `references/trace-sidecar-contract.md`. It is the canonical machine-readable index of dossier windows, linked `GA-####` ids, source hashes, line ranges, window text hashes, semantic profiles, grounding issues, and Phase 4 status.
+
+When Phase 4 status is `grounded`, `source-window-index.json` must contain a non-empty `windows[]` array and every window must point to an existing dossier. When status is `needs-coverage-recheck` or `blocked`, `windows[]` may be empty, but `grounding-issues[]` must be non-empty and explain the source-backed reason the phase cannot produce grounded dossiers safely.
 
 ## Semantic Profile Review
 
