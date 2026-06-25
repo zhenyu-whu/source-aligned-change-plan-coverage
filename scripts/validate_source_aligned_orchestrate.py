@@ -19,18 +19,25 @@ from source_aligned_trace_lib import (
     MANIFEST_SCHEMA,
     PHASE_TRACE_SCHEMAS,
     SOURCE_ATOMS_SCHEMA,
+    SOURCE_REMAINDER_REVIEW_SCHEMA,
     SOURCE_TO_GLOBAL_MAP_SCHEMA,
     SOURCE_WINDOW_INDEX_SCHEMA,
     TRACE_CONTRACT_VERSION,
     IssueReporter,
     cell,
+    coverage_file_name,
     extract_ga_ids,
+    line_range_label,
+    line_ranges_label,
+    merge_line_ranges,
     parse_line_ranges,
+    range_covered_by,
     read_json,
     sha256_file,
     source_atom_file_name,
     source_line_count,
     table_rows,
+    uncovered_line_ranges,
     validate_kebab_keys,
     normalize_code,
     squash,
@@ -340,8 +347,238 @@ def validate_global_index_mirror(orchestrate_dir: Path, reporter: IssueReporter)
             reporter.error("markdown-json-drift", md_path, f"{atom_id} artifact projection differs between Markdown and JSON")
 
 
+def read_full_sources(orchestrate_dir: Path, repo_root: Path) -> List[str]:
+    return [
+        str(source.get("source-document", ""))
+        for source in phase1_sources(orchestrate_dir, repo_root)
+        if isinstance(source, dict) and source.get("read-status") == "read-full" and source.get("source-document")
+    ]
+
+
+def valid_range_items(value: object) -> List[Dict[str, int]]:
+    ranges: List[Dict[str, int]] = []
+    if not isinstance(value, list):
+        return ranges
+    for item in value:
+        if not isinstance(item, dict):
+            continue
+        start = item.get("start")
+        end = item.get("end")
+        if isinstance(start, int) and isinstance(end, int) and start > 0 and end >= start:
+            ranges.append({"start": start, "end": end})
+    return ranges
+
+
+def phase2_evidence_ranges(orchestrate_dir: Path, source_document: str) -> tuple[List[Dict[str, int]], List[str]]:
+    sidecar = orchestrate_dir / "phase-works/phase-2/source-obligation-atoms" / source_atom_file_name(source_document).replace(".md", ".json")
+    if not sidecar.exists():
+        return [], []
+    try:
+        data = read_json(sidecar)
+    except Exception:  # noqa: BLE001
+        return [], []
+
+    ranges: List[Dict[str, int]] = []
+    origins: List[str] = []
+    for collection, id_key in (("source-atoms", "source-atom-id"), ("source-anchors", "anchor")):
+        rows = data.get(collection)
+        if not isinstance(rows, list):
+            continue
+        for index, row in enumerate(rows, start=1):
+            if not isinstance(row, dict):
+                continue
+            row_ranges = valid_range_items(row.get("line-ranges"))
+            if not row_ranges:
+                continue
+            ranges.extend(row_ranges)
+            origin = normalize_code(row.get(id_key) or row.get("source-atom-ids") or f"{collection}[{index}]")
+            if origin:
+                origins.append(origin)
+    return merge_line_ranges(ranges), origins
+
+
+def validate_phase3_manifest_and_coverage(orchestrate_dir: Path, repo_root: Path, reporter: IssueReporter) -> None:
+    manifest_path = orchestrate_dir / "phase-works/phase-3/source-doc-manifest.md"
+    rows = table_rows(manifest_path, ["Source Document", "Classification", "Review File"])
+    seen: Set[str] = set()
+    for raw in rows:
+        source_document = normalize_code(cell(raw, "Source Document"))
+        if not source_document:
+            continue
+        if source_document in seen:
+            reporter.error("phase3-manifest-duplicate", manifest_path, f"duplicate Phase 3 source document: {source_document}")
+        seen.add(source_document)
+        review_file = normalize_code(cell(raw, "Review File"))
+        if review_file:
+            review_path = repo_root / review_file
+        else:
+            review_path = orchestrate_dir / "phase-works/phase-3/source-doc-coverage" / coverage_file_name(source_document)
+        if not review_path.exists():
+            reporter.error("phase3-coverage-file", manifest_path, f"coverage file missing for {source_document}: {review_path}")
+
+    for source_document in read_full_sources(orchestrate_dir, repo_root):
+        if source_document not in seen:
+            reporter.error("phase3-manifest-coverage", manifest_path, f"Phase 3 manifest missing read-full source: {source_document}")
+
+
+def production_obligation_value(value: object) -> bool:
+    if isinstance(value, bool):
+        return value
+    text = normalize_code(value).lower()
+    return text in {
+        "true",
+        "yes",
+        "y",
+        "1",
+        "production",
+        "production-obligation",
+        "obligation-bearing",
+        "meaningful-production-obligation",
+    }
+
+
+def validate_remainder_audit_documents(
+    remainder_path: Path,
+    reporter: IssueReporter,
+    audit_documents: object,
+    expected_by_source: Dict[str, List[Dict[str, int]]],
+    evidence_by_source: Dict[str, List[Dict[str, int]]],
+    repo_root: Path,
+) -> None:
+    if not isinstance(audit_documents, list):
+        reporter.error("phase3-remainder-audit-documents", remainder_path, "audit-documents must be an array")
+        return
+    by_source: Dict[str, Dict[str, object]] = {}
+    for item in audit_documents:
+        if not isinstance(item, dict):
+            reporter.error("phase3-remainder-audit-documents", remainder_path, "audit-documents item must be object")
+            continue
+        source_document = str(item.get("source-document", ""))
+        if source_document:
+            by_source[source_document] = item
+
+    for source_document, expected_uncovered in expected_by_source.items():
+        item = by_source.get(source_document)
+        if not item:
+            reporter.error("phase3-remainder-audit-document", remainder_path, f"missing audit document for {source_document}")
+            continue
+        line_count = source_line_count(repo_root, source_document)
+        if line_count is not None and item.get("line-count") != line_count:
+            reporter.error("phase3-remainder-audit-drift", remainder_path, f"{source_document} line-count drift")
+        source_path = repo_root / source_document
+        if source_path.exists() and item.get("source-sha256") != sha256_file(source_path):
+            reporter.error("phase3-remainder-audit-drift", remainder_path, f"{source_document} source-sha256 drift")
+
+        actual_uncovered = merge_line_ranges(
+            range_item
+            for row in item.get("candidate-uncovered-ranges", [])
+            if isinstance(row, dict)
+            for range_item in valid_range_items(row.get("line-ranges"))
+        )
+        if actual_uncovered != merge_line_ranges(expected_uncovered):
+            reporter.error(
+                "phase3-remainder-audit-drift",
+                remainder_path,
+                f"{source_document} candidate-uncovered-ranges drift; expected {line_ranges_label(expected_uncovered)}",
+            )
+
+        actual_evidence = merge_line_ranges(
+            range_item
+            for row in item.get("evidence-ranges", [])
+            if isinstance(row, dict)
+            for range_item in valid_range_items(row.get("line-ranges"))
+        )
+        if actual_evidence and actual_evidence != merge_line_ranges(evidence_by_source.get(source_document, [])):
+            reporter.error(
+                "phase3-remainder-audit-drift",
+                remainder_path,
+                f"{source_document} evidence-ranges drift; expected {line_ranges_label(evidence_by_source.get(source_document, []))}",
+            )
+
+
+def validate_phase3_remainder_review(
+    orchestrate_dir: Path,
+    repo_root: Path,
+    reporter: IssueReporter,
+    global_atoms: Dict[str, Dict[str, object]],
+    phase3_decision: str,
+) -> None:
+    remainder_path = orchestrate_dir / "phase-works/phase-3/phase-3-trace/source-remainder-review.json"
+    data = json_obj(remainder_path, reporter, SOURCE_REMAINDER_REVIEW_SCHEMA)
+    if not data:
+        return
+
+    evidence_by_source: Dict[str, List[Dict[str, int]]] = {}
+    uncovered_by_source: Dict[str, List[Dict[str, int]]] = {}
+    for source_document in read_full_sources(orchestrate_dir, repo_root):
+        sidecar = orchestrate_dir / "phase-works/phase-2/source-obligation-atoms" / source_atom_file_name(source_document).replace(".md", ".json")
+        if not sidecar.exists():
+            reporter.error("phase3-phase2-source-atoms", remainder_path, f"Phase 2 source atom sidecar missing for {source_document}")
+        evidence_ranges, _ = phase2_evidence_ranges(orchestrate_dir, source_document)
+        line_count = source_line_count(repo_root, source_document)
+        if line_count is None:
+            reporter.error("phase3-source-exists", remainder_path, f"source document missing: {source_document}")
+            line_count = 0
+        evidence_by_source[source_document] = evidence_ranges
+        uncovered_by_source[source_document] = uncovered_line_ranges(evidence_ranges, line_count)
+
+    validate_remainder_audit_documents(
+        remainder_path,
+        reporter,
+        data.get("audit-documents"),
+        uncovered_by_source,
+        evidence_by_source,
+        repo_root,
+    )
+
+    rows = data.get("rows")
+    if not isinstance(rows, list):
+        reporter.error("phase3-remainder-rows", remainder_path, "rows must be an array")
+        rows = []
+
+    review_ranges_by_source: Dict[str, List[Dict[str, int]]] = {}
+    for index, row in enumerate(rows):
+        if not isinstance(row, dict):
+            reporter.error("phase3-remainder-row", remainder_path, "rows item must be object")
+            continue
+        source_document = str(row.get("source-document", ""))
+        context = f"{source_document}::{row.get('lines', '') or index}"
+        check_ranges(remainder_path, reporter, row.get("line-ranges"), source_document, repo_root, context)
+        row_ranges = valid_range_items(row.get("line-ranges"))
+        review_ranges_by_source.setdefault(source_document, []).extend(row_ranges)
+
+        linked_ids = row.get("linked-global-atom-ids")
+        if not isinstance(linked_ids, list):
+            reporter.error("phase3-remainder-linked-ga", remainder_path, f"{context} linked-global-atom-ids must be an array")
+            linked_ids = []
+        for atom_id in linked_ids:
+            if atom_id not in global_atoms:
+                reporter.error("phase3-remainder-unknown-ga", remainder_path, f"{context} references unknown {atom_id}")
+
+        blocker = squash(row.get("blocker", ""))
+        non_coverage = squash(row.get("non-coverage-status", ""))
+        if production_obligation_value(row.get("production-obligation")) and not linked_ids and not blocker:
+            reporter.error("phase3-remainder-outcome", remainder_path, f"{context} production obligation needs linked GA or blocker")
+        if not linked_ids and not non_coverage and not blocker:
+            reporter.error("phase3-remainder-outcome", remainder_path, f"{context} needs linked GA, non-coverage status, or blocker")
+        if blocker and phase3_decision == "coverage-complete":
+            reporter.error("phase3-remainder-blocker-complete", remainder_path, f"{context} has blocker during coverage-complete")
+
+    for source_document, uncovered_ranges in uncovered_by_source.items():
+        review_ranges = review_ranges_by_source.get(source_document, [])
+        for candidate in uncovered_ranges:
+            if not range_covered_by(candidate, review_ranges):
+                reporter.error(
+                    "phase3-remainder-coverage",
+                    remainder_path,
+                    f"{source_document} uncovered range {line_range_label(candidate)} is not reviewed in source-remainder-review.json",
+                )
+
+
 def validate_phase_3(orchestrate_dir: Path, repo_root: Path, reporter: IssueReporter) -> None:
-    json_obj(orchestrate_dir / "trace/phase-3.trace.json", reporter, PHASE_TRACE_SCHEMAS["phase-3"])
+    phase3_trace = json_obj(orchestrate_dir / "trace/phase-3.trace.json", reporter, PHASE_TRACE_SCHEMAS["phase-3"])
+    phase3_decision = phase_status_value(phase3_trace.get("decision") or phase3_trace.get("status"))
+    validate_phase3_manifest_and_coverage(orchestrate_dir, repo_root, reporter)
     global_atoms = load_global_atoms(orchestrate_dir, reporter)
     index_path = orchestrate_dir / "change-capability-anchors/obligation-atom-index.json"
     for atom_id, row in global_atoms.items():
@@ -383,6 +620,7 @@ def validate_phase_3(orchestrate_dir: Path, repo_root: Path, reporter: IssueRepo
         if key not in mapped_keys:
             reporter.error("phase3-map-coverage", map_path, f"source-to-global map missing Phase 2 atom/context row: {key}")
     validate_global_index_mirror(orchestrate_dir, reporter)
+    validate_phase3_remainder_review(orchestrate_dir, repo_root, reporter, global_atoms, phase3_decision)
 
 
 def validate_phase_4(orchestrate_dir: Path, repo_root: Path, reporter: IssueReporter) -> None:

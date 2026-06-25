@@ -18,6 +18,8 @@ from collections import Counter, defaultdict
 from pathlib import Path
 from typing import Dict, Iterable, List, Optional, Sequence, Tuple
 
+from source_aligned_trace_lib import line_ranges_label, range_covered_by
+
 
 TABLE_SEPARATOR_RE = re.compile(r"^:?-{3,}:?$")
 HEADING_RE = re.compile(r"^(#{1,6})\s+(.+?)\s*$")
@@ -529,6 +531,91 @@ def parse_coverage_file(path: Path, warnings: List[str]) -> Dict[str, object]:
     }
 
 
+def json_line_ranges_label(value: object) -> str:
+    if not isinstance(value, list):
+        return ""
+    ranges = [
+        {"start": item.get("start"), "end": item.get("end")}
+        for item in value
+        if isinstance(item, dict) and isinstance(item.get("start"), int) and isinstance(item.get("end"), int)
+    ]
+    return line_ranges_label(ranges)
+
+
+def parse_remainder_review(orchestrate_dir: Path, warnings: List[str]) -> Dict[str, object]:
+    path = orchestrate_dir / "phase-works/phase-3/phase-3-trace/source-remainder-review.json"
+    if not path.exists():
+        warnings.append(f"{path.name}: JSON trace missing; fallback to per-source Non-Atom Range Review tables")
+        return {"auditByDoc": {}, "rowsByDoc": {}, "rowCount": 0}
+    data = json.loads(path.read_text(encoding="utf-8"))
+    review_ranges_by_doc: Dict[str, List[Dict[str, int]]] = defaultdict(list)
+    rows_by_doc: Dict[str, List[Dict[str, object]]] = defaultdict(list)
+    for row in data.get("rows", []):
+        if not isinstance(row, dict):
+            continue
+        source_document = normalize_code(str(row.get("source-document", "")))
+        ranges = row.get("line-ranges", [])
+        if isinstance(ranges, list):
+            review_ranges_by_doc[source_document].extend(
+                [
+                    {"start": item.get("start"), "end": item.get("end")}
+                    for item in ranges
+                    if isinstance(item, dict)
+                    and isinstance(item.get("start"), int)
+                    and isinstance(item.get("end"), int)
+                ]
+            )
+        rows_by_doc[source_document].append(
+            {
+                "sourceDocument": source_document,
+                "lines": normalize_code(str(row.get("lines", ""))) or json_line_ranges_label(ranges),
+                "ranges": ranges if isinstance(ranges, list) else [],
+                "howFound": squash(row.get("how-found", "")),
+                "readScope": squash(row.get("read-scope", "")),
+                "semanticClassification": squash(row.get("semantic-classification", "")),
+                "productionObligation": squash(row.get("production-obligation", "")),
+                "linkedGlobalAtomIds": row.get("linked-global-atom-ids", []),
+                "nonCoverageStatus": squash(row.get("non-coverage-status", "")),
+                "blocker": squash(row.get("blocker", "")),
+                "reason": squash(row.get("reason", "")),
+            }
+        )
+
+    audit_by_doc: Dict[str, Dict[str, object]] = {}
+    for item in data.get("audit-documents", []):
+        if not isinstance(item, dict):
+            continue
+        source_document = normalize_code(str(item.get("source-document", "")))
+        candidates: List[Dict[str, object]] = []
+        for candidate in item.get("candidate-uncovered-ranges", []):
+            if not isinstance(candidate, dict):
+                continue
+            ranges = candidate.get("line-ranges", [])
+            valid_ranges = [
+                {"start": row.get("start"), "end": row.get("end")}
+                for row in ranges
+                if isinstance(row, dict) and isinstance(row.get("start"), int) and isinstance(row.get("end"), int)
+            ] if isinstance(ranges, list) else []
+            reviewed = all(range_covered_by(row, review_ranges_by_doc.get(source_document, [])) for row in valid_ranges)
+            candidates.append(
+                {
+                    "lines": normalize_code(str(candidate.get("lines", ""))) or line_ranges_label(valid_ranges),
+                    "ranges": valid_ranges,
+                    "reviewed": reviewed,
+                }
+            )
+        audit_by_doc[source_document] = {
+            "lineCount": item.get("line-count", 0),
+            "candidateUncoveredRanges": candidates,
+            "evidenceRanges": item.get("evidence-ranges", []),
+        }
+    return {
+        "auditByDoc": audit_by_doc,
+        "rowsByDoc": dict(rows_by_doc),
+        "rowCount": sum(len(rows) for rows in rows_by_doc.values()),
+    }
+
+
 def make_risk_queue(
     duplicate_rows: Sequence[Dict[str, str]],
     handoff_rows: Sequence[Dict[str, str]],
@@ -631,6 +718,7 @@ def build_data(repo_root: Path, orchestrate_dir: Path) -> Dict[str, object]:
     duplicate_rows = parse_duplicate_review(orchestrate_dir)
     coverage_review = parse_coverage_review(orchestrate_dir)
     handoff_rows = coverage_review.get("handoffs", [])
+    remainder_review = parse_remainder_review(orchestrate_dir, warnings)
 
     global_by_doc: Dict[str, List[Dict[str, object]]] = defaultdict(list)
     global_by_id: Dict[str, Dict[str, object]] = {}
@@ -689,6 +777,8 @@ def build_data(repo_root: Path, orchestrate_dir: Path) -> Dict[str, object]:
                 "effectiveAtoms": doc_global_atoms,
                 "sectionCoverage": coverage["sectionCoverage"],
                 "nonAtomRanges": coverage["nonAtomRanges"],
+                "remainderAudit": remainder_review["auditByDoc"].get(source_document, {}),
+                "remainderRows": remainder_review["rowsByDoc"].get(source_document, []),
                 "duplicateOwnership": coverage["duplicateOwnership"],
                 "mappingRows": mapping_by_doc.get(source_document, []),
                 "statusCounts": dict(sorted(status_counts.items())),
@@ -708,6 +798,7 @@ def build_data(repo_root: Path, orchestrate_dir: Path) -> Dict[str, object]:
             "sourceCount": len(docs),
             "globalAtomCount": len(global_atoms),
             "mappingRowCount": len(mapping_rows),
+            "remainderReviewRowCount": remainder_review["rowCount"],
             "riskCount": len(risk_queue),
             "phase5HandoffCount": len(handoff_rows),
             "decision": coverage_review.get("decision", ""),
@@ -1750,8 +1841,25 @@ def render_html(data: Dict[str, object]) -> str:
     }}
 
     function renderRemainderCards(doc) {{
-      if (!doc.nonAtomRanges.length) return '<div class="empty">没有 Non-Atom Range Review 表。</div>';
-      return doc.nonAtomRanges.map((row) => `
+      const auditRanges = (doc.remainderAudit && doc.remainderAudit.candidateUncoveredRanges) || [];
+      const auditCards = auditRanges.map((row) => `
+        <article class="card">
+          <div class="card-top"><div class="code">${{escapeHtml(row.lines)}}</div><span class="mini-badge ${{row.reviewed ? 'good' : 'bad'}}">${{row.reviewed ? 'reviewed' : 'missing review'}}</span></div>
+          <p class="summary">Phase 3 line-range audit 发现的候选未覆盖段。</p>
+        </article>
+      `).join('');
+      const traceRows = (doc.remainderRows || []).map((row) => `
+        <article class="card">
+          <div class="card-top"><div class="code">${{escapeHtml(row.lines)}}</div><span class="mini-badge">${{escapeHtml(row.semanticClassification)}}</span></div>
+          <p class="summary">${{escapeHtml(row.reason)}}</p>
+          <div class="fields">
+            <div class="field"><span>How Found</span><strong>${{escapeHtml(row.howFound)}}</strong></div>
+            <div class="field"><span>Production?</span><strong>${{escapeHtml(row.productionObligation)}}</strong></div>
+            <div class="field"><span>Outcome</span><strong>${{escapeHtml((row.linkedGlobalAtomIds || []).join(', ') || row.nonCoverageStatus || row.blocker || 'none')}}</strong></div>
+          </div>
+        </article>
+      `).join('');
+      const mirrorRows = doc.nonAtomRanges.map((row) => `
         <article class="card">
           <div class="card-top"><div class="code">${{escapeHtml(row.candidateRange)}}</div><span class="mini-badge">${{escapeHtml(row.semanticClassification)}}</span></div>
           <p class="summary">${{escapeHtml(row.reason)}}</p>
@@ -1761,6 +1869,9 @@ def render_html(data: Dict[str, object]) -> str:
           </div>
         </article>
       `).join('');
+      const content = auditCards + traceRows + mirrorRows;
+      if (!content) return '<div class="empty">没有 source remainder review 记录。</div>';
+      return content;
     }}
 
     function renderDuplicateCards(doc) {{

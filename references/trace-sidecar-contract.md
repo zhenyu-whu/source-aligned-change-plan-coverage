@@ -30,6 +30,7 @@ openspec/orchestrate/
     ├── phase-2/source-obligation-atoms/<source>.atoms.md
     ├── phase-2/source-obligation-atoms/<source>.atoms.json
     ├── phase-3/phase-3-trace/source-to-global-atom-map.json
+    ├── phase-3/phase-3-trace/source-remainder-review.json
     ├── phase-4/source-window-dossiers/source-window-index.json
     └── phase-5/
         ├── atom-plan-mapping.md
@@ -77,6 +78,7 @@ Artifact schemas:
 - `source-aligned-source-atoms-v1`
 - `source-aligned-global-atom-index-v1`
 - `source-aligned-source-to-global-map-v1`
+- `source-aligned-source-remainder-review-v1`
 - `source-aligned-source-window-index-v1`
 - `source-aligned-atom-plan-mapping-v1`
 - `source-aligned-final-packet-index-v1`
@@ -100,7 +102,10 @@ Phase 3:
 
 - `obligation-atom-index.json`: `global-atoms[]` with exact `GA-####`, source fields, status, projection, owner, relation, `origins[]`, and `line-ranges[]`
 - `source-to-global-atom-map.json`: one row per Phase 2 atom/context row; exactly one mapping outcome: `global-atom-id`, `global-relation`, `non-coverage-status`, or `blocker`
-- `phase-3.trace.json`: source classifications, review paths, normalization decisions, and decision value
+- `source-remainder-review.json`: `audit-documents[]` and `rows[]` for mechanical Phase 2 atom/anchor line coverage and semantic review of every candidate uncovered source range
+  - Each `audit-documents[]` row includes `source-document`, `source-sha256`, `line-count`, `evidence-ranges[]`, and `candidate-uncovered-ranges[]`
+  - Each `rows[]` row includes `source-document`, `lines`, `line-ranges[]`, `how-found`, `read-scope`, `semantic-classification`, `production-obligation`, `linked-global-atom-ids[]`, `non-coverage-status`, `blocker`, and `reason`
+- `phase-3.trace.json`: source classifications, review paths, normalization decisions, remainder review path, and decision value
 
 Phase 4:
 

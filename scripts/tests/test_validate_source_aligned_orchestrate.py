@@ -73,10 +73,32 @@ class SourceAlignedValidatorTest(unittest.TestCase):
             "| Source Atom ID | Source Document | Lines | Atom Type | Source Fact | Normativity | Candidate Status | Candidate Artifact Projection | Candidate Owner Change | Candidate Owner Capability | Roles | Rationale | Propose Use | Evidence Need |\n"
             "| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |\n"
             "| atom.one | docs/source.md | L1-L2 | behavior | fact one | must | direct-candidate | spec-requirement | change-a | cap-a | primary | why | use | unit |\n"
-            "| atom.two | docs/source.md | L3-L4 | explicit-non-goal | fact two | must-not | explicit-non-goal | spec-guard | change-a | cap-a | non-goal | why | use | none |\n",
+            "| atom.two | docs/source.md | L1-L2 | explicit-non-goal | fact two | must-not | explicit-non-goal | spec-guard | change-a | cap-a | non-goal | why | use | none |\n",
         )
         self._write("openspec/orchestrate/phase-works/phase-2/source-obligation-atoms/index.md", "index\n")
         self._write("openspec/orchestrate/phase-works/phase-2/phase-2-agent-report.md", "ok\n")
+        self._write(
+            "openspec/orchestrate/phase-works/phase-3/source-doc-manifest.md",
+            "| Source Document | Classification | Phase 2 Atom File | Review File | Effective Atom Ranges | Missing Obligation Atom Ranges | Non-Atom Ranges | Read Scope | Reason |\n"
+            "| --- | --- | --- | --- | --- | --- | --- | --- | --- |\n"
+            "| docs/source.md | covered-by-atoms | openspec/orchestrate/phase-works/phase-2/source-obligation-atoms/docs--source.atoms.md | openspec/orchestrate/phase-works/phase-3/source-doc-coverage/docs--source.coverage.md | L1-L2 | None | L3-L20 | full-source remainder audit | ok |\n",
+        )
+        self._write(
+            "openspec/orchestrate/phase-works/phase-3/source-doc-coverage/docs--source.coverage.md",
+            "| Global Atom ID | Source Atom Origins | Lines | Atom Type | Coverage Status | Artifact Projection | Candidate / Owner Change | Candidate / Owner Capability | Source Fact |\n"
+            "| --- | --- | --- | --- | --- | --- | --- | --- | --- |\n"
+            "| GA-0001 | atom.one | L1-L2 | behavior | direct | spec-requirement | change-a | cap-a | fact one |\n"
+            "| GA-0002 | atom.two | L1-L2 | explicit-non-goal | explicit-non-goal | spec-guard | change-a | cap-a | fact two |\n"
+            "\n"
+            "| Source Section or Range | Expected Atom Type | Global Atom IDs | Coverage Judgment | Reason |\n"
+            "| --- | --- | --- | --- | --- |\n"
+            "| L1-L2 | behavior | GA-0001; GA-0002 | covered | ok |\n"
+            "| L3-L20 | none | None | non-atom | safe remainder |\n"
+            "\n"
+            "| Candidate Range | Read Scope | Semantic Classification | Production Obligation? | Reason |\n"
+            "| --- | --- | --- | --- | --- |\n"
+            "| L3-L20 | full-source remainder audit | formatting/background | false | no production obligation |\n",
+        )
         self._write("openspec/orchestrate/phase-works/phase-3/coverage-review.md", "Decision: coverage-complete\n")
         self._write("openspec/orchestrate/phase-works/phase-4/phase-4-agent-report.md", "Phase 4 Status: grounded\n")
         self._write("openspec/orchestrate/phase-works/phase-5/phase-5-agent-report.md", "Phase 5 Status: adjusted\n")
@@ -86,14 +108,14 @@ class SourceAlignedValidatorTest(unittest.TestCase):
             "| Global Atom ID | Source Document | Lines | Atom Type | Source Fact | Normativity | Coverage Status | Artifact Projection | Owner Change | Owner Capability | Source Atom Origins | Atom Relation | Propose Use | Evidence Need | Review Judgment |\n"
             "| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |\n"
             "| GA-0001 | docs/source.md | L1-L2 | behavior | fact one | must | direct | spec-requirement | change-a | cap-a | atom.one | direct | use | unit | ok |\n"
-            "| GA-0002 | docs/source.md | L3-L4 | explicit-non-goal | fact two | must-not | explicit-non-goal | spec-guard | change-a | cap-a | atom.two | non-goal | use | none | ok |\n",
+            "| GA-0002 | docs/source.md | L1-L2 | explicit-non-goal | fact two | must-not | explicit-non-goal | spec-guard | change-a | cap-a | atom.two | non-goal | use | none | ok |\n",
         )
         self._write(
             "openspec/orchestrate/phase-works/phase-5/atom-plan-mapping.md",
             "| Global Atom ID | Source Document | Lines | Phase 3 Owner / Status | Phase 3 Artifact Projection | Final Owner Change | Final Owner Capability | Final Artifact Projection | Final Relation | Plan Decision | Reason |\n"
             "| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |\n"
             "| GA-0001 | docs/source.md | L1-L2 | change-a / direct | spec-requirement | change-a | cap-a | spec-requirement | direct | direct-owner | reason |\n"
-            "| GA-0002 | docs/source.md | L3-L4 | change-a / explicit-non-goal | spec-guard | change-a | cap-a | spec-guard | non-goal | scoped-non-direct | reason |\n",
+            "| GA-0002 | docs/source.md | L1-L2 | change-a / explicit-non-goal | spec-guard | change-a | cap-a | spec-guard | non-goal | scoped-non-direct | reason |\n",
         )
         self._write(
             "openspec/orchestrate/change-capability-anchors/change-a/change-a.md",
@@ -157,8 +179,8 @@ class SourceAlignedValidatorTest(unittest.TestCase):
             {
                 "source-atom-id": "atom.two",
                 "source-document": "docs/source.md",
-                "lines": "L3-L4",
-                "line-ranges": [{"start": 3, "end": 4}],
+                "lines": "L1-L2",
+                "line-ranges": [{"start": 1, "end": 2}],
                 "atom-type": "explicit-non-goal",
                 "source-fact": "fact two",
                 "normativity": "must-not",
@@ -219,8 +241,8 @@ class SourceAlignedValidatorTest(unittest.TestCase):
             {
                 "global-atom-id": "GA-0002",
                 "source-document": "docs/source.md",
-                "lines": "L3-L4",
-                "line-ranges": [{"start": 3, "end": 4}],
+                "lines": "L1-L2",
+                "line-ranges": [{"start": 1, "end": 2}],
                 "atom-type": "explicit-non-goal",
                 "source-fact": "fact two",
                 "normativity": "must-not",
@@ -270,8 +292,8 @@ class SourceAlignedValidatorTest(unittest.TestCase):
                     {
                         "source-document": "docs/source.md",
                         "source-atom-id": "atom.two",
-                        "lines": "L3-L4",
-                        "line-ranges": [{"start": 3, "end": 4}],
+                        "lines": "L1-L2",
+                        "line-ranges": [{"start": 1, "end": 2}],
                         "candidate-status": "explicit-non-goal",
                         "candidate-artifact-projection": "spec-guard",
                         "candidate-owner-change": "change-a",
@@ -282,6 +304,49 @@ class SourceAlignedValidatorTest(unittest.TestCase):
                         "review-decision": "non-direct-status",
                         "reason": "ok",
                     },
+                ],
+            },
+        )
+        write_json(
+            self.orchestrate / "phase-works/phase-3/phase-3-trace/source-remainder-review.json",
+            {
+                "trace-schema": "source-aligned-source-remainder-review-v1",
+                "trace-contract-version": TRACE_CONTRACT_VERSION,
+                "artifact-path": "openspec/orchestrate/phase-works/phase-3/phase-3-trace/source-remainder-review.md",
+                "audit-documents": [
+                    {
+                        "source-document": "docs/source.md",
+                        "source-sha256": source_sha,
+                        "line-count": 20,
+                        "evidence-ranges": [
+                            {
+                                "lines": "L1-L2",
+                                "line-ranges": [{"start": 1, "end": 2}],
+                                "origins": ["atom.one", "atom.two"],
+                            }
+                        ],
+                        "candidate-uncovered-ranges": [
+                            {
+                                "lines": "L3-L20",
+                                "line-ranges": [{"start": 3, "end": 20}],
+                            }
+                        ],
+                    }
+                ],
+                "rows": [
+                    {
+                        "source-document": "docs/source.md",
+                        "lines": "L3-L20",
+                        "line-ranges": [{"start": 3, "end": 20}],
+                        "how-found": "phase3-line-range-audit",
+                        "read-scope": "full-source remainder audit",
+                        "semantic-classification": "formatting/background",
+                        "production-obligation": False,
+                        "linked-global-atom-ids": [],
+                        "non-coverage-status": "no-product-or-system-impact",
+                        "blocker": "",
+                        "reason": "no production obligation",
+                    }
                 ],
             },
         )
@@ -354,8 +419,8 @@ class SourceAlignedValidatorTest(unittest.TestCase):
                     {
                         "global-atom-id": "GA-0002",
                         "source-document": "docs/source.md",
-                        "lines": "L3-L4",
-                        "line-ranges": [{"start": 3, "end": 4}],
+                        "lines": "L1-L2",
+                        "line-ranges": [{"start": 1, "end": 2}],
                         "phase-3-owner-status": "change-a / explicit-non-goal",
                         "phase-3-artifact-projection": "spec-guard",
                         "final-owner-change": "change-a",
@@ -409,6 +474,11 @@ class SourceAlignedValidatorTest(unittest.TestCase):
             ("openspec/orchestrate/trace/phase-2.trace.json", PHASE_TRACE_SCHEMAS["phase-2"], "phase-2"),
             ("openspec/orchestrate/change-capability-anchors/obligation-atom-index.json", GLOBAL_ATOM_INDEX_SCHEMA, "phase-3"),
             ("openspec/orchestrate/phase-works/phase-3/phase-3-trace/source-to-global-atom-map.json", SOURCE_TO_GLOBAL_MAP_SCHEMA, "phase-3"),
+            (
+                "openspec/orchestrate/phase-works/phase-3/phase-3-trace/source-remainder-review.json",
+                "source-aligned-source-remainder-review-v1",
+                "phase-3",
+            ),
             ("openspec/orchestrate/trace/phase-3.trace.json", PHASE_TRACE_SCHEMAS["phase-3"], "phase-3"),
             ("openspec/orchestrate/phase-works/phase-4/source-window-dossiers/source-window-index.json", SOURCE_WINDOW_INDEX_SCHEMA, "phase-4"),
             ("openspec/orchestrate/trace/phase-4.trace.json", PHASE_TRACE_SCHEMAS["phase-4"], "phase-4"),
@@ -501,6 +571,55 @@ class SourceAlignedValidatorTest(unittest.TestCase):
         write_json(path, data)
         self._write_manifest()
         self.assert_error("phase3-map-coverage")
+
+    def test_phase3_remainder_missing_uncovered_range_fails(self) -> None:
+        path = self.orchestrate / "phase-works/phase-3/phase-3-trace/source-remainder-review.json"
+        data = json.loads(path.read_text(encoding="utf-8"))
+        data["rows"] = []
+        write_json(path, data)
+        self._write_manifest()
+        self.assert_error("phase3-remainder-coverage")
+
+    def test_phase3_remainder_production_obligation_without_outcome_fails(self) -> None:
+        path = self.orchestrate / "phase-works/phase-3/phase-3-trace/source-remainder-review.json"
+        data = json.loads(path.read_text(encoding="utf-8"))
+        data["rows"][0]["production-obligation"] = True
+        data["rows"][0]["linked-global-atom-ids"] = []
+        data["rows"][0]["blocker"] = ""
+        data["rows"][0]["non-coverage-status"] = ""
+        write_json(path, data)
+        self._write_manifest()
+        self.assert_error("phase3-remainder-outcome")
+
+    def test_phase3_remainder_unknown_ga_fails(self) -> None:
+        path = self.orchestrate / "phase-works/phase-3/phase-3-trace/source-remainder-review.json"
+        data = json.loads(path.read_text(encoding="utf-8"))
+        data["rows"][0]["production-obligation"] = True
+        data["rows"][0]["linked-global-atom-ids"] = ["GA-9999"]
+        data["rows"][0]["non-coverage-status"] = ""
+        write_json(path, data)
+        self._write_manifest()
+        self.assert_error("phase3-remainder-unknown-ga")
+
+    def test_phase3_remainder_blocker_prevents_coverage_complete(self) -> None:
+        path = self.orchestrate / "phase-works/phase-3/phase-3-trace/source-remainder-review.json"
+        data = json.loads(path.read_text(encoding="utf-8"))
+        data["rows"][0]["blocker"] = "needs human decision"
+        write_json(path, data)
+        self._write_manifest()
+        self.assert_error("phase3-remainder-blocker-complete")
+
+    def test_phase3_manifest_missing_read_full_source_fails(self) -> None:
+        self._write(
+            "openspec/orchestrate/phase-works/phase-3/source-doc-manifest.md",
+            "| Source Document | Classification | Phase 2 Atom File | Review File | Effective Atom Ranges | Missing Obligation Atom Ranges | Non-Atom Ranges | Read Scope | Reason |\n"
+            "| --- | --- | --- | --- | --- | --- | --- | --- | --- |\n",
+        )
+        self.assert_error("phase3-manifest-coverage")
+
+    def test_phase3_coverage_file_missing_fails(self) -> None:
+        (self.orchestrate / "phase-works/phase-3/source-doc-coverage/docs--source.coverage.md").unlink()
+        self.assert_error("phase3-coverage-file")
 
     def test_phase4_source_hash_mismatch_fails(self) -> None:
         path = self.orchestrate / "phase-works/phase-4/source-window-dossiers/source-window-index.json"

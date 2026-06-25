@@ -22,7 +22,7 @@ Source anchors and line ranges remain useful for navigation and mechanical check
 - `openspec/orchestrate/phase-works/phase-2/source-obligation-atoms/index.md`
 - `openspec/orchestrate/phase-works/phase-2/source-obligation-atoms/<source>.atoms.md`
 - User-specified source document roots or exact source paths, for manifest verification and targeted semantic reads.
-- Optional mechanical helper: `.codex/skills/source-aligned-change-plan-coverage/scripts/phase3_line_range_audit.py`
+- Required mechanical helper/input shape: `.codex/skills/source-aligned-change-plan-coverage/scripts/phase3_line_range_audit.py` or equivalent Phase 3 code must compute Phase 2 atom/anchor line coverage for every `read-full` source document and preserve the result in `source-remainder-review.json`.
 
 ## Outputs
 
@@ -35,6 +35,7 @@ Write current copies only:
 - `openspec/orchestrate/phase-works/phase-3/phase-3-trace/source-to-global-atom-map.md`
 - `openspec/orchestrate/phase-works/phase-3/phase-3-trace/source-to-global-atom-map.json`
 - `openspec/orchestrate/phase-works/phase-3/phase-3-trace/source-remainder-review.md`
+- `openspec/orchestrate/phase-works/phase-3/phase-3-trace/source-remainder-review.json`
 - `openspec/orchestrate/phase-works/phase-3/phase-3-trace/duplicate-ownership-review.md`
 - `openspec/orchestrate/phase-works/phase-3/phase-3-trace/atom-normalization-decision-log.md`
 - `openspec/orchestrate/phase-works/phase-3/coverage-review-app/index.html`
@@ -140,7 +141,7 @@ Evaluate in this order:
 2. Confirm every `read-full` manifest source document has one Phase 2 source atom file.
 3. Treat `work-queue.md` only as scheduling trace. Do not use its batching rationale, document name, path, role, or line count as coverage evidence.
 4. Extract every Phase 2 atom candidate with source document, source-local atom id, line range, atom type, source fact, normativity, candidate status, candidate artifact projection, candidate owner change/capability, roles, rationale, propose use, evidence need, and artifact origin.
-5. Optionally run `scripts/phase3_line_range_audit.py` to mechanically parse source atom anchors, normalize line ranges, merge ranges, list candidate uncovered intervals, list overlaps, and flag malformed rows or non-canonical line-range formatting warnings. Include a short summary if used.
+5. Run `scripts/phase3_line_range_audit.py` or equivalent Phase 3 code to mechanically parse Phase 2 source atom and anchor ranges, normalize line ranges, merge ranges, list candidate uncovered intervals, list overlaps, and flag malformed rows or non-canonical line-range formatting warnings. This mechanical output is not a semantic decision, but every candidate uncovered interval must be semantically reviewed before Phase 3 can return `coverage-complete`.
 6. Build a semantic duplicate review across extracted atoms. Same source document/range, equivalent source facts, equivalent state/action/verification obligations, or identical propose use are duplicate candidates until reviewed.
 7. Split broad atoms when one Phase 2 row covers multiple mandatory UI/flow/data/verification obligations. Each split atom must keep source evidence and a source-local origin or Phase 3 missing-atom finding id.
 8. Build `change-capability-anchors/obligation-atom-index.md` with one global atom per production obligation and one normalized artifact projection per global atom.
@@ -156,11 +157,11 @@ Evaluate in this order:
     - ignore blank lines, table separators, decorative separators, generated table-of-contents lines, and pure formatting
     - ignore background prose, repeated summaries, discarded options, and purely explanatory text unless it defines a production behavior, boundary, data fact, verification obligation, deployment requirement, auth/privacy rule, failure path, or preserve constraint
     - record each remaining meaningful uncovered source obligation as a missing atom and add it to the global index when precise enough
-15. Write `phase-works/phase-3/phase-3-trace/source-remainder-review.md`, listing every candidate remaining source range reviewed, how it was discovered, read scope, semantic classification, whether it contains a production obligation, and the resulting atom/status/finding.
+15. Write `phase-works/phase-3/phase-3-trace/source-remainder-review.md` and canonical `source-remainder-review.json`, listing every candidate remaining source range reviewed, how it was discovered, read scope, semantic classification, whether it contains a production obligation, and the resulting atom/status/finding. The JSON sidecar must include `audit-documents[]` with the mechanically recomputed evidence ranges and candidate uncovered ranges for every `read-full` source document, plus `rows[]` that cover every candidate uncovered range. A larger semantic review row may cover a smaller uncovered range, but no candidate uncovered range may be left without a review row.
 16. Identify atoms whose owner change/capability cannot be resolved without source-window grounding and plan refit. Mark them `phase-5-refit-required` instead of forcing them into the Phase 1 framework.
 17. Write `phase-works/phase-3/phase-3-trace/atom-normalization-decision-log.md`, preserving every candidate finding considered, the decision for each, and whether Phase 5 must resolve final placement.
 18. Build compact global statistics across source documents, global atoms, meaningful missing atoms, duplicate findings, broad-atom split findings, non-coverage classifications, ownership ambiguities, gaps, and conflicts.
-19. Write `trace/phase-3.trace.json` according to `references/trace-sidecar-contract.md`.
+19. Write `trace/phase-3.trace.json` according to `references/trace-sidecar-contract.md`, including the canonical source remainder review path.
 20. Generate `phase-works/phase-3/coverage-review-app/index.html` from the source documents and Phase 3 artifacts. Prefer the bundled helper `scripts/phase3_coverage_review_app.py` unless a project-specific equivalent already exists.
 21. Run `validate_source_aligned_orchestrate.py --phase phase-3`, then run the Phase 3 reviewer/repair loop with independent reviewer and repair-writer subagents.
 22. Decide whether coverage normalization is complete or blocked.
@@ -247,6 +248,18 @@ Each `phase-works/phase-3/source-doc-coverage/<source>.coverage.md` file must in
 | Source Document | Candidate Range | How Found | Read Scope | Semantic Classification | Production Obligation? | Atom / Status / Finding | Reason |
 | --- | --- | --- | --- | --- | --- | --- | --- |
 
+`phase-works/phase-3/phase-3-trace/source-remainder-review.json` must include the same semantic review in canonical machine-readable form:
+
+- `audit-documents[]`: one row per Phase 1 `read-full` source document, with `source-document`, `source-sha256`, `line-count`, `evidence-ranges[]`, and `candidate-uncovered-ranges[]`.
+- `rows[]`: one row per reviewed remainder range, with `source-document`, `lines`, `line-ranges[]`, `how-found`, `read-scope`, `semantic-classification`, `production-obligation`, `linked-global-atom-ids[]`, `non-coverage-status`, `blocker`, and `reason`.
+
+Validator gate:
+
+- Every mechanically candidate uncovered range must be covered by at least one `rows[]` review range.
+- A production-obligation row must link to at least one known `GA-####` or record a blocker.
+- A non-production row must record a non-coverage status or blocker.
+- `Decision: coverage-complete` is invalid when any remainder row has a blocker.
+
 `phase-works/phase-3/phase-3-trace/duplicate-ownership-review.md` must include:
 
 | Candidate ID | Source Ranges or Source Atoms | Candidate Type | Equivalent Obligation? | Resolution | Global Atom ID or Relation | Phase 5 Placement Needed? | Reason |
@@ -279,9 +292,9 @@ And a Phase 5 refit handoff table:
 - `Decision: coverage-complete`
 - `Decision: blocked`
 
-Use `coverage-complete` only when every source document under the specified roots is manifest-classified, every production-meaningful source obligation has exactly one global atom or justified non-coverage status, every source range without atoms is classified as production-safe non-atom content, there are no unclassified atoms, no unresolved duplicate obligations, no broad atom compression findings left unsplit or justified, no blocking conflicts, and every Phase 5 placement question is explicitly handed off.
+Use `coverage-complete` only when every source document under the specified roots is manifest-classified, every production-meaningful source obligation has exactly one global atom or justified non-coverage status, every source range without atoms is classified as production-safe non-atom content in `source-remainder-review.json`, there are no unclassified atoms, no unresolved duplicate obligations, no broad atom compression findings left unsplit or justified, no blocking conflicts, and every Phase 5 placement question is explicitly handed off.
 
-Additionally, use `coverage-complete` only when every source document listed in `phase-works/phase-3/source-doc-manifest.md` has a matching `phase-works/phase-3/source-doc-coverage/<source>.coverage.md` file, all four `phase-works/phase-3/phase-3-trace/` files exist and reconcile with the final review, and `phase-works/phase-3/coverage-review-app/index.html` exists as a review aid over the final Phase 3 outputs.
+Additionally, use `coverage-complete` only when every source document listed in `phase-works/phase-3/source-doc-manifest.md` has a matching `phase-works/phase-3/source-doc-coverage/<source>.coverage.md` file, all Phase 3 trace files including `source-remainder-review.json` exist and reconcile with the final review, and `phase-works/phase-3/coverage-review-app/index.html` exists as a review aid over the final Phase 3 outputs.
 
 Use `blocked` when source documents conflict, source roots are incomplete, source atom files are missing, atom evidence is too broad to normalize, or the user must decide a boundary before coverage can close.
 

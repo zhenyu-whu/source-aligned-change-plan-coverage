@@ -28,6 +28,7 @@ PHASE_TRACE_SCHEMAS = {
 SOURCE_ATOMS_SCHEMA = "source-aligned-source-atoms-v1"
 GLOBAL_ATOM_INDEX_SCHEMA = "source-aligned-global-atom-index-v1"
 SOURCE_TO_GLOBAL_MAP_SCHEMA = "source-aligned-source-to-global-map-v1"
+SOURCE_REMAINDER_REVIEW_SCHEMA = "source-aligned-source-remainder-review-v1"
 SOURCE_WINDOW_INDEX_SCHEMA = "source-aligned-source-window-index-v1"
 ATOM_PLAN_MAPPING_SCHEMA = "source-aligned-atom-plan-mapping-v1"
 FINAL_PACKET_INDEX_SCHEMA = "source-aligned-final-packet-index-v1"
@@ -247,6 +248,68 @@ def parse_line_ranges(value: object) -> Tuple[str, List[Dict[str, int]], List[st
     if not ranges and normalized:
         errors.append(f"no valid line range parsed from: {normalized}")
     return canonical, ranges, warnings, errors
+
+
+def line_range_label(item: Dict[str, int]) -> str:
+    return f"L{int(item['start'])}-L{int(item['end'])}"
+
+
+def line_ranges_label(ranges: Sequence[Dict[str, int]]) -> str:
+    return "; ".join(line_range_label(item) for item in ranges)
+
+
+def merge_line_ranges(ranges: Sequence[Dict[str, int]]) -> List[Dict[str, int]]:
+    merged: List[Dict[str, int]] = []
+    sorted_ranges = sorted(
+        (
+            {"start": int(item["start"]), "end": int(item["end"])}
+            for item in ranges
+            if isinstance(item, dict)
+            and isinstance(item.get("start"), int)
+            and isinstance(item.get("end"), int)
+            and int(item["start"]) > 0
+            and int(item["end"]) >= int(item["start"])
+        ),
+        key=lambda item: (item["start"], item["end"]),
+    )
+    for item in sorted_ranges:
+        if not merged or item["start"] > merged[-1]["end"] + 1:
+            merged.append(dict(item))
+        else:
+            merged[-1]["end"] = max(merged[-1]["end"], item["end"])
+    return merged
+
+
+def uncovered_line_ranges(covered_ranges: Sequence[Dict[str, int]], line_count: int) -> List[Dict[str, int]]:
+    uncovered: List[Dict[str, int]] = []
+    if line_count <= 0:
+        return uncovered
+    cursor = 1
+    for item in merge_line_ranges(covered_ranges):
+        start = int(item["start"])
+        end = int(item["end"])
+        if cursor < start:
+            uncovered.append({"start": cursor, "end": start - 1})
+        cursor = max(cursor, end + 1)
+    if cursor <= line_count:
+        uncovered.append({"start": cursor, "end": line_count})
+    return uncovered
+
+
+def range_covered_by(candidate: Dict[str, int], covering_ranges: Sequence[Dict[str, int]]) -> bool:
+    cursor = int(candidate["start"])
+    end = int(candidate["end"])
+    for item in merge_line_ranges(covering_ranges):
+        start = int(item["start"])
+        item_end = int(item["end"])
+        if item_end < cursor:
+            continue
+        if start > cursor:
+            return False
+        cursor = max(cursor, item_end + 1)
+        if cursor > end:
+            return True
+    return cursor > end
 
 
 def extract_ga_ids(value: object) -> List[str]:

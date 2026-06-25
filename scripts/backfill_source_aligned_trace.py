@@ -16,6 +16,7 @@ from source_aligned_trace_lib import (
     MANIFEST_SCHEMA,
     PHASE_TRACE_SCHEMAS,
     SOURCE_ATOMS_SCHEMA,
+    SOURCE_REMAINDER_REVIEW_SCHEMA,
     SOURCE_TO_GLOBAL_MAP_SCHEMA,
     SOURCE_WINDOW_INDEX_SCHEMA,
     TRACE_CONTRACT_VERSION,
@@ -27,10 +28,13 @@ from source_aligned_trace_lib import (
     row_to_kebab,
     sha256_file,
     sha256_text,
+    line_ranges_label,
+    merge_line_ranges,
     source_atom_file_name,
     source_text_for_ranges,
     split_id_list,
     table_rows,
+    uncovered_line_ranges,
     write_json,
     normalize_code,
     squash,
@@ -338,9 +342,116 @@ def backfill_source_to_global_map(orchestrate_dir: Path, repo_root: Path, write:
     return trace_path
 
 
+def phase2_evidence_ranges_for_source(orchestrate_dir: Path, source_document: str) -> tuple[List[Dict[str, int]], List[str]]:
+    sidecar = orchestrate_dir / "phase-works/phase-2/source-obligation-atoms" / source_atom_file_name(source_document).replace(".md", ".json")
+    if not sidecar.exists():
+        return [], []
+    try:
+        data = read_json(sidecar)
+    except Exception:  # noqa: BLE001
+        return [], []
+
+    ranges: List[Dict[str, int]] = []
+    origins: List[str] = []
+    for collection, id_key in (("source-atoms", "source-atom-id"), ("source-anchors", "anchor")):
+        rows = data.get(collection)
+        if not isinstance(rows, list):
+            continue
+        for index, row in enumerate(rows, start=1):
+            if not isinstance(row, dict):
+                continue
+            row_ranges = row.get("line-ranges")
+            if not isinstance(row_ranges, list):
+                continue
+            for item in row_ranges:
+                if not isinstance(item, dict):
+                    continue
+                start = item.get("start")
+                end = item.get("end")
+                if isinstance(start, int) and isinstance(end, int) and start > 0 and end >= start:
+                    ranges.append({"start": start, "end": end})
+            origin = normalize_code(row.get(id_key) or row.get("source-atom-ids") or f"{collection}[{index}]")
+            if origin:
+                origins.append(origin)
+    return merge_line_ranges(ranges), origins
+
+
+def production_obligation_from_markdown(value: object) -> bool:
+    text = normalize_code(value).lower()
+    return text in {"true", "yes", "y", "1", "production", "production-obligation", "obligation-bearing"}
+
+
+def backfill_source_remainder_review(orchestrate_dir: Path, repo_root: Path, write: bool) -> Path:
+    source_path = orchestrate_dir / "phase-works/phase-3/phase-3-trace/source-remainder-review.md"
+    trace_path = source_path.with_suffix(".json")
+    rows: List[Dict[str, object]] = []
+    for raw in table_rows(source_path, ["Source Document", "Candidate Range", "How Found", "Read Scope"]):
+        canonical, ranges, _, _ = parse_line_ranges(cell(raw, "Candidate Range"))
+        finding = cell(raw, "Atom / Status / Finding")
+        rows.append(
+            {
+                "source-document": normalize_code(cell(raw, "Source Document")),
+                "lines": canonical or normalize_code(cell(raw, "Candidate Range")),
+                "line-ranges": ranges,
+                "how-found": squash(cell(raw, "How Found")),
+                "read-scope": squash(cell(raw, "Read Scope")),
+                "semantic-classification": squash(cell(raw, "Semantic Classification")),
+                "production-obligation": production_obligation_from_markdown(cell(raw, "Production Obligation?")),
+                "linked-global-atom-ids": extract_ga_ids(finding),
+                "non-coverage-status": normalize_code(finding) if not extract_ga_ids(finding) and "block" not in normalize_code(finding).lower() else "",
+                "blocker": normalize_code(finding) if "block" in normalize_code(finding).lower() else "",
+                "reason": squash(cell(raw, "Reason")),
+            }
+        )
+
+    audit_documents: List[Dict[str, object]] = []
+    for source in manifest_sources(orchestrate_dir, repo_root):
+        if source.get("read-status") != "read-full":
+            continue
+        source_document = str(source.get("source-document", ""))
+        evidence_ranges, origins = phase2_evidence_ranges_for_source(orchestrate_dir, source_document)
+        line_count = file_line_count(repo_root, source_document)
+        uncovered = uncovered_line_ranges(evidence_ranges, line_count)
+        audit_documents.append(
+            {
+                "source-document": source_document,
+                "source-sha256": source_sha(repo_root, source_document),
+                "line-count": line_count,
+                "evidence-ranges": [
+                    {
+                        "lines": line_ranges_label(evidence_ranges),
+                        "line-ranges": evidence_ranges,
+                        "origins": origins,
+                    }
+                ]
+                if evidence_ranges
+                else [],
+                "candidate-uncovered-ranges": [
+                    {
+                        "lines": line_ranges_label([item]),
+                        "line-ranges": [item],
+                    }
+                    for item in uncovered
+                ],
+            }
+        )
+
+    data = {
+        "trace-schema": SOURCE_REMAINDER_REVIEW_SCHEMA,
+        "trace-contract-version": TRACE_CONTRACT_VERSION,
+        "artifact-path": rel(source_path, repo_root),
+        "audit-documents": audit_documents,
+        "rows": rows,
+    }
+    if write:
+        write_json(trace_path, data)
+    return trace_path
+
+
 def backfill_phase_3(orchestrate_dir: Path, repo_root: Path, write: bool) -> Optional[Path]:
     global_index_path = backfill_global_atom_index(orchestrate_dir, repo_root, write)
     map_path = backfill_source_to_global_map(orchestrate_dir, repo_root, write)
+    remainder_path = backfill_source_remainder_review(orchestrate_dir, repo_root, write)
     manifest_path = orchestrate_dir / "phase-works/phase-3/source-doc-manifest.md"
     classifications = [
         row_to_kebab(raw, code_fields=["Source Document", "Classification", "Phase 2 Atom File", "Review File"])
@@ -354,7 +465,7 @@ def backfill_phase_3(orchestrate_dir: Path, repo_root: Path, write: bool) -> Opt
         "source-classifications": classifications,
         "source-to-global-atom-map-path": rel(map_path, repo_root),
         "obligation-atom-index-path": rel(global_index_path, repo_root),
-        "remainder-review-path": rel(orchestrate_dir / "phase-works/phase-3/phase-3-trace/source-remainder-review.md", repo_root),
+        "remainder-review-path": rel(remainder_path, repo_root),
         "duplicate-review-path": rel(orchestrate_dir / "phase-works/phase-3/phase-3-trace/duplicate-ownership-review.md", repo_root),
         "normalization-decision-log-path": rel(orchestrate_dir / "phase-works/phase-3/phase-3-trace/atom-normalization-decision-log.md", repo_root),
     }
@@ -559,6 +670,7 @@ def build_manifest(orchestrate_dir: Path, repo_root: Path, write: bool) -> Path:
         ("phase-2", "trace", orchestrate_dir / "phase-works/phase-2/source-obligation-atoms/work-queue.md", orchestrate_dir / "trace/phase-2.trace.json", PHASE_TRACE_SCHEMAS["phase-2"]),
         ("phase-3", "trace", orchestrate_dir / "change-capability-anchors/obligation-atom-index.md", orchestrate_dir / "change-capability-anchors/obligation-atom-index.json", GLOBAL_ATOM_INDEX_SCHEMA),
         ("phase-3", "trace", orchestrate_dir / "phase-works/phase-3/phase-3-trace/source-to-global-atom-map.md", orchestrate_dir / "phase-works/phase-3/phase-3-trace/source-to-global-atom-map.json", SOURCE_TO_GLOBAL_MAP_SCHEMA),
+        ("phase-3", "trace", orchestrate_dir / "phase-works/phase-3/phase-3-trace/source-remainder-review.md", orchestrate_dir / "phase-works/phase-3/phase-3-trace/source-remainder-review.json", SOURCE_REMAINDER_REVIEW_SCHEMA),
         ("phase-3", "trace", orchestrate_dir / "phase-works/phase-3/coverage-review.md", orchestrate_dir / "trace/phase-3.trace.json", PHASE_TRACE_SCHEMAS["phase-3"]),
         ("phase-4", "trace", orchestrate_dir / "phase-works/phase-4/source-window-dossiers/index.md", orchestrate_dir / "phase-works/phase-4/source-window-dossiers/source-window-index.json", SOURCE_WINDOW_INDEX_SCHEMA),
         ("phase-4", "trace", orchestrate_dir / "phase-works/phase-4/phase-4-agent-report.md", orchestrate_dir / "trace/phase-4.trace.json", PHASE_TRACE_SCHEMAS["phase-4"]),

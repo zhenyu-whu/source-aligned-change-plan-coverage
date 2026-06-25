@@ -15,6 +15,8 @@ from dataclasses import asdict, dataclass
 from pathlib import Path
 from typing import Dict, Iterable, List, Optional, Tuple
 
+from source_aligned_trace_lib import merge_line_ranges, uncovered_line_ranges
+
 
 TABLE_SEPARATOR_RE = re.compile(r"^:?-{3,}:?$")
 CANONICAL_RANGE_SEGMENT_RE = re.compile(r"^L([1-9]\d*)-L([1-9]\d*)$")
@@ -245,25 +247,13 @@ def iter_source_atom_trace_files(orchestrate_dir: Path) -> Iterable[Path]:
 
 
 def merge_ranges(ranges: List[ParsedRange]) -> List[Tuple[int, int]]:
-    merged: List[Tuple[int, int]] = []
-    for parsed in sorted(ranges, key=lambda item: (item.start, item.end)):
-        if not merged or parsed.start > merged[-1][1] + 1:
-            merged.append((parsed.start, parsed.end))
-        else:
-            merged[-1] = (merged[-1][0], max(merged[-1][1], parsed.end))
-    return merged
+    merged = merge_line_ranges([{"start": item.start, "end": item.end} for item in ranges])
+    return [(item["start"], item["end"]) for item in merged]
 
 
 def uncovered_ranges(merged: List[Tuple[int, int]], line_count: int) -> List[Tuple[int, int]]:
-    uncovered: List[Tuple[int, int]] = []
-    cursor = 1
-    for start, end in merged:
-        if cursor < start:
-            uncovered.append((cursor, start - 1))
-        cursor = max(cursor, end + 1)
-    if cursor <= line_count:
-        uncovered.append((cursor, line_count))
-    return uncovered
+    uncovered = uncovered_line_ranges([{"start": start, "end": end} for start, end in merged], line_count)
+    return [(item["start"], item["end"]) for item in uncovered]
 
 
 def intersect_ranges(left: ParsedRange, right: ParsedRange) -> Optional[Tuple[int, int]]:
