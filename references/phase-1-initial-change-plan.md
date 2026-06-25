@@ -83,6 +83,18 @@ Do not merge independently verifiable behavior merely to avoid a one-to-one appe
 
 For the first feature change after a foundation change, prefer the thinnest real product or system loop that can be archived without pretending later infrastructure is complete.
 
+### Change Ordering Principle
+
+Order changes by behavior maturity, not prerequisite availability.
+
+For typical web systems, prefer the earliest thin user-visible behavior loop: a real page or user-facing entry point that is usable end to end, including user action, system fact, visible result, basic failure handling, and verification. This is not a static UI shell; it must be a minimum real behavior that a human can accept.
+
+Earlier changes should establish only the facts, contracts, and support needed to make the current behavior truthful. Later changes should broaden, automate, integrate, harden, govern, observe, or operate behavior that already exists.
+
+Do not implement complex permission models, governance workflows, quota policies, audit systems, admin operations, or observability layers before there is a concrete behavior for them to protect, govern, limit, audit, operate, or observe.
+
+Introduce only the minimal access/context assumptions needed to make the current behavior truthful. A supporting capability comes earlier only when it is necessary for that behavior's truthful acceptance, or when the supporting capability is itself an independently acceptable operational/system behavior.
+
 ### Split Challenge
 
 Before accepting each candidate change, ask:
@@ -166,7 +178,7 @@ Source-backed domain behavior found during Phase 1 should be sliced into busines
 7. Generate candidate vertical changes from user/system loops, not from the capability list.
 8. For each candidate change, identify the direct increment it contributes to each involved capability, and classify that relation as `New` or `Modified`.
 9. Filter, merge, or reslice candidates using the Closed-loop Test, Change Complexity Calibration, Split Challenge, Capability Shape Challenge, and anti one-to-one mapping rule.
-10. Order changes by real behavior dependencies, prioritizing the earliest minimal runnable loop.
+10. Order changes by the Change Ordering Principle and real behavior dependencies, prioritizing the earliest minimal runnable loop over future-prerequisite availability.
 11. Build a capability progression matrix that shows how each change advances each capability.
 12. Mark key scenarios, non-goals, risks, conflicts, and deferred content from the input documents.
 13. Add concise `Source evidence` hints only to justify the planned slice. These hints may name source paths, headings, section numbers, decision IDs, route/page/object names, APIs, commands, DTOs, entities, tables, jobs, events, assets, environments, or verification anchors.
@@ -274,6 +286,8 @@ Answer:
 15. If a foundation candidate exists, is it strictly a zero-domain engineering bootstrap?
 16. Did Phase 1 avoid placing domain-specific schemas, entities, commands, user-facing APIs, worker or async business semantics, domain events, identity/authorization/account mappings, entitlement/accounting/delivery/export concepts, lifecycle/versioning rules, privacy, recovery, responsive, design-system, observability, or other workflow-specific behavior into foundation scope?
 17. Are source-backed domain obligations represented as business change candidates or Phase 2 ownership context for the first workflow that needs them?
+18. Does the roadmap order any permission, governance, quota, audit, admin, observability, or operation capability before the concrete behavior it protects, governs, limits, audits, operates, or observes, without proving that capability is independently acceptable?
+19. For typical web systems, does the early roadmap produce a thin user-visible end-to-end behavior rather than a static UI shell or prerequisite collection?
 
 ## Phase Report
 

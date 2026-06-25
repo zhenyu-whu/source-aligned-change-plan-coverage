@@ -197,6 +197,8 @@ For the initial change plan, answer:
 - Does it move domain behavior, user-facing API contracts, business worker semantics, entitlement/export concepts, project/figure/version semantics, or recovery/privacy behavior into a foundation change too early?
 - Does any later change depend on a fact, state, contract, entitlement, version, asset, or lifecycle rule that is not established by an earlier direct owner?
 - Is each capability a durable behavior boundary, or is it only a temporary implementation module, page, table, source section, SDK, queue, provider, component, or one-change alias?
+- Does the roadmap order follow behavior maturity, or does any early change mainly collect future prerequisites?
+- For web-system sources, does the early product sequence produce a thin end-to-end user-visible behavior rather than only a page shell or setup/governance bundle?
 
 Only after these questions are answered may Phase 5 map `GA-####` rows to final ownership. At that point each relevant global atom must be assigned:
 
@@ -219,6 +221,16 @@ Every final change must pass this reviewer-facing gate:
 If a final change cannot answer all gate questions, Phase 5 must split, merge, reorder, rename, reclassify atoms, return `needs-coverage-recheck`, or return `blocked`. A final change must not be accepted merely because its atom count falls within the target budget.
 
 After final refit decisions, write `source-window-refit-trace.md` using the table defined in Required Mapping Tables. The trace must make it clear which Phase 4 source-window-backed atoms were reconstructed into each adjusted final change/capability. Any split, merge, reorder, rename, moved atom, contextual downgrade, dependency classification, evidence-burden classification, or non-goal classification must cite the relevant Phase 4 source-window dossier.
+
+### Behavior Maturity Ordering Gate
+
+Before accepting final order, judge whether the roadmap follows behavior maturity rather than prerequisite availability.
+
+For typical web systems, early product changes should create the thinnest end-to-end user-visible behavior: a real page or user-facing entry point with action, system fact, visible result, basic failure handling, and verification. A static UI shell or standalone prerequisite collection does not satisfy this gate.
+
+A support, governance, or operation-heavy change may appear before the behavior it supports only when it is strictly necessary for truthful acceptance of the next behavior, or when it is independently acceptable as an operational/system loop with its own entry, fact, projection, failure, and verification.
+
+If a change is ordered early mainly because later changes will need it, move its atoms into the first behavior that needs them as direct/design/evidence burden, defer them as contextual/later-change, or record a blocker with source-backed rationale.
 
 ### Atom-Driven Planning Graph
 
@@ -605,6 +617,7 @@ It must also include:
 - confirmation that every over-budget trigger was split, deferred, or justified with concrete indivisibility analysis
 - confirmation that the final plan has at most one pre-business foundation change, or records a blocker/explicit exception with an independently runnable loop
 - confirmation that foundation changes do not directly own deferrable domain behavior and that post-foundation low-level capability deltas are advanced inside the first business workflow that needs them
+- confirmation that the final roadmap order follows the Behavior Maturity Ordering Gate and that support/governance/operation-heavy changes are not placed early solely because future changes will need them
 - confirmation that source atom files and the Phase 3 global atom index were not modified
 - confirmation that refit decisions cite Phase 4 source-window dossier evidence rather than relying only on atom count, capability count, or atom summaries
 - confirmation that every final change answers the Source Window Semantic Grounding Gate questions before atom ownership is finalized
