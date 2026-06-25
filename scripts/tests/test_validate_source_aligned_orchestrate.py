@@ -36,6 +36,7 @@ class SourceAlignedValidatorTest(unittest.TestCase):
         self.root = Path(self.tmp.name)
         self.orchestrate = self.root / "openspec/orchestrate"
         self.script = SCRIPT_DIR / "validate_source_aligned_orchestrate.py"
+        self.refit_script = SCRIPT_DIR / "phase5_plan_refit.py"
         self._build_valid_fixture()
 
     def tearDown(self) -> None:
@@ -579,6 +580,26 @@ class SourceAlignedValidatorTest(unittest.TestCase):
         self.assertFalse(result["ok"], result)
         self.assertTrue(any(issue["rule_id"] == "manifest-phase-status-workflow-state" for issue in result["issues"]), result)
 
+    def test_manifest_missing_phase_status_fails(self) -> None:
+        path = self.orchestrate / "trace/manifest.json"
+        data = json.loads(path.read_text(encoding="utf-8"))
+        del data["phase-statuses"]["phase-2"]
+        write_json(path, data)
+        result = self._validate_phase("phase-1")
+        self.assertFalse(result["ok"], result)
+        self.assertTrue(any(issue["rule_id"] == "manifest-phase-status-missing" for issue in result["issues"]), result)
+
+    def test_manifest_trace_without_status_fails(self) -> None:
+        trace_path = self.orchestrate / "trace/phase-2.trace.json"
+        trace = json.loads(trace_path.read_text(encoding="utf-8"))
+        del trace["status"]
+        write_json(trace_path, trace)
+        self._write_manifest()
+        result = self._validate_phase("phase-2")
+        self.assertFalse(result["ok"], result)
+        self.assertTrue(any(issue["rule_id"] == "manifest-phase-status-trace-missing" for issue in result["issues"]), result)
+        self.assertTrue(any(issue["rule_id"] == "phase2-status" for issue in result["issues"]), result)
+
     def test_manifest_phase5_status_must_match_phase5_trace(self) -> None:
         path = self.orchestrate / "trace/manifest.json"
         data = json.loads(path.read_text(encoding="utf-8"))
@@ -592,6 +613,26 @@ class SourceAlignedValidatorTest(unittest.TestCase):
         data["phase-statuses"]["phase-5"] = "reviewer-passed"
         write_json(path, data)
         self.assert_error("manifest-phase5-complete-status")
+
+    def test_phase1_status_must_be_initial_plan_written(self) -> None:
+        path = self.orchestrate / "trace/phase-1.trace.json"
+        data = json.loads(path.read_text(encoding="utf-8"))
+        data["status"] = "source-atoms-written"
+        write_json(path, data)
+        self._write_manifest()
+        result = self._validate_phase("phase-1")
+        self.assertFalse(result["ok"], result)
+        self.assertTrue(any(issue["rule_id"] == "phase1-status" for issue in result["issues"]), result)
+
+    def test_phase2_status_must_be_source_atoms_written(self) -> None:
+        path = self.orchestrate / "trace/phase-2.trace.json"
+        data = json.loads(path.read_text(encoding="utf-8"))
+        data["status"] = "initial-plan-written"
+        write_json(path, data)
+        self._write_manifest()
+        result = self._validate_phase("phase-2")
+        self.assertFalse(result["ok"], result)
+        self.assertTrue(any(issue["rule_id"] == "phase2-status" for issue in result["issues"]), result)
 
     def test_phase2_work_queue_missing_source_fails(self) -> None:
         self._write(
@@ -749,6 +790,87 @@ class SourceAlignedValidatorTest(unittest.TestCase):
         write_json(path, data)
         self._write_manifest()
         self.assert_error("phase5-final-direct-owner")
+
+    def test_phase5_refit_helper_rejects_blocked_write(self) -> None:
+        config_path = self.orchestrate / "phase-works/phase-5/phase5-refit.config.json"
+        write_json(
+            config_path,
+            {
+                "status": "blocked",
+                "changes": [
+                    {
+                        "slug": "change-a",
+                        "title": "change-a",
+                        "outcome": "被阻塞的 Phase 5 不应渲染 final packets。",
+                        "kind": "business",
+                    }
+                ],
+                "capabilities": [{"slug": "cap-a", "boundary": "cap-a"}],
+            },
+        )
+        output_dir = self.root / "out/orchestrate"
+        proc = subprocess.run(
+            [
+                sys.executable,
+                str(self.refit_script),
+                "--orchestrate-dir",
+                str(self.orchestrate),
+                "--mapping",
+                str(self.orchestrate / "phase-works/phase-5/atom-plan-mapping.json"),
+                "--config",
+                str(config_path),
+                "--output-orchestrate-dir",
+                str(output_dir),
+                "--write",
+            ],
+            text=True,
+            capture_output=True,
+            check=False,
+        )
+        self.assertNotEqual(proc.returncode, 0, proc.stdout)
+        self.assertIn("只渲染 accepted/adjusted", proc.stderr)
+        self.assertFalse((output_dir / "change-capability-anchors/index.md").exists())
+
+    def test_phase5_refit_helper_accepts_terminal_write(self) -> None:
+        config_path = self.orchestrate / "phase-works/phase-5/phase5-refit.config.json"
+        write_json(
+            config_path,
+            {
+                "status": "adjusted",
+                "changes": [
+                    {
+                        "slug": "change-a",
+                        "title": "change-a",
+                        "outcome": "终态 Phase 5 可以渲染 final packets。",
+                        "kind": "business",
+                    }
+                ],
+                "capabilities": [{"slug": "cap-a", "boundary": "cap-a"}],
+            },
+        )
+        output_dir = self.root / "out/orchestrate"
+        proc = subprocess.run(
+            [
+                sys.executable,
+                str(self.refit_script),
+                "--orchestrate-dir",
+                str(self.orchestrate),
+                "--mapping",
+                str(self.orchestrate / "phase-works/phase-5/atom-plan-mapping.json"),
+                "--config",
+                str(config_path),
+                "--output-orchestrate-dir",
+                str(output_dir),
+                "--write",
+                "--validate-rendered",
+            ],
+            text=True,
+            capture_output=True,
+            check=False,
+        )
+        self.assertEqual(proc.returncode, 0, proc.stderr)
+        self.assertTrue((output_dir / "change-capability-anchors/index.md").exists())
+        self.assertTrue((output_dir / "change-capability-anchors/change-a/change-a.md").exists())
 
     def test_phase5_non_direct_atom_missing_from_packet_fails(self) -> None:
         self._write(

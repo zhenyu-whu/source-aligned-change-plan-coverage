@@ -139,7 +139,6 @@ Optional bundled helper:
 ```text
 .codex/skills/source-aligned-change-plan-coverage/scripts/
 ├── source_aligned_trace_lib.py # shared trace/parser/digest/issue helpers
-├── backfill_source_aligned_trace.py # legacy Markdown -> JSON sidecar backfill
 ├── validate_source_aligned_orchestrate.py # canonical trace validator
 ├── phase2_obligation_review_app.py # mechanical Phase 2 static review app generator
 ├── phase3_coverage_review_app.py # mechanical Phase 3 static review app generator

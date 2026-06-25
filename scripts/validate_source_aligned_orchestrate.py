@@ -43,9 +43,17 @@ from source_aligned_trace_lib import (
     squash,
 )
 
+PHASE_NAMES = ("phase-1", "phase-2", "phase-3", "phase-4", "phase-5")
 FINAL_PHASE5_STATUSES = {"accepted", "adjusted"}
 NON_FINAL_PHASE4_STATUSES = {"needs-coverage-recheck", "blocked"}
 NON_FINAL_PHASE5_STATUSES = {"needs-coverage-recheck", "blocked"}
+PHASE_ALLOWED_TRACE_STATUSES = {
+    "phase-1": {"initial-plan-written"},
+    "phase-2": {"source-atoms-written"},
+    "phase-3": {"coverage-complete", "blocked"},
+    "phase-4": {"grounded", *NON_FINAL_PHASE4_STATUSES},
+    "phase-5": {*FINAL_PHASE5_STATUSES, *NON_FINAL_PHASE5_STATUSES},
+}
 WORKFLOW_PHASE_STATUS_VALUES = {
     "present",
     "reviewer-passed",
@@ -75,6 +83,26 @@ def trace_decision_status(path: Path) -> str:
     except Exception:  # noqa: BLE001
         return ""
     return phase_status_value(data.get("status") or data.get("decision"))
+
+
+def validate_trace_status(
+    data: Dict[str, object],
+    path: Path,
+    reporter: IssueReporter,
+    phase_name: str,
+    rule_id: str,
+) -> str:
+    status = phase_status_value(data.get("status") or data.get("decision"))
+    allowed = PHASE_ALLOWED_TRACE_STATUSES.get(phase_name, set())
+    if not status:
+        reporter.error(rule_id, path, f"{phase_name} trace must include canonical status/decision")
+    elif allowed and status not in allowed:
+        reporter.error(
+            rule_id,
+            path,
+            f"{phase_name} trace status/decision must be one of {', '.join(sorted(allowed))}, got {status}",
+        )
+    return status
 
 
 def json_obj(path: Path, reporter: IssueReporter, schema: str | None = None) -> Dict[str, object]:
@@ -154,7 +182,13 @@ def validate_manifest(orchestrate_dir: Path, repo_root: Path, reporter: IssueRep
     if not isinstance(phase_statuses, dict):
         reporter.error("manifest-phase-statuses", path, "phase-statuses must be an object")
         phase_statuses = {}
-    for phase_name in ("phase-1", "phase-2", "phase-3", "phase-4", "phase-5"):
+    for phase_name in PHASE_NAMES:
+        if phase_name not in phase_statuses:
+            reporter.error(
+                "manifest-phase-status-missing",
+                path,
+                f"phase-statuses.{phase_name} is required; use missing when the trace sidecar is absent",
+            )
         phase_status = phase_status_value(phase_statuses.get(phase_name))
         if phase_status in WORKFLOW_PHASE_STATUS_VALUES:
             reporter.error(
@@ -164,13 +198,25 @@ def validate_manifest(orchestrate_dir: Path, repo_root: Path, reporter: IssueRep
             )
         trace_path = orchestrate_dir / f"trace/{phase_name}.trace.json"
         trace_status = trace_decision_status(trace_path)
+        if trace_path.exists() and not trace_status:
+            reporter.error(
+                "manifest-phase-status-trace-missing",
+                path,
+                f"{rel(trace_path, repo_root)} must include canonical status/decision before manifest can record {phase_name}",
+            )
+        if trace_path.exists() and trace_status and not phase_status:
+            reporter.error(
+                "manifest-phase-status-missing",
+                path,
+                f"phase-statuses.{phase_name} must match {rel(trace_path, repo_root)} status {trace_status}",
+            )
         if trace_status and phase_status and phase_status != trace_status:
             reporter.error(
                 "manifest-phase-status-drift",
                 path,
                 f"phase-statuses.{phase_name} must match {rel(trace_path, repo_root)} status {trace_status}, got {phase_status}",
             )
-        if not trace_path.exists() and phase_status and phase_status != "missing":
+        if not trace_path.exists() and phase_status != "missing":
             reporter.error(
                 "manifest-phase-status-drift",
                 path,
@@ -210,6 +256,7 @@ def validate_phase_1(orchestrate_dir: Path, repo_root: Path, reporter: IssueRepo
     data = json_obj(path, reporter, PHASE_TRACE_SCHEMAS["phase-1"])
     if not data:
         return
+    validate_trace_status(data, path, reporter, "phase-1", "phase1-status")
     require_file(orchestrate_dir / "change-plan.md", reporter, "phase1-interface-artifact", "root change-plan.md is missing")
     require_file(orchestrate_dir / "phase-works/phase-1/change-plan.md", reporter, "phase1-interface-artifact", "Phase 1 change-plan.md is missing")
     require_file(orchestrate_dir / "phase-works/phase-1/source-doc-manifest.md", reporter, "phase1-interface-artifact", "Phase 1 source-doc-manifest.md is missing")
@@ -297,7 +344,9 @@ def validate_phase2_mirror(orchestrate_dir: Path, reporter: IssueReporter) -> No
 
 def validate_phase_2(orchestrate_dir: Path, repo_root: Path, reporter: IssueReporter) -> None:
     trace_path = orchestrate_dir / "trace/phase-2.trace.json"
-    json_obj(trace_path, reporter, PHASE_TRACE_SCHEMAS["phase-2"])
+    trace = json_obj(trace_path, reporter, PHASE_TRACE_SCHEMAS["phase-2"])
+    if trace:
+        validate_trace_status(trace, trace_path, reporter, "phase-2", "phase2-status")
     require_file(orchestrate_dir / "phase-works/phase-2/source-obligation-atoms/work-queue.md", reporter, "phase2-interface-artifact", "Phase 2 work queue is missing")
     require_file(orchestrate_dir / "phase-works/phase-2/source-obligation-atoms/index.md", reporter, "phase2-interface-artifact", "Phase 2 atom index is missing")
     require_file(orchestrate_dir / "phase-works/phase-2/source-obligation-review/index.html", reporter, "phase2-interface-artifact", "Phase 2 review app is missing")
@@ -617,7 +666,15 @@ def validate_phase3_remainder_review(
 
 def validate_phase_3(orchestrate_dir: Path, repo_root: Path, reporter: IssueReporter) -> None:
     phase3_trace = json_obj(orchestrate_dir / "trace/phase-3.trace.json", reporter, PHASE_TRACE_SCHEMAS["phase-3"])
-    phase3_decision = phase_status_value(phase3_trace.get("decision") or phase3_trace.get("status"))
+    phase3_decision = ""
+    if phase3_trace:
+        phase3_decision = validate_trace_status(
+            phase3_trace,
+            orchestrate_dir / "trace/phase-3.trace.json",
+            reporter,
+            "phase-3",
+            "phase3-status",
+        )
     require_file(orchestrate_dir / "phase-works/phase-3/coverage-review-app/index.html", reporter, "phase3-interface-artifact", "Phase 3 coverage review app is missing")
     require_file(orchestrate_dir / "phase-works/phase-3/coverage-review.md", reporter, "phase3-interface-artifact", "Phase 3 coverage review is missing")
     require_file(orchestrate_dir / "phase-works/phase-3/phase-3-agent-report.md", reporter, "phase3-interface-artifact", "Phase 3 agent report is missing")
@@ -671,9 +728,9 @@ def validate_phase_3(orchestrate_dir: Path, repo_root: Path, reporter: IssueRepo
 def validate_phase_4(orchestrate_dir: Path, repo_root: Path, reporter: IssueReporter) -> None:
     phase4_trace_path = orchestrate_dir / "trace/phase-4.trace.json"
     phase4_trace = json_obj(phase4_trace_path, reporter, PHASE_TRACE_SCHEMAS["phase-4"])
-    status = phase_status_value(phase4_trace.get("status") or phase4_trace.get("decision"))
-    if status and status not in {"grounded", *NON_FINAL_PHASE4_STATUSES}:
-        reporter.error("phase4-status", phase4_trace_path, f"unsupported Phase 4 status: {status}")
+    status = ""
+    if phase4_trace:
+        status = validate_trace_status(phase4_trace, phase4_trace_path, reporter, "phase-4", "phase4-status")
     require_file(orchestrate_dir / "phase-works/phase-4/input-change-plan.md", reporter, "phase4-interface-artifact", "Phase 4 input change plan is missing")
     require_file(orchestrate_dir / "phase-works/phase-4/source-window-dossiers/index.md", reporter, "phase4-interface-artifact", "Phase 4 source-window dossier index is missing")
     require_file(orchestrate_dir / "phase-works/phase-4/source-window-semantic-profile-review.md", reporter, "phase4-interface-artifact", "Phase 4 semantic profile review is missing")
@@ -862,9 +919,9 @@ def validate_final_packets(orchestrate_dir: Path, repo_root: Path, reporter: Iss
 def validate_phase_5(orchestrate_dir: Path, repo_root: Path, reporter: IssueReporter, complete: bool = False) -> None:
     trace_path = orchestrate_dir / "trace/phase-5.trace.json"
     trace = json_obj(trace_path, reporter, PHASE_TRACE_SCHEMAS["phase-5"])
-    status = phase_status_value(trace.get("status") or trace.get("decision"))
-    if status and status not in FINAL_PHASE5_STATUSES | NON_FINAL_PHASE5_STATUSES:
-        reporter.error("phase5-status", trace_path, f"unsupported Phase 5 status: {status}")
+    status = ""
+    if trace:
+        status = validate_trace_status(trace, trace_path, reporter, "phase-5", "phase5-status")
     require_file(orchestrate_dir / "phase-works/phase-5/source-window-refit-trace.md", reporter, "phase5-interface-artifact", "Phase 5 source-window refit trace is missing")
     require_file(orchestrate_dir / "phase-works/phase-5/phase-5-agent-report.md", reporter, "phase5-interface-artifact", "Phase 5 agent report is missing")
     if status in NON_FINAL_PHASE5_STATUSES:

@@ -57,7 +57,7 @@ Required fields:
 - `phase-statuses`
 - `artifacts[]`
 
-`phase-statuses` records canonical phase decisions from phase trace sidecars, not reviewer-loop workflow states. Use `missing` for phases with no trace sidecar. For Phase 1 and Phase 2, use the `status` value from `trace/phase-1.trace.json` and `trace/phase-2.trace.json`. For Phase 3, Phase 4, and Phase 5, use `decision` or `status` from the corresponding phase trace. When `trace/phase-5.trace.json.status` exists, `phase-statuses.phase-5` must be identical to it. For a proposal-ready handoff, both values must be `accepted` or `adjusted`; do not write `reviewer-passed`, `validator-passed`, `repair-not-needed`, `present`, or other workflow/status bookkeeping into any `phase-statuses` value.
+`phase-statuses` records canonical phase decisions from phase trace sidecars, not reviewer-loop workflow states. It must include `phase-1` through `phase-5`; use `missing` for phases with no trace sidecar. For Phase 1 and Phase 2, use the `status` value from `trace/phase-1.trace.json` and `trace/phase-2.trace.json`. For Phase 3, Phase 4, and Phase 5, use `decision` or `status` from the corresponding phase trace. If a phase trace sidecar exists, its canonical `status` or `decision` is required and `phase-statuses.phase-n` must match it exactly. When `trace/phase-5.trace.json.status` exists, `phase-statuses.phase-5` must be identical to it. For a proposal-ready handoff, both values must be `accepted` or `adjusted`; do not write `reviewer-passed`, `validator-passed`, `repair-not-needed`, `present`, or other workflow/status bookkeeping into any `phase-statuses` value.
 
 Each artifact row must include:
 
@@ -94,8 +94,16 @@ Artifact schemas:
 
 Phase 1 trace:
 
+- `status`: exactly `initial-plan-written`
 - `source-documents[]`: `source-document`, `read-status`, `source-role`, `coarse-topics-paths`, `notes`, `line-count`, `source-sha256`
 - `change-plan`: `phase-plan-path`, `root-plan-path`, `root-plan-sha256`, `phase-plan-sha256`
+
+Phase 2 trace:
+
+- `status`: exactly `source-atoms-written`
+- `work-queue-path`
+- `sources[]`
+- `phase-report-path`
 
 Phase 2 source atom sidecar:
 

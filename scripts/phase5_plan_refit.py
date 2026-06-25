@@ -41,6 +41,7 @@ DIRECT_PROJECTIONS = {
 }
 FAILURE_TYPES = {"recovery", "failure-path", "disabled-action"}
 PHASE5_STATUSES = {"accepted", "adjusted", "needs-coverage-recheck", "blocked"}
+TERMINAL_PHASE5_STATUSES = {"accepted", "adjusted"}
 
 
 @dataclass(frozen=True)
@@ -333,6 +334,24 @@ def load_config(path: Path) -> Dict[str, object]:
     if not isinstance(caps_raw, list) or not caps_raw:
         raise ValueError("Phase 5 config 必须包含非空 capabilities 数组")
     return data
+
+
+def config_status(config: Dict[str, object]) -> str:
+    return str(config.get("status") or "adjusted")
+
+
+def require_terminal_status(status: str) -> None:
+    if status not in PHASE5_STATUSES:
+        raise ValueError(
+            "Phase 5 config status 必须是 accepted、adjusted、needs-coverage-recheck 或 blocked，"
+            f"不能使用 validator/reviewer/repair 流程态: {status}"
+        )
+    if status not in TERMINAL_PHASE5_STATUSES:
+        raise ValueError(
+            "phase5_plan_refit.py 只渲染 accepted/adjusted 的终态 mapping、final packets 和 handoff artifacts；"
+            f"{status} 必须由 Phase 5 writer 写入 source-window-refit-trace、change-plan-adjustments、"
+            "phase-5-agent-report 和 phase-5.trace.json，不能用 final-packet renderer 伪造终态输出。"
+        )
 
 
 def parse_changes(config: Dict[str, object]) -> List[ChangeDef]:
@@ -1139,12 +1158,8 @@ def write_outputs(
     final_atoms: Sequence[FinalAtom],
     no_root_update: bool,
 ) -> None:
-    status = str(config.get("status") or "adjusted")
-    if status not in PHASE5_STATUSES:
-        raise ValueError(
-            "Phase 5 config status 必须是 accepted、adjusted、needs-coverage-recheck 或 blocked，"
-            f"不能使用 validator/reviewer/repair 流程态: {status}"
-        )
+    status = config_status(config)
+    require_terminal_status(status)
     work_dir = output_orchestrate_dir / "phase-works/phase-5"
     rel_work_dir = Path("openspec/orchestrate/phase-works/phase-5")
     by_change = direct_by_change(final_atoms, changes)
@@ -1367,6 +1382,11 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
         return 0
 
     config = load_config(config_path)
+    try:
+        require_terminal_status(config_status(config))
+    except ValueError as exc:
+        print(f"error: {exc}", file=sys.stderr)
+        return 1
     changes = parse_changes(config)
     capabilities = parse_capabilities(config)
     warnings = validate(final_atoms, changes, capabilities)
