@@ -16,6 +16,9 @@
 
 ```text
 openspec/orchestrate/
+├── foundation-reference/
+│   ├── foundation-runtime-substrate.md
+│   └── foundation-runtime-substrate.trace.json
 ├── trace/
 │   ├── manifest.json
 │   ├── phase-1.trace.json
@@ -89,6 +92,7 @@ Artifact schemas:
 - `source-aligned-source-window-index-v1`
 - `source-aligned-atom-plan-mapping-v1`
 - `source-aligned-final-packet-index-v1`
+- `source-aligned-foundation-reference-v1`
 
 ## Required Models
 
@@ -129,9 +133,10 @@ Phase 4:
 
 Phase 5:
 
-- `atom-plan-mapping.json`: required for `accepted` or `adjusted`; one row for every global atom with final owner/projection/relation/decision/reason
-- `final-packet-index.json`: required for `accepted` or `adjusted`; per change direct atom IDs, owner-scoped non-direct atom IDs, capability view paths, packet path, and packet digest
-- `phase-5.trace.json`: final status, complexity summaries, capability progression summaries, reviewer/validator gate outcomes
+- `atom-plan-mapping.json`: required for `accepted` or `adjusted`; one row for every global atom with final owner type/projection/relation/decision/reason. Executable rows use `final-owner-type: executable-change`; foundation rows use `final-owner-type: foundation-reference`, `foundation-reference-id: foundation-runtime-substrate`, `final-owner-change: None`, `final-owner-capability: None`, and `capability-advancement: does-not-advance-capability`.
+- `final-packet-index.json`: required for `accepted` or `adjusted`; per executable business change direct atom IDs, owner-scoped non-direct atom IDs, capability view paths, packet path, and packet digest. Foundation reference atoms must not appear here.
+- `foundation-reference/foundation-runtime-substrate.trace.json`: required when any mapping row has `final-owner-type: foundation-reference`; schema `source-aligned-foundation-reference-v1`, `foundation-reference-id`, artifact path/digest, atom-plan mapping path, `atom-ids[]`, and source trace rows for the referenced foundation atoms
+- `phase-5.trace.json`: final status, atom-plan mapping path, final packet index path, optional foundation reference path/trace/digest, complexity summaries, capability progression summaries, reviewer/validator gate outcomes
 
 ## Validator Commands
 

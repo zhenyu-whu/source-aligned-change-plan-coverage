@@ -81,7 +81,7 @@ A smaller change is valid even if it primarily advances one capability, as long 
 
 Do not merge independently verifiable behavior merely to avoid a one-to-one appearance in the capability matrix.
 
-For the first feature change after a foundation change, prefer the thinnest real product or system loop that can be archived without pretending later infrastructure is complete.
+For the first feature change after a foundation candidate, prefer the thinnest real product or system loop that can be archived without pretending later infrastructure is complete.
 
 ### Change Ordering Principle
 
@@ -121,7 +121,7 @@ Before accepting the initial framework, review the capability map and progressio
 
 Prefer changes sliced by verifiable business or system loops.
 
-Every non-foundation change must satisfy the Closed-loop Test:
+Every executable business change candidate must satisfy the Closed-loop Test:
 
 - Entry: a clear entry point such as page, API, CLI, worker job, webhook, admin operation, or scheduled task.
 - Fact: a clear system fact is created or changed, such as data record, file, event, state, ledger entry, or external receipt.
@@ -129,19 +129,19 @@ Every non-foundation change must satisfy the Closed-loop Test:
 - Failure: at least one failure path is explicit, with explainable, recoverable, or blocked state.
 - Verification: executable proof exists, such as unit, contract, integration, E2E, visual smoke, manual checklist, fixture replay, or dry run.
 
-If a candidate change only proves that a low-level component exists, it cannot stand alone unless it qualifies as a foundation exception.
+If a candidate change only proves that a low-level component exists, it cannot stand alone as an executable business change. It may be recorded as a foundation candidate for Phase 2/3 slicing and Phase 4 grounding, but Phase 5 will convert qualifying foundation scope into a read-only foundation reference rather than an executable change.
 
-## Foundation Exception
+## Foundation Candidate
 
-A foundation change is allowed only when all conditions hold:
+A foundation candidate is allowed only when all conditions hold:
 
 1. Without it, no later closed-loop change can reasonably start.
 2. It is the only pre-business foundation candidate in the initial roadmap.
 3. It is a zero-domain engineering bootstrap.
 4. It produces a stable reusable engineering boundary.
-5. It has runtime or integration-level proof.
+5. It names the runtime or integration-level proof expectation that would validate the substrate if implemented.
 6. It names the first closed-loop business/user workflow that will build on it.
-7. The plan does not contain consecutive pure foundation changes.
+7. The plan does not contain consecutive pure foundation candidates.
 
 The Phase 1 foundation candidate may include only engineering substrate needed before the first real workflow:
 
@@ -166,6 +166,8 @@ The Phase 1 foundation candidate must not include:
 - workflow-specific observability, privacy, recovery, responsive, design-system, or verification behavior that belongs to the first workflow that needs it
 
 Source-backed domain behavior found during Phase 1 should be sliced into business change candidates or recorded as non-canonical ownership hints for Phase 2. Do not hide it inside a foundation/spine change.
+
+Phase 1 must not promise that the foundation candidate will become an executable final change. Phase 5 owns that decision and must render qualifying foundation atoms as `openspec/orchestrate/foundation-reference/foundation-runtime-substrate.md` plus `.trace.json`; executable roadmap rows start from the first business change.
 
 ## Workflow
 
@@ -270,19 +272,19 @@ For each change:
 Answer:
 
 1. Are there consecutive low-level changes with no observable behavior?
-2. Does every non-foundation change have a closed loop?
+2. Does every executable business change have a closed loop?
 3. Are any capabilities named by technical module instead of behavior boundary?
 4. Are any key input scenarios unmapped to a change?
 5. Can any change only be verified by "code exists" rather than behavior proof?
 6. Does the plan imply a one-to-one mapping between changes and capabilities?
 7. Does every change-capability relation use only `New` or `Modified`, with blanks where a change does not create or modify a capability?
 8. Does any change combine multiple independently verifiable functional points that could be implemented and archived separately?
-9. Does the first feature change after a foundation change introduce infrastructure-heavy concerns before its functional point needs their full behavior?
+9. Does the first feature change after a foundation candidate introduce infrastructure-heavy concerns before its functional point needs their full behavior?
 10. Does the plan merge behavior only to avoid a one-to-one appearance in the capability matrix?
 11. Are any initial change/capability boundaries marked as hypotheses that may need Phase 5 refit after atom extraction and Phase 4 source-window grounding?
 12. Do many capability ids paraphrase the change slug that first owns them?
 13. Are cross-cutting production concerns being moved into separate capability-shaped changes even though they directly affect the same user/system loop?
-14. If more than half of non-foundation changes advance only one capability, is there source-backed evidence that those are genuinely separate loops rather than a diagonalized roadmap?
+14. If more than half of executable business changes advance only one capability, is there source-backed evidence that those are genuinely separate loops rather than a diagonalized roadmap?
 15. If a foundation candidate exists, is it strictly a zero-domain engineering bootstrap?
 16. Did Phase 1 avoid placing domain-specific schemas, entities, commands, user-facing APIs, worker or async business semantics, domain events, identity/authorization/account mappings, entitlement/accounting/delivery/export concepts, lifecycle/versioning rules, privacy, recovery, responsive, design-system, observability, or other workflow-specific behavior into foundation scope?
 17. Are source-backed domain obligations represented as business change candidates or Phase 2 ownership context for the first workflow that needs them?
