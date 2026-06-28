@@ -28,6 +28,7 @@ from source_aligned_trace_lib import (  # noqa: E402
     sha256_text,
     write_json,
 )
+from render_source_aligned_orchestrate import render_orchestrate  # noqa: E402
 from validate_source_aligned_orchestrate import validate  # noqa: E402
 
 
@@ -487,6 +488,7 @@ class SourceAlignedValidatorTest(unittest.TestCase):
             },
         )
         self._write_manifest()
+        render_orchestrate(self.orchestrate, "all-supported", write=True)
 
     def _write_manifest(self) -> None:
         specs = [
@@ -550,13 +552,7 @@ class SourceAlignedValidatorTest(unittest.TestCase):
         row["owner-capability"] = "runtime-substrate"
         row["atom-relation"] = "direct"
         write_json(global_index_path, global_index)
-        self._write(
-            "openspec/orchestrate/change-capability-anchors/obligation-atom-index.md",
-            "| Global Atom ID | Source Document | Lines | Atom Type | Source Fact | Normativity | Coverage Status | Artifact Projection | Owner Change | Owner Capability | Source Atom Origins | Atom Relation | Propose Use | Evidence Need | Review Judgment |\n"
-            "| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |\n"
-            "| GA-0001 | docs/source.md | L1-L2 | behavior | fact one | must | direct | spec-requirement | change-a | cap-a | atom.one | direct | use | unit | ok |\n"
-            "| GA-0002 | docs/source.md | L1-L2 | architecture | fact two | must-not | direct | design-obligation | foundation-runtime-substrate | runtime-substrate | atom.two | direct | use | none | ok |\n",
-        )
+        render_orchestrate(self.orchestrate, "phase3-global-index", write=True)
 
         mapping_path = self.orchestrate / "phase-works/phase-5/atom-plan-mapping.json"
         mapping = json.loads(mapping_path.read_text(encoding="utf-8"))
@@ -575,13 +571,7 @@ class SourceAlignedValidatorTest(unittest.TestCase):
         foundation_row["capability-advancement"] = "does-not-advance-capability"
         foundation_row["plan-decision"] = "foundation-reference"
         write_json(mapping_path, mapping)
-        self._write(
-            "openspec/orchestrate/phase-works/phase-5/atom-plan-mapping.md",
-            "| Global Atom ID | Source Document | Lines | Phase 3 Owner / Status | Phase 3 Artifact Projection | Final Owner Type | Final Owner Change | Final Owner Capability | Final Artifact Projection | Final Relation | Foundation Reference | Capability Advancement | Plan Decision | Reason |\n"
-            "| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |\n"
-            "| GA-0001 | docs/source.md | L1-L2 | change-a / direct | spec-requirement | executable-change | change-a | cap-a | spec-requirement | direct | None | advances-capability | direct-owner | reason |\n"
-            "| GA-0002 | docs/source.md | L1-L2 | foundation-runtime-substrate / direct | design-obligation | foundation-reference | None | None | design-obligation | direct | foundation-runtime-substrate | does-not-advance-capability | foundation-reference | reason |\n",
-        )
+        render_orchestrate(self.orchestrate, "phase5-atom-plan-mapping", write=True)
 
         packet_body = "# change-a\n\n| Global Atom ID | Relation |\n| --- | --- |\n| GA-0001 | direct |\n"
         if leak_into_packet:
@@ -741,6 +731,32 @@ class SourceAlignedValidatorTest(unittest.TestCase):
         self._write_manifest()
         self.assert_error("phase2-direct-contextual-only")
 
+    def test_phase2_rendered_markdown_drift_fails(self) -> None:
+        path = self.orchestrate / "phase-works/phase-2/source-obligation-atoms/docs--source.atoms.md"
+        text = path.read_text(encoding="utf-8")
+        path.write_text(text.replace("fact one", "fact one edited only in markdown", 1), encoding="utf-8")
+        result = self._validate_phase("phase-2")
+        self.assertFalse(result["ok"], result)
+        self.assertTrue(any(issue["rule_id"] == "rendered-markdown-drift" for issue in result["issues"]), result)
+
+    def test_phase2_render_after_json_change_passes(self) -> None:
+        path = self.orchestrate / "phase-works/phase-2/source-obligation-atoms/docs--source.atoms.json"
+        data = json.loads(path.read_text(encoding="utf-8"))
+        data["source-atoms"][0]["source-fact"] = "中文事实包含 | 管道符和\n换行。"
+        write_json(path, data)
+        render_orchestrate(self.orchestrate, "phase2-source-atoms", write=True)
+        markdown = (self.orchestrate / "phase-works/phase-2/source-obligation-atoms/docs--source.atoms.md").read_text(encoding="utf-8")
+        self.assertIn("中文事实包含 \\| 管道符和 换行。", markdown)
+        self.assertIn("Render contract: `source-aligned-render-v1`", markdown)
+        result = self._validate_phase("phase-2")
+        self.assertTrue(result["ok"], result)
+
+    def test_phase2_missing_rendered_markdown_fails(self) -> None:
+        (self.orchestrate / "phase-works/phase-2/source-obligation-atoms/docs--source.atoms.md").unlink()
+        result = self._validate_phase("phase-2")
+        self.assertFalse(result["ok"], result)
+        self.assertTrue(any(issue["rule_id"] == "markdown-mirror-missing" for issue in result["issues"]), result)
+
     def test_phase3_duplicate_ga_fails(self) -> None:
         path = self.orchestrate / "change-capability-anchors/obligation-atom-index.json"
         data = json.loads(path.read_text(encoding="utf-8"))
@@ -756,6 +772,14 @@ class SourceAlignedValidatorTest(unittest.TestCase):
         write_json(path, data)
         self._write_manifest()
         self.assert_error("phase3-map-coverage")
+
+    def test_phase3_source_map_rendered_markdown_drift_fails(self) -> None:
+        path = self.orchestrate / "phase-works/phase-3/phase-3-trace/source-to-global-atom-map.md"
+        text = path.read_text(encoding="utf-8")
+        path.write_text(text.replace("GA-0001", "GA-9999", 1), encoding="utf-8")
+        result = self._validate_phase("phase-3")
+        self.assertFalse(result["ok"], result)
+        self.assertTrue(any(issue["rule_id"] == "rendered-markdown-drift" for issue in result["issues"]), result)
 
     def test_phase3_remainder_missing_uncovered_range_fails(self) -> None:
         path = self.orchestrate / "phase-works/phase-3/phase-3-trace/source-remainder-review.json"
@@ -1046,7 +1070,7 @@ class SourceAlignedValidatorTest(unittest.TestCase):
         )
         self.assert_error("phase5-capability-view-non-direct")
 
-    def test_markdown_json_drift_fails(self) -> None:
+    def test_rendered_markdown_drift_replaces_field_level_drift(self) -> None:
         self._write(
             "openspec/orchestrate/phase-works/phase-2/source-obligation-atoms/docs--source.atoms.md",
             "| Source Atom ID | Source Document | Lines | Atom Type | Source Fact | Normativity | Candidate Status | Candidate Artifact Projection | Candidate Owner Change | Candidate Owner Capability | Roles | Rationale | Propose Use | Evidence Need |\n"
@@ -1054,15 +1078,12 @@ class SourceAlignedValidatorTest(unittest.TestCase):
             "| atom.one | docs/source.md | L1-L2 | behavior | drifted fact | must | direct-candidate | spec-requirement | change-a | cap-a | primary | why | use | unit |\n"
             "| atom.two | docs/source.md | L3-L4 | explicit-non-goal | fact two | must-not | explicit-non-goal | spec-guard | change-a | cap-a | non-goal | why | use | none |\n",
         )
-        self.assert_error("markdown-json-drift")
+        self.assert_error("rendered-markdown-drift")
 
     def test_strict_warnings_returns_non_zero(self) -> None:
         self._write(
-            "openspec/orchestrate/phase-works/phase-2/source-obligation-atoms/docs--source.atoms.md",
-            "| Source Atom ID | Source Document | Lines | Atom Type | Source Fact | Normativity | Candidate Status | Candidate Artifact Projection | Candidate Owner Change | Candidate Owner Capability | Roles | Rationale | Propose Use | Evidence Need |\n"
-            "| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |\n"
-            "| atom.one | docs/source.md | `L1-L2` | behavior | fact one | must | direct-candidate | spec-requirement | change-a | cap-a | primary | why | use | unit |\n"
-            "| atom.two | docs/source.md | L3-L4 | explicit-non-goal | fact two | must-not | explicit-non-goal | spec-guard | change-a | cap-a | non-goal | why | use | none |\n",
+            "openspec/orchestrate/phase-works/phase-5/change-complexity-review.md",
+            "| Change | Direct Atom Count | Budget Status |\n| --- | --- | --- |\n| change-a | 1 | hard-over-budget |\n",
         )
         proc = subprocess.run(
             [

@@ -46,9 +46,9 @@ Write current copies only:
 
 Use a single-level filename for per-source files. Derive it from the source document path as listed in the manifest, remove the file extension, replace path separators with `--`, and add `.coverage.md`. Do not create nested directories under `phase-works/phase-3/source-doc-coverage/`.
 
-Phase 3 may add precise missing source-backed atoms to `obligation-atom-index.md`, but it must not edit Phase 2 source atom files. If missing obligations are too broad or require rereading many documents beyond targeted semantic review, return `Decision: blocked` and state whether a full Phase 2 rerun is required.
+Phase 3 may add precise missing source-backed atoms to canonical `obligation-atom-index.json`, then render `obligation-atom-index.md` from that JSON. It must not edit Phase 2 source atom files. If missing obligations are too broad or require rereading many documents beyond targeted semantic review, return `Decision: blocked` and state whether a full Phase 2 rerun is required.
 
-`phase-works/phase-3/phase-3-trace/` records the current Phase 3 intermediate audit trail. These files are review aids, not source of truth. They must be overwritten on each fresh Phase 3 run and must be consistent with the final `obligation-atom-index.md`, per-source coverage files, and `phase-works/phase-3/coverage-review.md`.
+`phase-works/phase-3/phase-3-trace/` records the current Phase 3 intermediate audit trail. JSON files are canonical; renderer-backed Markdown mirrors are review aids, not source of truth. They must be overwritten on each fresh Phase 3 run and must be consistent with canonical `obligation-atom-index.json`, per-source coverage files, and `phase-works/phase-3/coverage-review.md`.
 
 After the Phase 3 semantic outputs exist, generate `phase-works/phase-3/coverage-review-app/index.html` as the deterministic static human review app defined below. It may render source bodies and Phase 3 outputs, but must not add atoms, change atom IDs, reinterpret coverage, decide duplicate/ownership issues, or write Phase 4/Phase 5 artifacts.
 
@@ -64,7 +64,7 @@ After writing each Phase 3 artifact, perform the language self-check from the sk
 
 ## Global Atom Index
 
-`change-capability-anchors/obligation-atom-index.md` is the normalized global review registry. It resolves global uniqueness, artifact projection, candidate/final ownership, source traceability, and non-direct relations.
+`change-capability-anchors/obligation-atom-index.json` is the canonical normalized global registry. `change-capability-anchors/obligation-atom-index.md` is its renderer-backed review mirror. The registry resolves global uniqueness, artifact projection, candidate/final ownership, source traceability, and non-direct relations.
 
 It must include:
 
@@ -145,9 +145,9 @@ Evaluate in this order:
 5. Run `scripts/phase3_line_range_audit.py` or equivalent Phase 3 code to mechanically parse Phase 2 source atom and anchor ranges, normalize line ranges, merge ranges, list candidate uncovered intervals, list overlaps, and flag malformed rows or non-canonical line-range formatting warnings. This mechanical output is not a semantic decision, but every candidate uncovered interval must be semantically reviewed before Phase 3 can return `coverage-complete`.
 6. Build a semantic duplicate review across extracted atoms. Same source document/range, equivalent source facts, equivalent state/action/verification obligations, or identical propose use are duplicate candidates until reviewed.
 7. Split broad atoms when one Phase 2 row covers multiple mandatory UI/flow/data/verification obligations. Each split atom must keep source evidence and a source-local origin or Phase 3 missing-atom finding id.
-8. Build `change-capability-anchors/obligation-atom-index.md` with one global atom per production obligation and one normalized artifact projection per global atom.
-9. Write `change-capability-anchors/obligation-atom-index.json` as the canonical global atom trace sidecar.
-10. Write `phase-works/phase-3/phase-3-trace/source-to-global-atom-map.md` and `.json`, mapping every Phase 2 atom/context row to exactly one global atom id, relation, non-direct status, or blocker.
+8. Build `change-capability-anchors/obligation-atom-index.json` with one global atom per production obligation and one normalized artifact projection per global atom.
+9. Render `change-capability-anchors/obligation-atom-index.md` from the canonical global atom trace sidecar.
+10. Write `phase-works/phase-3/phase-3-trace/source-to-global-atom-map.json`, mapping every Phase 2 atom/context row to exactly one global atom id, relation, non-direct status, or blocker, then render `source-to-global-atom-map.md` from JSON.
 11. Write `phase-works/phase-3/phase-3-trace/duplicate-ownership-review.md`, preserving every duplicate, broad-atom, overlap, and ownership candidate considered and its resolution.
 12. For each source document in the manifest, create or update the matching `phase-works/phase-3/source-doc-coverage/<source>.coverage.md` file before writing the final global review.
 13. For each source document, inspect obligation-bearing sections and verify atom completeness:
@@ -158,14 +158,15 @@ Evaluate in this order:
     - ignore blank lines, table separators, decorative separators, generated table-of-contents lines, and pure formatting
     - ignore background prose, repeated summaries, discarded options, and purely explanatory text unless it defines a production behavior, boundary, data fact, verification obligation, deployment requirement, auth/privacy rule, failure path, or preserve constraint
     - record each remaining meaningful uncovered source obligation as a missing atom and add it to the global index when precise enough
-15. Write `phase-works/phase-3/phase-3-trace/source-remainder-review.md` and canonical `source-remainder-review.json`, listing every candidate remaining source range reviewed, how it was discovered, read scope, semantic classification, whether it contains a production obligation, and the resulting atom/status/finding. The JSON sidecar must include `audit-documents[]` with the mechanically recomputed evidence ranges and candidate uncovered ranges for every `read-full` source document, plus `rows[]` that cover every candidate uncovered range. A larger semantic review row may cover a smaller uncovered range, but no candidate uncovered range may be left without a review row.
+15. Write canonical `phase-works/phase-3/phase-3-trace/source-remainder-review.json`, listing every candidate remaining source range reviewed, how it was discovered, read scope, semantic classification, whether it contains a production obligation, and the resulting atom/status/finding, then render `source-remainder-review.md` from JSON. The JSON sidecar must include `audit-documents[]` with the mechanically recomputed evidence ranges and candidate uncovered ranges for every `read-full` source document, plus `rows[]` that cover every candidate uncovered range. A larger semantic review row may cover a smaller uncovered range, but no candidate uncovered range may be left without a review row.
 16. Identify atoms whose owner change/capability cannot be resolved without source-window grounding and plan refit. Mark them `phase-5-refit-required` instead of forcing them into the Phase 1 framework.
 17. Write `phase-works/phase-3/phase-3-trace/atom-normalization-decision-log.md`, preserving every candidate finding considered, the decision for each, and whether Phase 5 must resolve final placement.
 18. Build compact global statistics across source documents, global atoms, meaningful missing atoms, duplicate findings, broad-atom split findings, non-coverage classifications, ownership ambiguities, gaps, and conflicts.
 19. Write `trace/phase-3.trace.json` according to `references/trace-sidecar-contract.md`, including the canonical source remainder review path.
-20. Generate `phase-works/phase-3/coverage-review-app/index.html` from the source documents and Phase 3 artifacts. Prefer the bundled helper `scripts/phase3_coverage_review_app.py` unless a project-specific equivalent already exists.
-21. The main orchestrating agent refreshes `trace/manifest.json`, runs `validate_source_aligned_orchestrate.py --phase phase-3`, then runs the Phase 3 reviewer/repair loop with independent reviewer and repair-writer subagents.
-22. Decide whether coverage normalization is complete or blocked.
+20. Run `scripts/render_source_aligned_orchestrate.py --artifact phase3-global-index --write`, `--artifact phase3-source-map --write`, and `--artifact phase3-remainder-review --write` or `--artifact all-supported --write` so all JSON-backed Markdown mirrors are current.
+21. Generate `phase-works/phase-3/coverage-review-app/index.html` from the source documents and Phase 3 JSON artifacts. Prefer the bundled helper `scripts/phase3_coverage_review_app.py` unless a project-specific equivalent already exists.
+22. The main orchestrating agent refreshes `trace/manifest.json`, runs `validate_source_aligned_orchestrate.py --phase phase-3`, then runs the Phase 3 reviewer/repair loop with independent reviewer and repair-writer subagents. If validator reports `rendered-markdown-drift`, repair JSON or rerender; do not hand-edit Markdown.
+23. Decide whether coverage normalization is complete or blocked.
 
 ## Phase 3 Human Review App
 
@@ -179,9 +180,9 @@ The review app is a deterministic visualization layer over Phase 3 artifacts. It
 The app must include:
 
 - `Source Coverage` view: source document tree, original source content with line numbers, effective `GA-####` annotations, per-document coverage judgment, section coverage, non-atom range review, and duplicate/ownership review.
-- `Source -> Global` view: searchable/filterable table over `phase-3-trace/source-to-global-atom-map.md`.
+- `Source -> Global` view: searchable/filterable table over canonical `phase-3-trace/source-to-global-atom-map.json`, with the Markdown mirror available for reviewer reading.
 - `Risk Queue` view: focused duplicate/broad/ownership/Phase 5 refit handoff queue, sorted by review risk rather than source order.
-- `Global Registry` view: searchable/filterable table over `change-capability-anchors/obligation-atom-index.md`.
+- `Global Registry` view: searchable/filterable table over canonical `change-capability-anchors/obligation-atom-index.json`, with the Markdown mirror available for reviewer reading.
 - Visible warning count when any source file, coverage file, trace table, global index, or line range cannot be parsed mechanically.
 
 Prefer generating a self-contained HTML file that can be opened directly from disk, so Phase 3 review does not require a dev server. The bundled helper can be run from the repository root:
@@ -239,17 +240,17 @@ Each `phase-works/phase-3/source-doc-coverage/<source>.coverage.md` file must in
 - Phase 5 placement findings, or `None`
 - Judgment: `covered`, `covered-by-classification`, `phase-5-refit-required`, or `blocked`
 
-`phase-works/phase-3/phase-3-trace/source-to-global-atom-map.md` must include one row for every Phase 2 atom/context row:
+Canonical `phase-works/phase-3/phase-3-trace/source-to-global-atom-map.json` must include one row for every Phase 2 atom/context row. Its rendered Markdown mirror uses this table:
 
-| Source Document | Source Atom ID | Lines | Candidate Status | Candidate Artifact Projection | Candidate Owner Change | Candidate Owner Capability | Global Atom ID or Relation | Global Coverage Status | Global Artifact Projection | Review Decision | Reason |
-| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| Source Document | Source Atom ID | Lines | Candidate Status | Candidate Artifact Projection | Candidate Owner Change | Candidate Owner Capability | Global Atom ID | Global Relation | Non-Coverage Status | Blocker | Review Decision | Reason |
+| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
 
-`phase-works/phase-3/phase-3-trace/source-remainder-review.md` must include:
+Canonical `phase-works/phase-3/phase-3-trace/source-remainder-review.json` must include the same semantic review in machine-readable form. Its rendered Markdown mirror includes audit documents and semantic review rows:
 
-| Source Document | Candidate Range | How Found | Read Scope | Semantic Classification | Production Obligation? | Atom / Status / Finding | Reason |
-| --- | --- | --- | --- | --- | --- | --- | --- |
+| Source Document | Lines | How Found | Read Scope | Semantic Classification | Production Obligation | Linked Global Atom IDs | Non-Coverage Status | Blocker | Reason |
+| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
 
-`phase-works/phase-3/phase-3-trace/source-remainder-review.json` must include the same semantic review in canonical machine-readable form:
+The JSON sidecar fields are:
 
 - `audit-documents[]`: one row per Phase 1 `read-full` source document, with `source-document`, `source-sha256`, `line-count`, `evidence-ranges[]`, and `candidate-uncovered-ranges[]`.
 - `rows[]`: one row per reviewed remainder range, with `source-document`, `lines`, `line-ranges[]`, `how-found`, `read-scope`, `semantic-classification`, `production-obligation`, `linked-global-atom-ids[]`, `non-coverage-status`, `blocker`, and `reason`.

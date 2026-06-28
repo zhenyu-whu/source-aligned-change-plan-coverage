@@ -38,8 +38,8 @@ When the status is `accepted` or `adjusted`, also write terminal mapping and fin
 
 - `openspec/orchestrate/phase-works/phase-5/change-plan.md`
 - `openspec/orchestrate/phase-works/phase-5/input-change-plan.md`
-- `openspec/orchestrate/phase-works/phase-5/atom-plan-mapping.md`
 - `openspec/orchestrate/phase-works/phase-5/atom-plan-mapping.json`
+- `openspec/orchestrate/phase-works/phase-5/atom-plan-mapping.md` rendered from the matching JSON
 - `openspec/orchestrate/phase-works/phase-5/final-packet-index.json`
 - `openspec/orchestrate/phase-works/phase-5/capability-progression-review.md`
 - `openspec/orchestrate/phase-works/phase-5/change-complexity-review.md`
@@ -54,7 +54,7 @@ When the status is `needs-coverage-recheck` or `blocked`, do not fabricate termi
 
 If Phase 5 accepts the input plan unchanged, still write the current Phase 5 packet and final change packets. If Phase 5 adjusts the plan, write the adjusted snapshot to `phase-works/phase-5/change-plan.md` and update root `openspec/orchestrate/change-plan.md` to the latest effective plan only after the Phase 5 packet records the input plan, output plan, and atom-plan mapping.
 
-`phase-works/phase-2/source-obligation-atoms/`, `change-capability-anchors/obligation-atom-index.md`, and `phase-works/phase-4/source-window-dossiers/` are upstream evidence. Do not edit them in Phase 5.
+`phase-works/phase-2/source-obligation-atoms/`, canonical `change-capability-anchors/obligation-atom-index.json` plus its Markdown mirror, and `phase-works/phase-4/source-window-dossiers/` are upstream evidence. Do not edit them in Phase 5.
 
 After the writer finishes, Phase 5 must pass the reviewer/repair loop from `references/reviewer-repair-loop.md`: the main agent refreshes `trace/manifest.json`, runs the phase validator, spawns a fresh independent refit reviewer subagent, spawns a fresh independent Phase 5 repair-writer subagent if artifact changes are needed, reruns validator after refreshing the manifest, spawns a fresh independent reviewer again after repair, then spawns a fresh independent final integration reviewer before handing off to `openspec-propose`.
 
@@ -62,7 +62,7 @@ Phase 4 source-window dossiers and semantic profiles are the source-grounding in
 
 ## Recommended Mechanical Helper
 
-For reruns or large Phase 5 refits that can produce `accepted` or `adjusted`, prefer the bundled deterministic renderer instead of pasting a long one-off Python heredoc. The Phase 5 subagent still owns the semantic decisions: it must review the Phase 4 source-window dossiers, review the global atom index, decide the final roadmap, write or update the reviewed `atom-plan-mapping.json` plus Markdown mirror for terminal output, and prepare a JSON config that states final changes, capabilities, split analyses, decisions, adjustments, and report findings. The helper only validates and renders mechanical artifacts from those reviewed inputs. If the reviewed status is `needs-coverage-recheck` or `blocked`, do not run the final-packet renderer to fabricate terminal artifacts.
+For reruns or large Phase 5 refits that can produce `accepted` or `adjusted`, prefer the bundled deterministic helper instead of pasting a long one-off Python heredoc. The Phase 5 subagent still owns the semantic decisions: it must review the Phase 4 source-window dossiers, review the global atom index, decide the final roadmap, write or update the reviewed canonical `atom-plan-mapping.json`, and prepare a JSON config that states final changes, capabilities, split analyses, decisions, adjustments, and report findings. The helper renders `atom-plan-mapping.md` from JSON and renders mechanical final artifacts from those reviewed inputs. If the reviewed status is `needs-coverage-recheck` or `blocked`, do not run the final-packet renderer to fabricate terminal artifacts.
 
 Do not run the helper as a substitute for Phase 4 source-window grounding. `phase-works/phase-4/source-window-dossiers/`, `phase-works/phase-4/source-window-semantic-profile-review.md`, and `phase-works/phase-5/source-window-refit-trace.md` must be written and reviewed before helper-rendered final packets are treated as valid.
 
@@ -95,7 +95,7 @@ python3 .codex/skills/source-aligned-change-plan-coverage/scripts/phase5_plan_re
 
 Use `--output-orchestrate-dir /tmp/phase5-check/openspec/orchestrate` for a dry render into a temporary tree when reviewing the generated files before overwriting the active orchestration outputs. Do not treat the helper output as valid unless the subagent has reviewed the config and the main-agent gates pass. If validation fails, repair the mapping/config or return `needs-coverage-recheck`/`blocked`; do not weaken checks in the script.
 
-After helper render or manual edits, run:
+After helper render, run:
 
 ```bash
 python3 .codex/skills/source-aligned-change-plan-coverage/scripts/validate_source_aligned_orchestrate.py \
@@ -543,7 +543,7 @@ Rules:
 7. Apply the implementation-ready complexity gate, Foundation Reference Conversion Gate, required split analysis, and Change/Capability Coupling Gate to every candidate final change.
 8. Decide whether the Phase 1 framework is accepted, adjusted, needs coverage recheck, or blocked.
 9. Write `phase-works/phase-5/source-window-refit-trace.md` to explain how Phase 4 input change/capability source windows and atoms were reconstructed into final changes/capabilities.
-10. If accepted or adjusted, write `phase-works/phase-5/change-plan.md`, `phase-works/phase-5/atom-plan-mapping.md`, `phase-works/phase-5/atom-plan-mapping.json`, `phase-works/phase-5/final-packet-index.json`, and when applicable `foundation-reference/foundation-runtime-substrate.md` plus `.trace.json`. If status is `needs-coverage-recheck` or `blocked`, skip terminal mapping/final packet artifacts and write the blocker or recheck rationale in `change-plan-adjustments.md`.
+10. If accepted or adjusted, write `phase-works/phase-5/change-plan.md`, canonical `phase-works/phase-5/atom-plan-mapping.json`, rendered `phase-works/phase-5/atom-plan-mapping.md`, `phase-works/phase-5/final-packet-index.json`, and when applicable `foundation-reference/foundation-runtime-substrate.md` plus `.trace.json`. If status is `needs-coverage-recheck` or `blocked`, skip terminal mapping/final packet artifacts and write the blocker or recheck rationale in `change-plan-adjustments.md`.
 11. If adjusted, update root `openspec/orchestrate/change-plan.md` to the latest effective plan after the Phase 5 snapshot and mapping are written.
 12. If accepted or adjusted, write `phase-works/phase-5/capability-progression-review.md`, `change-complexity-review.md`, and `plan-refit-decision-log.md`.
 13. If the status is `adjusted`, `needs-coverage-recheck`, or `blocked`, write `phase-works/phase-5/change-plan-adjustments.md` with the plan-impact and next-action summary.
@@ -561,10 +561,12 @@ Rules:
 | Input Change / Capability | Source Window Evidence | Input Atoms | Final Change / Capability | Atom Movement | Relation Changes | Engineering Reason |
 | --- | --- | --- | --- | --- | --- | --- |
 
-`phase-works/phase-5/atom-plan-mapping.md` must include:
+Canonical `phase-works/phase-5/atom-plan-mapping.json` must include every global atom mapping row. Rendered `phase-works/phase-5/atom-plan-mapping.md` must use this table:
 
-| Global Atom ID | Source Document | Lines | Phase 3 Owner / Status | Phase 3 Artifact Projection | Final Owner Change | Final Owner Capability | Final Artifact Projection | Final Relation | Plan Decision | Reason |
-| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| Global Atom ID | Source Document | Lines | Phase 3 Owner / Status | Phase 3 Artifact Projection | Final Owner Type | Final Owner Change | Final Owner Capability | Final Artifact Projection | Final Relation | Foundation Reference | Capability Advancement | Plan Decision | Reason |
+| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
+
+The rendered mirror must also include `Trace Appendix` with trace file, trace schema, trace sha256, and render contract `source-aligned-render-v1`.
 
 `phase-works/phase-5/plan-refit-decision-log.md` must include:
 

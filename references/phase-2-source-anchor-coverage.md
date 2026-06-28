@@ -16,26 +16,26 @@ Write Phase 2 artifacts only:
 
 - `openspec/orchestrate/phase-works/phase-2/source-obligation-atoms/work-queue.md`
 - `openspec/orchestrate/phase-works/phase-2/source-obligation-atoms/index.md`
-- `openspec/orchestrate/phase-works/phase-2/source-obligation-atoms/<source-relative-path-without-extension>.atoms.md` for every manifest source document with `Read Status: read-full`
 - `openspec/orchestrate/phase-works/phase-2/source-obligation-atoms/<source-relative-path-without-extension>.atoms.json` for every manifest source document with `Read Status: read-full`
+- `openspec/orchestrate/phase-works/phase-2/source-obligation-atoms/<source-relative-path-without-extension>.atoms.md` rendered from the matching JSON for every manifest source document with `Read Status: read-full`
 - `openspec/orchestrate/trace/phase-2.trace.json`
 - `openspec/orchestrate/phase-works/phase-2/source-obligation-review/index.html`
 - `openspec/orchestrate/phase-works/phase-2/phase-2-agent-report.md`
 
 Use single-level filenames under `phase-works/phase-2/source-obligation-atoms/`: derive the name from the source document path as listed in the manifest, remove the extension, replace path separators with `--`, and add `.atoms.md` plus `.atoms.json`.
 
-These files are immutable after Phase 2 completes. If later phases discover missing atoms, duplicate facts, source-window grounding issues, or ownership changes, they record them in the Phase 3 global atom index, Phase 4 grounding artifacts, and Phase 5 refit artifacts; they must not rewrite the original Phase 2 source atom files.
+The `.atoms.json` files are immutable after Phase 2 completes. Their `.atoms.md` files are renderer mirrors and may only be refreshed from JSON. If later phases discover missing atoms, duplicate facts, source-window grounding issues, or ownership changes, they record them in the Phase 3 global atom index, Phase 4 grounding artifacts, and Phase 5 refit artifacts; they must not rewrite the original Phase 2 source atom JSON.
 
-After the writer finishes, Phase 2 must pass the reviewer/repair loop from `references/reviewer-repair-loop.md`: the main agent runs the phase validator, spawns a fresh independent source extraction reviewer subagent, spawns a fresh independent Phase 2 repair-writer subagent if artifact changes are needed, reruns validator, spawns a fresh independent reviewer again after repair, then freezes raw `.atoms.md/.json` only after pass.
+After the writer finishes, Phase 2 must pass the reviewer/repair loop from `references/reviewer-repair-loop.md`: the main agent runs the phase validator, spawns a fresh independent source extraction reviewer subagent, spawns a fresh independent Phase 2 repair-writer subagent if artifact changes are needed, reruns validator, spawns a fresh independent reviewer again after repair, then freezes raw `.atoms.json` evidence and its rendered `.atoms.md` mirrors only after pass. If validator reports `rendered-markdown-drift`, repair must rerender or fix JSON; do not hand-edit Markdown.
 
 ## Output Ownership
 
 Phase 2 output responsibility is split across orchestration, source extraction, aggregation, and deterministic review-app generation:
 
 - The main orchestrating agent may write `phase-works/phase-2/source-obligation-atoms/work-queue.md` during Phase 2A, because this is lightweight scheduling rather than source obligation extraction.
-- Source-extraction subagents write only their assigned `phase-works/phase-2/source-obligation-atoms/<source>.atoms.md` files and matching canonical `<source>.atoms.json` sidecars.
+- Source-extraction subagents write only their assigned canonical `phase-works/phase-2/source-obligation-atoms/<source>.atoms.json` sidecars. The main orchestrating agent or writer then runs `scripts/render_source_aligned_orchestrate.py --artifact phase2-source-atoms --write` to generate the matching `.atoms.md` mirrors.
 - After every extraction subagent finishes, spawn a fresh independent Phase 2 index/report subagent. This subagent writes only `phase-works/phase-2/source-obligation-atoms/index.md`, `phase-works/phase-2/phase-2-agent-report.md`, and `trace/phase-2.trace.json`.
-- The Phase 2 index/report subagent may read `change-plan.md`, `phase-works/phase-1/source-doc-manifest.md`, `phase-works/phase-2/source-obligation-atoms/work-queue.md`, and all generated `phase-works/phase-2/source-obligation-atoms/*.atoms.md` files. It may run read-only commands to count ledger rows, status distributions, required sections, line-range formats, and missing outputs.
+- The Phase 2 index/report subagent may read `change-plan.md`, `phase-works/phase-1/source-doc-manifest.md`, `phase-works/phase-2/source-obligation-atoms/work-queue.md`, and all generated `phase-works/phase-2/source-obligation-atoms/*.atoms.json` files. It may inspect rendered `.atoms.md` mirrors for reviewer readability, but counts, status distributions, required sections, line-range formats, and missing outputs must be derived from JSON.
 - The Phase 2 index/report subagent must not extract new atoms, edit source atom files, reread source bodies to create new evidence, perform global duplicate resolution, decide final atom ownership, close semantic coverage, or read Phase 3/Phase 4/Phase 5 outputs.
 - If the aggregation pass finds missing, malformed, or incomplete extraction outputs, it must record blockers in `phase-works/phase-2/phase-2-agent-report.md` and still keep the aggregate strictly Phase 2-scoped.
 - After the index/report subagent has written the aggregate outputs, the main orchestrating agent may run the deterministic review app generator to write `phase-works/phase-2/source-obligation-review/index.html`. This generator may read source document bodies only to render original line-numbered content for human review. It must not extract new atoms, edit source atom files, reinterpret candidate ownership, perform duplicate resolution, close coverage, or write Phase 3/Phase 4/Phase 5 artifacts.
@@ -185,7 +185,7 @@ Do not close UI content as generic "duplicate page detail". If it is duplicate, 
 
 ## Per-Source Atom Files
 
-Each `phase-works/phase-2/source-obligation-atoms/<source>.atoms.md` file must include:
+Each rendered `phase-works/phase-2/source-obligation-atoms/<source>.atoms.md` mirror must include:
 
 - source document path
 - source document role from the Phase 1 manifest
@@ -197,6 +197,7 @@ Each `phase-works/phase-2/source-obligation-atoms/<source>.atoms.md` file must i
 - ownership ambiguity notes
 - candidate missing plan boundaries, if any
 - blockers, or `None`
+- `Trace Appendix` with trace file, trace schema, trace sha256, and render contract `source-aligned-render-v1`
 
 ### Source Section Inventory
 
@@ -262,7 +263,7 @@ python3 .codex/skills/source-aligned-change-plan-coverage/scripts/phase2_obligat
   --orchestrate-dir openspec/orchestrate
 ```
 
-The helper reads `phase-works/phase-1/source-doc-manifest.md`, source document bodies, and preferably `phase-works/phase-2/source-obligation-atoms/*.atoms.json`; it falls back to `.atoms.md` with a warning during migration. It then writes `phase-works/phase-2/source-obligation-review/index.html`. Its output is reviewer-facing only and must not be treated as the source of truth for Phase 3.
+The helper reads `phase-works/phase-1/source-doc-manifest.md`, source document bodies, and preferably `phase-works/phase-2/source-obligation-atoms/*.atoms.json`; it falls back to `.atoms.md` with a warning only for legacy/debug migration. It then writes `phase-works/phase-2/source-obligation-review/index.html`. Its output is reviewer-facing only and must not be treated as the source of truth for Phase 3.
 
 ## Mapping Roles
 
@@ -312,7 +313,8 @@ Before finishing Phase 2:
 
 - Confirm `phase-works/phase-2/source-obligation-atoms/work-queue.md` exists and lists every manifest source document with `Read Status: read-full` exactly once.
 - Confirm the work queue contains only batching rationale, not atom extraction, coverage judgments, or no-obligation conclusions.
-- Confirm every manifest source document with `Read Status: read-full` has exactly one `phase-works/phase-2/source-obligation-atoms/<source>.atoms.md` file.
+- Confirm every manifest source document with `Read Status: read-full` has exactly one canonical `phase-works/phase-2/source-obligation-atoms/<source>.atoms.json` file and one rendered `.atoms.md` mirror.
+- Confirm rendered mirrors equal the output of `scripts/render_source_aligned_orchestrate.py`; any drift must be fixed by JSON repair or rerendering.
 - Confirm every source document has exactly one canonical extraction owner named in the work queue and Phase 2 report.
 - Confirm `phase-works/phase-2/source-obligation-atoms/index.md` and `phase-works/phase-2/phase-2-agent-report.md` were generated by a fresh Phase 2 index/report subagent after extraction subagents finished.
 - Confirm the Phase 2 index/report subagent did not edit source atom files, extract new atoms, perform global duplicate resolution, decide final ownership, close semantic coverage, or read Phase 3/Phase 4/Phase 5 outputs.

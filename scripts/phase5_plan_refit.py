@@ -30,6 +30,7 @@ from source_aligned_trace_lib import (
     sha256_file,
     write_json,
 )
+from render_source_aligned_orchestrate import render_atom_plan_mapping
 
 
 TABLE_SEPARATOR_RE = re.compile(r"^:?-{3,}:?$")
@@ -409,7 +410,7 @@ def latest_mapping(orchestrate_dir: Path) -> Path:
         return mapping_path
     mapping_path = orchestrate_dir / "phase-works/phase-5/atom-plan-mapping.md"
     if not mapping_path.exists():
-        raise ValueError(f"缺少 Phase 5 mapping JSON/Markdown: {mapping_path}")
+        raise ValueError(f"缺少 Phase 5 mapping JSON；Markdown 仅保留为 legacy/debug fallback: {mapping_path}")
     return mapping_path
 
 
@@ -610,26 +611,6 @@ def write_mapping_json(path: Path, final_atoms: Sequence[FinalAtom], artifact_pa
             "rows": mapping_json_rows(final_atoms),
         },
     )
-
-
-def render_mapping_markdown(final_atoms: Sequence[FinalAtom]) -> str:
-    lines = [
-        "# Atom Plan Mapping\n\n",
-        "| Global Atom ID | Source Document | Lines | Phase 3 Owner / Status | Phase 3 Artifact Projection | Final Owner Type | Final Owner Change | Final Owner Capability | Final Artifact Projection | Final Relation | Foundation Reference | Capability Advancement | Plan Decision | Reason |\n",
-        "| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |\n",
-    ]
-    for item in final_atoms:
-        source = item.source
-        mapping = item.mapping
-        lines.append(
-            f"| `{source.atom_id}` | `{source.source_document}` | `{source.lines}` | "
-            f"`{source.owner_change} / {source.coverage_status}` | `{source.artifact_projection}` | "
-            f"`{mapping.final_owner_type}` | `{mapping.final_change}` | `{mapping.final_capability}` | `{mapping.final_projection}` | "
-            f"`{mapping.final_relation}` | `{mapping.foundation_reference_id}` | `{mapping.capability_advancement}` | "
-            f"`{mapping.plan_decision}` | {md(mapping.reason)} |\n"
-        )
-    lines.append("\n## Language Self-Check\n\n本文解释内容已按 Artifact Language Gate 检查为简体中文。\n")
-    return "".join(lines)
 
 
 def orchestrate_rel(output_orchestrate_dir: Path, path: Path) -> str:
@@ -1323,8 +1304,8 @@ def write_outputs(
     ensure_dir(work_dir)
     output_mapping = work_dir / "atom-plan-mapping.md"
     output_mapping_json = work_dir / "atom-plan-mapping.json"
-    write_text(output_mapping, render_mapping_markdown(final_atoms))
     write_mapping_json(output_mapping_json, final_atoms, output_mapping)
+    write_text(output_mapping, render_atom_plan_mapping(output_orchestrate_dir, output_mapping_json))
     output_config = work_dir / config_path.name
     if output_config.resolve() != config_path.resolve():
         shutil.copyfile(config_path, output_config)
@@ -1506,12 +1487,12 @@ def build_parser() -> argparse.ArgumentParser:
         description="Validate and render mechanical Phase 5 plan-refit artifacts from a reviewed mapping/config."
     )
     parser.add_argument("--orchestrate-dir", default="openspec/orchestrate", type=Path)
-    parser.add_argument("--mapping", type=Path, help="Reviewed phase-works/phase-5/atom-plan-mapping.json or .md. Defaults to JSON sidecar when present.")
+    parser.add_argument("--mapping", type=Path, help="Reviewed phase-works/phase-5/atom-plan-mapping.json. Markdown input is legacy/debug fallback only.")
     parser.add_argument("--config", type=Path, help="Reviewed Phase 5 JSON config. Defaults to mapping sibling phase5-refit.config.json.")
     parser.add_argument("--output-orchestrate-dir", type=Path, help="Write outputs to this orchestrate dir instead of --orchestrate-dir.")
     parser.add_argument("--write", action="store_true", help="Write rendered artifacts. Without this flag the script only checks inputs.")
     parser.add_argument("--no-root-update", action="store_true", help="Do not update output root change-plan.md.")
-    parser.add_argument("--validate-rendered", action="store_true", help="Validate final packets, capability views, and anchor index against atom-plan-mapping JSON/Markdown.")
+    parser.add_argument("--validate-rendered", action="store_true", help="Validate final packets, capability views, and anchor index against atom-plan-mapping JSON.")
     parser.add_argument("--print-config-template", action="store_true", help="Print a JSON config template inferred from mapping and exit.")
     return parser
 
@@ -1527,7 +1508,10 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
     if global_index_json.exists():
         atoms = load_global_atoms_json(global_index_json)
     else:
+        print("warning: using legacy Markdown global atom index fallback; JSON is required for the normal workflow", file=sys.stderr)
         atoms = load_global_atoms(orchestrate_dir / "change-capability-anchors/obligation-atom-index.md")
+    if mapping_path.suffix != ".json":
+        print("warning: using legacy Markdown Phase 5 mapping fallback; JSON is required for the normal workflow", file=sys.stderr)
     mapping = load_mapping(mapping_path)
 
     if args.print_config_template:

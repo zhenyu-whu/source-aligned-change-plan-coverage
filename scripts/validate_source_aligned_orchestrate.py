@@ -8,7 +8,7 @@ import argparse
 import json
 import sys
 from pathlib import Path
-from typing import Dict, Iterable, List, Sequence, Set
+from typing import Dict, Iterable, List, Set
 
 from source_aligned_trace_lib import (
     ATOM_PLAN_MAPPING_SCHEMA,
@@ -42,6 +42,13 @@ from source_aligned_trace_lib import (
     validate_kebab_keys,
     normalize_code,
     squash,
+)
+from render_source_aligned_orchestrate import (
+    render_atom_plan_mapping,
+    render_global_index,
+    render_phase2_source_atoms,
+    render_remainder_review,
+    render_source_map,
 )
 
 FOUNDATION_OWNER_TYPE = "foundation-reference"
@@ -171,13 +178,33 @@ def check_ranges(
             )
 
 
-def markdown_backtick_warning(path: Path, reporter: IssueReporter, required_headers: Sequence[str]) -> None:
-    rows = table_rows(path, required_headers)
-    for row in rows:
-        lines = cell(row, "Lines", "Source Section or Range", "Candidate Range")
-        if "`" in lines:
-            reporter.warning("markdown-line-range-backticks", path, "Markdown mirror line range still uses backticks")
-            return
+def validate_rendered_markdown(
+    orchestrate_dir: Path,
+    json_path: Path,
+    md_path: Path,
+    renderer,
+    reporter: IssueReporter,
+    artifact: str,
+) -> None:
+    if not md_path.exists():
+        reporter.error("markdown-mirror-missing", json_path, f"rendered Markdown mirror is missing: {md_path}")
+        return
+    try:
+        expected = renderer(orchestrate_dir, json_path)
+    except Exception as exc:  # noqa: BLE001
+        reporter.error("rendered-markdown-render-error", json_path, f"failed to render {artifact} Markdown mirror: {exc}")
+        return
+    actual = md_path.read_text(encoding="utf-8")
+    if actual != expected:
+        reporter.error(
+            "rendered-markdown-drift",
+            md_path,
+            (
+                f"{artifact} Markdown mirror differs from canonical JSON render output; "
+                f"rerun render_source_aligned_orchestrate.py --orchestrate-dir {orchestrate_dir.as_posix()} "
+                f"--artifact {artifact} --write"
+            ),
+        )
 
 
 def phase1_sources(orchestrate_dir: Path, repo_root: Path) -> List[Dict[str, object]]:
@@ -335,26 +362,14 @@ def validate_phase2_mirror(orchestrate_dir: Path, reporter: IssueReporter) -> No
     atom_root = orchestrate_dir / "phase-works/phase-2/source-obligation-atoms"
     for sidecar in sorted(atom_root.glob("*.atoms.json")):
         md_path = sidecar.with_suffix(".md")
-        if not md_path.exists():
-            reporter.error("markdown-mirror-missing", sidecar, f"Markdown mirror missing: {md_path}")
-            continue
-        data = read_json(sidecar)
-        by_id = {
-            str(row.get("source-atom-id")): row
-            for row in data.get("source-atoms", [])
-            if isinstance(row, dict) and row.get("source-atom-id")
-        }
-        markdown_backtick_warning(md_path, reporter, ["Source Atom ID", "Source Document", "Lines"])
-        for raw in table_rows(md_path, ["Source Atom ID", "Source Document", "Lines", "Source Fact"]):
-            atom_id = normalize_code(cell(raw, "Source Atom ID"))
-            row = by_id.get(atom_id)
-            if not row:
-                reporter.error("markdown-json-drift", md_path, f"Markdown atom {atom_id} missing from JSON sidecar")
-                continue
-            if squash(cell(raw, "Source Fact")) != squash(row.get("source-fact")):
-                reporter.error("markdown-json-drift", md_path, f"{atom_id} Source Fact differs between Markdown and JSON")
-            if normalize_code(cell(raw, "Candidate Artifact Projection")) != str(row.get("candidate-artifact-projection", "")):
-                reporter.error("markdown-json-drift", md_path, f"{atom_id} candidate projection differs between Markdown and JSON")
+        validate_rendered_markdown(
+            orchestrate_dir,
+            sidecar,
+            md_path,
+            render_phase2_source_atoms,
+            reporter,
+            "phase2-source-atoms",
+        )
 
 
 def validate_phase_2(orchestrate_dir: Path, repo_root: Path, reporter: IssueReporter) -> None:
@@ -430,25 +445,46 @@ def load_global_atoms(orchestrate_dir: Path, reporter: IssueReporter) -> Dict[st
 def validate_global_index_mirror(orchestrate_dir: Path, reporter: IssueReporter) -> None:
     json_path = orchestrate_dir / "change-capability-anchors/obligation-atom-index.json"
     md_path = orchestrate_dir / "change-capability-anchors/obligation-atom-index.md"
-    if not json_path.exists() or not md_path.exists():
+    if not json_path.exists():
         return
-    data = read_json(json_path)
-    by_id = {
-        str(row.get("global-atom-id")): row
-        for row in data.get("global-atoms", [])
-        if isinstance(row, dict) and row.get("global-atom-id")
-    }
-    markdown_backtick_warning(md_path, reporter, ["Global Atom ID", "Source Document", "Lines"])
-    for raw in table_rows(md_path, ["Global Atom ID", "Source Document", "Lines", "Source Fact", "Artifact Projection"]):
-        atom_id = normalize_code(cell(raw, "Global Atom ID"))
-        row = by_id.get(atom_id)
-        if not row:
-            reporter.error("markdown-json-drift", md_path, f"Markdown global atom {atom_id} missing from JSON")
-            continue
-        if squash(cell(raw, "Source Fact")) != squash(row.get("source-fact")):
-            reporter.error("markdown-json-drift", md_path, f"{atom_id} Source Fact differs between Markdown and JSON")
-        if normalize_code(cell(raw, "Artifact Projection")) != str(row.get("artifact-projection", "")):
-            reporter.error("markdown-json-drift", md_path, f"{atom_id} artifact projection differs between Markdown and JSON")
+    validate_rendered_markdown(
+        orchestrate_dir,
+        json_path,
+        md_path,
+        render_global_index,
+        reporter,
+        "phase3-global-index",
+    )
+
+
+def validate_source_map_mirror(orchestrate_dir: Path, reporter: IssueReporter) -> None:
+    json_path = orchestrate_dir / "phase-works/phase-3/phase-3-trace/source-to-global-atom-map.json"
+    md_path = orchestrate_dir / "phase-works/phase-3/phase-3-trace/source-to-global-atom-map.md"
+    if not json_path.exists():
+        return
+    validate_rendered_markdown(
+        orchestrate_dir,
+        json_path,
+        md_path,
+        render_source_map,
+        reporter,
+        "phase3-source-map",
+    )
+
+
+def validate_remainder_review_mirror(orchestrate_dir: Path, reporter: IssueReporter) -> None:
+    json_path = orchestrate_dir / "phase-works/phase-3/phase-3-trace/source-remainder-review.json"
+    md_path = orchestrate_dir / "phase-works/phase-3/phase-3-trace/source-remainder-review.md"
+    if not json_path.exists():
+        return
+    validate_rendered_markdown(
+        orchestrate_dir,
+        json_path,
+        md_path,
+        render_remainder_review,
+        reporter,
+        "phase3-remainder-review",
+    )
 
 
 def read_full_sources(orchestrate_dir: Path, repo_root: Path) -> List[str]:
@@ -737,7 +773,9 @@ def validate_phase_3(orchestrate_dir: Path, repo_root: Path, reporter: IssueRepo
         if key not in mapped_keys:
             reporter.error("phase3-map-coverage", map_path, f"source-to-global map missing Phase 2 atom/context row: {key}")
     validate_global_index_mirror(orchestrate_dir, reporter)
+    validate_source_map_mirror(orchestrate_dir, reporter)
     validate_phase3_remainder_review(orchestrate_dir, repo_root, reporter, global_atoms, phase3_decision)
+    validate_remainder_review_mirror(orchestrate_dir, reporter)
 
 
 def validate_phase_4(orchestrate_dir: Path, repo_root: Path, reporter: IssueReporter) -> None:
@@ -817,28 +855,16 @@ def load_mapping(orchestrate_dir: Path, reporter: IssueReporter) -> Dict[str, Di
 def validate_mapping_mirror(orchestrate_dir: Path, reporter: IssueReporter) -> None:
     json_path = orchestrate_dir / "phase-works/phase-5/atom-plan-mapping.json"
     md_path = orchestrate_dir / "phase-works/phase-5/atom-plan-mapping.md"
-    if not json_path.exists() or not md_path.exists():
+    if not json_path.exists():
         return
-    data = read_json(json_path)
-    by_id = {
-        str(row.get("global-atom-id")): row
-        for row in data.get("rows", [])
-        if isinstance(row, dict) and row.get("global-atom-id")
-    }
-    markdown_backtick_warning(md_path, reporter, ["Global Atom ID", "Source Document", "Lines"])
-    for raw in table_rows(md_path, ["Global Atom ID", "Final Owner Change", "Final Relation"]):
-        atom_id = normalize_code(cell(raw, "Global Atom ID"))
-        row = by_id.get(atom_id)
-        if not row:
-            reporter.error("markdown-json-drift", md_path, f"Markdown mapping {atom_id} missing from JSON")
-            continue
-        if normalize_code(cell(raw, "Final Owner Change")) != str(row.get("final-owner-change", "")):
-            reporter.error("markdown-json-drift", md_path, f"{atom_id} final owner change differs between Markdown and JSON")
-        owner_type = normalize_code(cell(raw, "Final Owner Type"))
-        if owner_type and owner_type != str(row.get("final-owner-type", "")):
-            reporter.error("markdown-json-drift", md_path, f"{atom_id} final owner type differs between Markdown and JSON")
-        if normalize_code(cell(raw, "Final Artifact Projection")) != str(row.get("final-artifact-projection", "")):
-            reporter.error("markdown-json-drift", md_path, f"{atom_id} final projection differs between Markdown and JSON")
+    validate_rendered_markdown(
+        orchestrate_dir,
+        json_path,
+        md_path,
+        render_atom_plan_mapping,
+        reporter,
+        "phase5-atom-plan-mapping",
+    )
 
 
 def validate_final_packets(orchestrate_dir: Path, repo_root: Path, reporter: IssueReporter, mapping: Dict[str, Dict[str, object]]) -> None:
