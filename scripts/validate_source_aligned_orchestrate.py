@@ -14,7 +14,6 @@ from source_aligned_trace_lib import (
     ATOM_PLAN_MAPPING_SCHEMA,
     DIRECT_PROJECTIONS,
     FINAL_PACKET_INDEX_SCHEMA,
-    FOUNDATION_REFERENCE_SCHEMA,
     GLOBAL_ATOM_ID_RE,
     GLOBAL_ATOM_INDEX_SCHEMA,
     MANIFEST_SCHEMA,
@@ -51,8 +50,11 @@ from render_source_aligned_orchestrate import (
     render_source_map,
 )
 
-FOUNDATION_OWNER_TYPE = "foundation-reference"
 NO_OWNER_VALUES = {"", "None", "none", "null", "NULL"}
+FOUNDATION_CHANGE_KIND = "foundation"
+BUSINESS_CHANGE_KIND = "business"
+FOUNDATION_CAPABILITY = "runtime-substrate-foundation"
+FOUNDATION_ADVANCEMENT = "foundation-substrate"
 PHASE_NAMES = ("phase-1", "phase-2", "phase-3", "phase-4", "phase-5")
 FINAL_PHASE5_STATUSES = {"accepted", "adjusted"}
 NON_FINAL_PHASE4_STATUSES = {"needs-coverage-recheck", "blocked"}
@@ -89,12 +91,8 @@ def is_no_owner(value: object) -> bool:
     return normalize_code(value) in NO_OWNER_VALUES
 
 
-def is_foundation_reference_row(row: Dict[str, object]) -> bool:
-    return str(row.get("final-owner-type", "")) == FOUNDATION_OWNER_TYPE or str(row.get("final-relation", "")) == FOUNDATION_OWNER_TYPE
-
-
 def is_executable_direct_row(row: Dict[str, object]) -> bool:
-    return row.get("final-relation") == "direct" and not is_foundation_reference_row(row)
+    return row.get("final-relation") == "direct"
 
 
 def trace_decision_status(path: Path) -> str:
@@ -877,7 +875,6 @@ def validate_final_packets(orchestrate_dir: Path, repo_root: Path, reporter: Iss
 
     direct_by_owner: Dict[tuple[str, str], Set[str]] = {}
     direct_by_change: Dict[str, Set[str]] = {}
-    foundation_atom_ids = {atom_id for atom_id, row in mapping.items() if is_foundation_reference_row(row)}
     for atom_id, row in mapping.items():
         if is_executable_direct_row(row):
             change = str(row.get("final-owner-change", ""))
@@ -889,11 +886,26 @@ def validate_final_packets(orchestrate_dir: Path, repo_root: Path, reporter: Iss
     packet_changes: Set[str] = set()
     packet_direct_by_change: Dict[str, Set[str]] = {}
     capability_views_by_owner: Set[tuple[str, str]] = set()
-    for packet in packets:
+    packet_change_kinds: Dict[str, str] = {}
+    foundation_packet_count = 0
+    for packet_index, packet in enumerate(packets):
         if not isinstance(packet, dict):
             reporter.error("phase5-final-packet-row", index_path, "packets item must be object")
             continue
         change = str(packet.get("change", ""))
+        change_kind = str(packet.get("change-kind", ""))
+        if change_kind not in {FOUNDATION_CHANGE_KIND, BUSINESS_CHANGE_KIND}:
+            reporter.error(
+                "phase5-final-packet-change-kind",
+                index_path,
+                f"{change} packet missing valid change-kind foundation/business",
+            )
+            change_kind = BUSINESS_CHANGE_KIND
+        if change_kind == FOUNDATION_CHANGE_KIND:
+            foundation_packet_count += 1
+            if packet_index != 0:
+                reporter.error("phase5-foundation-order", index_path, f"{change} foundation packet must be the first packet")
+        packet_change_kinds[change] = change_kind
         packet_changes.add(change)
         packet_rel = packet.get("packet-path")
         if not isinstance(packet_rel, str) or not packet_rel:
@@ -905,13 +917,19 @@ def validate_final_packets(orchestrate_dir: Path, repo_root: Path, reporter: Iss
             continue
         text = packet_path.read_text(encoding="utf-8")
         direct_ids = set(packet.get("direct-atom-ids") if isinstance(packet.get("direct-atom-ids"), list) else [])
-        leaked_foundation_direct = {str(atom_id) for atom_id in direct_ids if str(atom_id) in foundation_atom_ids}
-        if leaked_foundation_direct:
-            reporter.error(
-                "phase5-foundation-reference-in-final-packet",
-                index_path,
-                f"{change} final packet index lists foundation reference atoms: {', '.join(sorted(leaked_foundation_direct)[:12])}",
-            )
+        for atom_id in direct_ids:
+            row = mapping.get(str(atom_id))
+            if not row:
+                continue
+            cap = str(row.get("final-owner-capability", ""))
+            advancement = str(row.get("capability-advancement", ""))
+            if change_kind == FOUNDATION_CHANGE_KIND:
+                if cap != FOUNDATION_CAPABILITY:
+                    reporter.error("phase5-foundation-capability", index_path, f"{change}/{atom_id} foundation direct atom must use {FOUNDATION_CAPABILITY}")
+                if advancement != FOUNDATION_ADVANCEMENT:
+                    reporter.error("phase5-foundation-advancement", index_path, f"{change}/{atom_id} foundation direct atom must use {FOUNDATION_ADVANCEMENT}")
+            elif cap == FOUNDATION_CAPABILITY:
+                reporter.error("phase5-foundation-capability", index_path, f"{change}/{atom_id} business packet must not own {FOUNDATION_CAPABILITY}")
         packet_direct_by_change.setdefault(change, set()).update(str(atom_id) for atom_id in direct_ids)
         non_direct_ids = set(
             packet.get("owner-scoped-non-direct-atom-ids")
@@ -924,13 +942,6 @@ def validate_final_packets(orchestrate_dir: Path, repo_root: Path, reporter: Iss
         for atom_id in non_direct_ids:
             if atom_id not in text:
                 reporter.error("phase5-final-non-direct-packet", packet_path, f"owner-scoped non-direct atom {atom_id} missing from final packet")
-        leaked_foundation_text = foundation_atom_ids.intersection(extract_ga_ids(text))
-        if leaked_foundation_text:
-            reporter.error(
-                "phase5-foundation-reference-in-final-packet",
-                packet_path,
-                f"final packet must not contain foundation reference atoms: {', '.join(sorted(leaked_foundation_text)[:12])}",
-            )
 
         capability_paths = packet.get("capability-view-paths")
         if not isinstance(capability_paths, list):
@@ -946,13 +957,10 @@ def validate_final_packets(orchestrate_dir: Path, repo_root: Path, reporter: Iss
             cap_slug = cap_path.stem
             capability_views_by_owner.add((change, cap_slug))
             text_ids = set(extract_ga_ids(cap_path.read_text(encoding="utf-8")))
-            leaked_foundation_view = foundation_atom_ids.intersection(text_ids)
-            if leaked_foundation_view:
-                reporter.error(
-                    "phase5-foundation-reference-in-capability-view",
-                    cap_path,
-                    f"capability view must not contain foundation reference atoms: {', '.join(sorted(leaked_foundation_view)[:12])}",
-                )
+            if change_kind == FOUNDATION_CHANGE_KIND and cap_slug != FOUNDATION_CAPABILITY:
+                reporter.error("phase5-foundation-capability", cap_path, f"foundation packet capability view must be {FOUNDATION_CAPABILITY}")
+            if change_kind == BUSINESS_CHANGE_KIND and cap_slug == FOUNDATION_CAPABILITY:
+                reporter.error("phase5-foundation-capability", cap_path, f"business packet must not render {FOUNDATION_CAPABILITY} capability view")
             expected_ids = direct_by_owner.get((change, cap_slug), set())
             for atom_id in text_ids:
                 row = mapping.get(atom_id)
@@ -980,52 +988,8 @@ def validate_final_packets(orchestrate_dir: Path, repo_root: Path, reporter: Iss
         change = str(row.get("final-owner-change", ""))
         if row.get("final-relation") != "direct" and change and change != "None" and change not in packet_changes:
             reporter.error("phase5-final-non-direct-owner", index_path, f"{atom_id} has final owner change without final packet: {change}")
-
-
-def validate_foundation_reference(
-    orchestrate_dir: Path,
-    repo_root: Path,
-    reporter: IssueReporter,
-    mapping: Dict[str, Dict[str, object]],
-) -> None:
-    foundation_ids = {atom_id for atom_id, row in mapping.items() if is_foundation_reference_row(row)}
-    path = orchestrate_dir / "foundation-reference/foundation-runtime-substrate.md"
-    trace_path = orchestrate_dir / "foundation-reference/foundation-runtime-substrate.trace.json"
-    if not foundation_ids:
-        return
-    require_file(path, reporter, "phase5-foundation-reference-artifact", "foundation reference artifact is missing")
-    data = json_obj(trace_path, reporter, FOUNDATION_REFERENCE_SCHEMA)
-    if not data:
-        return
-    if data.get("foundation-reference-id") != "foundation-runtime-substrate":
-        reporter.error("phase5-foundation-reference-id", trace_path, "foundation-reference-id must be foundation-runtime-substrate")
-    artifact_rel = data.get("artifact-path")
-    if artifact_rel != rel(path, repo_root):
-        reporter.error("phase5-foundation-reference-artifact", trace_path, "artifact-path must point to foundation-runtime-substrate.md")
-    if path.exists():
-        text_ids = set(extract_ga_ids(path.read_text(encoding="utf-8")))
-        missing_text = foundation_ids - text_ids
-        if missing_text:
-            reporter.error(
-                "phase5-foundation-reference-missing-atom",
-                path,
-                f"foundation reference missing atoms: {', '.join(sorted(missing_text)[:12])}",
-            )
-    trace_ids = {str(atom_id) for atom_id in data.get("atom-ids", []) if isinstance(atom_id, str)}
-    missing_trace = foundation_ids - trace_ids
-    extra_trace = trace_ids - foundation_ids
-    if missing_trace:
-        reporter.error(
-            "phase5-foundation-reference-missing-atom",
-            trace_path,
-            f"foundation reference trace missing atoms: {', '.join(sorted(missing_trace)[:12])}",
-        )
-    if extra_trace:
-        reporter.error(
-            "phase5-foundation-reference-extra-atom",
-            trace_path,
-            f"foundation reference trace includes non-foundation atoms: {', '.join(sorted(extra_trace)[:12])}",
-        )
+    if foundation_packet_count > 1:
+        reporter.error("phase5-foundation-count", index_path, "final-packet-index 最多只能包含一个 foundation packet")
 
 
 def validate_phase_5(orchestrate_dir: Path, repo_root: Path, reporter: IssueReporter, complete: bool = False) -> None:
@@ -1066,16 +1030,10 @@ def validate_phase_5(orchestrate_dir: Path, repo_root: Path, reporter: IssueRepo
         check_ranges(orchestrate_dir / "phase-works/phase-5/atom-plan-mapping.json", reporter, row.get("line-ranges"), source_document, repo_root, atom_id)
         relation = str(row.get("final-relation", ""))
         projection = str(row.get("final-artifact-projection", ""))
-        if is_foundation_reference_row(row):
-            if not is_no_owner(row.get("final-owner-change")):
-                reporter.error("phase5-foundation-reference-owner", orchestrate_dir / "phase-works/phase-5/atom-plan-mapping.json", f"{atom_id} foundation reference must not set executable final owner change")
-            if not is_no_owner(row.get("final-owner-capability")):
-                reporter.error("phase5-foundation-reference-owner", orchestrate_dir / "phase-works/phase-5/atom-plan-mapping.json", f"{atom_id} foundation reference must not set final owner capability")
-            if row.get("capability-advancement") not in {"does-not-advance-capability", "", None}:
-                reporter.error("phase5-foundation-reference-capability", orchestrate_dir / "phase-works/phase-5/atom-plan-mapping.json", f"{atom_id} foundation reference must not advance capability")
-            if relation == "direct" and projection not in DIRECT_PROJECTIONS:
-                reporter.error("phase5-direct-projection", orchestrate_dir / "phase-works/phase-5/atom-plan-mapping.json", f"{atom_id} foundation reference direct uses invalid projection {projection}")
-            continue
+        if row.get("final-owner-type") == "foundation-reference" or relation == "foundation-reference":
+            reporter.error("phase5-foundation-reference-deprecated", orchestrate_dir / "phase-works/phase-5/atom-plan-mapping.json", f"{atom_id} must not use foundation-reference owner/relation")
+        if row.get("foundation-reference-id") not in {None, "", "None"}:
+            reporter.error("phase5-foundation-reference-deprecated", orchestrate_dir / "phase-works/phase-5/atom-plan-mapping.json", f"{atom_id} must not set foundation-reference-id")
         if relation == "direct":
             if projection not in DIRECT_PROJECTIONS:
                 reporter.error("phase5-direct-projection", orchestrate_dir / "phase-works/phase-5/atom-plan-mapping.json", f"{atom_id} direct uses invalid projection {projection}")
@@ -1085,7 +1043,8 @@ def validate_phase_5(orchestrate_dir: Path, repo_root: Path, reporter: IssueRepo
                 reporter.error("phase5-direct-owner", orchestrate_dir / "phase-works/phase-5/atom-plan-mapping.json", f"{atom_id} direct missing final owner capability")
     validate_mapping_mirror(orchestrate_dir, reporter)
     validate_final_packets(orchestrate_dir, repo_root, reporter, mapping)
-    validate_foundation_reference(orchestrate_dir, repo_root, reporter, mapping)
+    if (orchestrate_dir / "foundation-reference").exists():
+        reporter.error("phase5-foundation-reference-deprecated", orchestrate_dir / "foundation-reference", "foundation-reference output is deprecated; Phase 5 must emit executable foundation packet instead")
 
     for raw in table_rows(orchestrate_dir / "phase-works/phase-5/change-complexity-review.md", ["Change", "Budget Status"]):
         budget = normalize_code(cell(raw, "Budget Status"))

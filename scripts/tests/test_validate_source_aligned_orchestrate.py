@@ -16,7 +16,6 @@ sys.path.insert(0, str(SCRIPT_DIR))
 from source_aligned_trace_lib import (  # noqa: E402
     ATOM_PLAN_MAPPING_SCHEMA,
     FINAL_PACKET_INDEX_SCHEMA,
-    FOUNDATION_REFERENCE_SCHEMA,
     GLOBAL_ATOM_INDEX_SCHEMA,
     MANIFEST_SCHEMA,
     PHASE_TRACE_SCHEMAS,
@@ -131,10 +130,10 @@ class SourceAlignedValidatorTest(unittest.TestCase):
         )
         self._write(
             "openspec/orchestrate/phase-works/phase-5/atom-plan-mapping.md",
-            "| Global Atom ID | Source Document | Lines | Phase 3 Owner / Status | Phase 3 Artifact Projection | Final Owner Change | Final Owner Capability | Final Artifact Projection | Final Relation | Plan Decision | Reason |\n"
-            "| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |\n"
-            "| GA-0001 | docs/source.md | L1-L2 | change-a / direct | spec-requirement | change-a | cap-a | spec-requirement | direct | direct-owner | reason |\n"
-            "| GA-0002 | docs/source.md | L1-L2 | change-a / explicit-non-goal | spec-guard | change-a | cap-a | spec-guard | non-goal | scoped-non-direct | reason |\n",
+            "| Global Atom ID | Source Document | Lines | Phase 3 Owner / Status | Phase 3 Artifact Projection | Final Owner Type | Final Owner Change | Final Owner Capability | Final Artifact Projection | Final Relation | Capability Advancement | Plan Decision | Reason |\n"
+            "| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |\n"
+            "| GA-0001 | docs/source.md | L1-L2 | change-a / direct | spec-requirement | executable-change | change-a | cap-a | spec-requirement | direct | advances-capability | direct-owner | reason |\n"
+            "| GA-0002 | docs/source.md | L1-L2 | change-a / explicit-non-goal | spec-guard | executable-change | change-a | cap-a | spec-guard | non-goal | does-not-advance-capability | scoped-non-direct | reason |\n",
         )
         self._write(
             "openspec/orchestrate/change-capability-anchors/change-a/change-a.md",
@@ -430,10 +429,12 @@ class SourceAlignedValidatorTest(unittest.TestCase):
                         "line-ranges": [{"start": 1, "end": 2}],
                         "phase-3-owner-status": "change-a / direct",
                         "phase-3-artifact-projection": "spec-requirement",
+                        "final-owner-type": "executable-change",
                         "final-owner-change": "change-a",
                         "final-owner-capability": "cap-a",
                         "final-artifact-projection": "spec-requirement",
                         "final-relation": "direct",
+                        "capability-advancement": "advances-capability",
                         "plan-decision": "direct-owner",
                         "reason": "reason",
                     },
@@ -444,10 +445,12 @@ class SourceAlignedValidatorTest(unittest.TestCase):
                         "line-ranges": [{"start": 1, "end": 2}],
                         "phase-3-owner-status": "change-a / explicit-non-goal",
                         "phase-3-artifact-projection": "spec-guard",
+                        "final-owner-type": "executable-change",
                         "final-owner-change": "change-a",
                         "final-owner-capability": "cap-a",
                         "final-artifact-projection": "spec-guard",
                         "final-relation": "non-goal",
+                        "capability-advancement": "does-not-advance-capability",
                         "plan-decision": "scoped-non-direct",
                         "reason": "reason",
                     },
@@ -462,6 +465,7 @@ class SourceAlignedValidatorTest(unittest.TestCase):
                 "packets": [
                     {
                         "change": "change-a",
+                        "change-kind": "business",
                         "packet-path": "openspec/orchestrate/change-capability-anchors/change-a/change-a.md",
                         "packet-digest": sha256_file(self.orchestrate / "change-capability-anchors/change-a/change-a.md"),
                         "direct-atom-ids": ["GA-0001"],
@@ -541,15 +545,15 @@ class SourceAlignedValidatorTest(unittest.TestCase):
             },
         )
 
-    def _convert_ga0002_to_foundation_reference(self, leak_into_packet: bool = False) -> None:
+    def _convert_ga0002_to_foundation_change(self, legacy_reference: bool = False, wrong_order: bool = False) -> None:
         global_index_path = self.orchestrate / "change-capability-anchors/obligation-atom-index.json"
         global_index = json.loads(global_index_path.read_text(encoding="utf-8"))
         row = global_index["global-atoms"][1]
         row["atom-type"] = "architecture"
         row["coverage-status"] = "direct"
         row["artifact-projection"] = "design-obligation"
-        row["owner-change"] = "foundation-runtime-substrate"
-        row["owner-capability"] = "runtime-substrate"
+        row["owner-change"] = "bootstrap-runtime-substrate"
+        row["owner-capability"] = "runtime-substrate-foundation"
         row["atom-relation"] = "direct"
         write_json(global_index_path, global_index)
         render_orchestrate(self.orchestrate, "phase3-global-index", write=True)
@@ -557,62 +561,54 @@ class SourceAlignedValidatorTest(unittest.TestCase):
         mapping_path = self.orchestrate / "phase-works/phase-5/atom-plan-mapping.json"
         mapping = json.loads(mapping_path.read_text(encoding="utf-8"))
         mapping["rows"][0]["final-owner-type"] = "executable-change"
-        mapping["rows"][0]["foundation-reference-id"] = "None"
         mapping["rows"][0]["capability-advancement"] = "advances-capability"
         foundation_row = mapping["rows"][1]
-        foundation_row["phase-3-owner-status"] = "foundation-runtime-substrate / direct"
+        foundation_row["phase-3-owner-status"] = "bootstrap-runtime-substrate / direct"
         foundation_row["phase-3-artifact-projection"] = "design-obligation"
-        foundation_row["final-owner-type"] = "foundation-reference"
-        foundation_row["final-owner-change"] = "None"
-        foundation_row["final-owner-capability"] = "None"
+        foundation_row["final-owner-type"] = "executable-change"
+        foundation_row["final-owner-change"] = "bootstrap-runtime-substrate"
+        foundation_row["final-owner-capability"] = "runtime-substrate-foundation"
         foundation_row["final-artifact-projection"] = "design-obligation"
         foundation_row["final-relation"] = "direct"
-        foundation_row["foundation-reference-id"] = "foundation-runtime-substrate"
-        foundation_row["capability-advancement"] = "does-not-advance-capability"
-        foundation_row["plan-decision"] = "foundation-reference"
+        foundation_row["capability-advancement"] = "foundation-substrate"
+        foundation_row["plan-decision"] = "foundation-executable"
+        if legacy_reference:
+            foundation_row["foundation-reference-id"] = "foundation-runtime-substrate"
+            foundation_row["final-owner-type"] = "foundation-reference"
         write_json(mapping_path, mapping)
         render_orchestrate(self.orchestrate, "phase5-atom-plan-mapping", write=True)
 
-        packet_body = "# change-a\n\n| Global Atom ID | Relation |\n| --- | --- |\n| GA-0001 | direct |\n"
-        if leak_into_packet:
-            packet_body += "| GA-0002 | leaked-foundation |\n"
-        self._write("openspec/orchestrate/change-capability-anchors/change-a/change-a.md", packet_body)
+        self._write(
+            "openspec/orchestrate/change-capability-anchors/bootstrap-runtime-substrate/bootstrap-runtime-substrate.md",
+            "# bootstrap-runtime-substrate\n\n| Global Atom ID | Relation |\n| --- | --- |\n| GA-0002 | direct |\n",
+        )
+        self._write(
+            "openspec/orchestrate/change-capability-anchors/bootstrap-runtime-substrate/capability-anchors/runtime-substrate-foundation.md",
+            "# runtime-substrate-foundation\n\n| Global Atom ID | Relation |\n| --- | --- |\n| GA-0002 | direct |\n",
+        )
+        self._write(
+            "openspec/orchestrate/change-capability-anchors/change-a/change-a.md",
+            "# change-a\n\n| Global Atom ID | Relation |\n| --- | --- |\n| GA-0001 | direct |\n",
+        )
+        self._write("openspec/orchestrate/change-capability-anchors/index.md", "index\nGA-0001\nGA-0002\n")
         index_path = self.orchestrate / "phase-works/phase-5/final-packet-index.json"
         index = json.loads(index_path.read_text(encoding="utf-8"))
+        foundation_packet = {
+            "change": "bootstrap-runtime-substrate",
+            "change-kind": "foundation",
+            "packet-path": "openspec/orchestrate/change-capability-anchors/bootstrap-runtime-substrate/bootstrap-runtime-substrate.md",
+            "packet-digest": sha256_file(self.orchestrate / "change-capability-anchors/bootstrap-runtime-substrate/bootstrap-runtime-substrate.md"),
+            "direct-atom-ids": ["GA-0002"],
+            "owner-scoped-non-direct-atom-ids": [],
+            "capability-view-paths": [
+                "openspec/orchestrate/change-capability-anchors/bootstrap-runtime-substrate/capability-anchors/runtime-substrate-foundation.md"
+            ],
+        }
+        index["packets"][0]["change-kind"] = "business"
         index["packets"][0]["packet-digest"] = sha256_file(self.orchestrate / "change-capability-anchors/change-a/change-a.md")
         index["packets"][0]["owner-scoped-non-direct-atom-ids"] = []
+        index["packets"] = [index["packets"][0], foundation_packet] if wrong_order else [foundation_packet, index["packets"][0]]
         write_json(index_path, index)
-
-        foundation_artifact = self._write(
-            "openspec/orchestrate/foundation-reference/foundation-runtime-substrate.md",
-            "# Foundation Runtime Substrate Reference\n\n| Global Atom ID | Source Document | Lines |\n| --- | --- | --- |\n| GA-0002 | docs/source.md | L1-L2 |\n",
-        )
-        write_json(
-            self.orchestrate / "foundation-reference/foundation-runtime-substrate.trace.json",
-            {
-                "trace-schema": FOUNDATION_REFERENCE_SCHEMA,
-                "trace-contract-version": TRACE_CONTRACT_VERSION,
-                "foundation-reference-id": "foundation-runtime-substrate",
-                "artifact-path": "openspec/orchestrate/foundation-reference/foundation-runtime-substrate.md",
-                "artifact-digest": sha256_file(foundation_artifact),
-                "atom-plan-mapping-path": "openspec/orchestrate/phase-works/phase-5/atom-plan-mapping.json",
-                "atom-ids": ["GA-0002"],
-                "rows": [
-                    {
-                        "global-atom-id": "GA-0002",
-                        "source-document": "docs/source.md",
-                        "lines": "L1-L2",
-                        "line-ranges": [{"start": 1, "end": 2}],
-                        "atom-type": "architecture",
-                        "source-fact": "fact two",
-                        "normativity": "must-not",
-                        "artifact-projection": "design-obligation",
-                        "foundation-reference-id": "foundation-runtime-substrate",
-                        "capability-advancement": "does-not-advance-capability",
-                    }
-                ],
-            },
-        )
         self._write_manifest()
 
     def _validate(self, complete: bool = True) -> dict:
@@ -902,14 +898,18 @@ class SourceAlignedValidatorTest(unittest.TestCase):
         self._write_manifest()
         self.assert_error("phase5-final-direct-owner")
 
-    def test_phase5_foundation_reference_does_not_require_packet(self) -> None:
-        self._convert_ga0002_to_foundation_reference()
+    def test_phase5_foundation_change_requires_packet_and_passes_first(self) -> None:
+        self._convert_ga0002_to_foundation_change()
         result = self._validate()
         self.assertTrue(result["ok"], result)
 
-    def test_phase5_foundation_reference_in_packet_fails(self) -> None:
-        self._convert_ga0002_to_foundation_reference(leak_into_packet=True)
-        self.assert_error("phase5-foundation-reference-in-final-packet")
+    def test_phase5_foundation_reference_mapping_fails(self) -> None:
+        self._convert_ga0002_to_foundation_change(legacy_reference=True)
+        self.assert_error("phase5-foundation-reference-deprecated")
+
+    def test_phase5_foundation_change_not_first_fails(self) -> None:
+        self._convert_ga0002_to_foundation_change(wrong_order=True)
+        self.assert_error("phase5-foundation-order")
 
     def test_phase5_refit_helper_rejects_blocked_write(self) -> None:
         config_path = self.orchestrate / "phase-works/phase-5/phase5-refit.config.json"
@@ -992,15 +992,14 @@ class SourceAlignedValidatorTest(unittest.TestCase):
         self.assertTrue((output_dir / "change-capability-anchors/index.md").exists())
         self.assertTrue((output_dir / "change-capability-anchors/change-a/change-a.md").exists())
 
-    def test_phase5_refit_helper_writes_foundation_reference_not_packet(self) -> None:
-        self._convert_ga0002_to_foundation_reference()
+    def test_phase5_refit_helper_writes_foundation_executable_packet(self) -> None:
+        self._convert_ga0002_to_foundation_change()
         mapping_path = self.orchestrate / "phase-works/phase-5/atom-plan-mapping.json"
         mapping = json.loads(mapping_path.read_text(encoding="utf-8"))
         foundation_row = mapping["rows"][1]
         foundation_row["final-owner-type"] = ""
         foundation_row["final-owner-change"] = "bootstrap-runtime-substrate"
-        foundation_row["final-owner-capability"] = "runtime-substrate"
-        foundation_row["foundation-reference-id"] = ""
+        foundation_row["final-owner-capability"] = "runtime-substrate-foundation"
         foundation_row["capability-advancement"] = ""
         write_json(mapping_path, mapping)
 
@@ -1013,17 +1012,20 @@ class SourceAlignedValidatorTest(unittest.TestCase):
                     {
                         "slug": "bootstrap-runtime-substrate",
                         "title": "foundation",
-                        "outcome": "底座候选只输出为 reference。",
+                        "outcome": "底座候选输出为 executable foundation change。",
                         "kind": "foundation",
                     },
                     {
                         "slug": "change-a",
                         "title": "change-a",
-                        "outcome": "业务 change 仍是第一个 executable packet。",
+                        "outcome": "业务 change 跟随 foundation packet。",
                         "kind": "business",
                     },
                 ],
-                "capabilities": [{"slug": "cap-a", "boundary": "cap-a"}],
+                "capabilities": [
+                    {"slug": "runtime-substrate-foundation", "boundary": "工程底座 substrate。"},
+                    {"slug": "cap-a", "boundary": "cap-a"},
+                ],
             },
         )
         output_dir = self.root / "out/orchestrate"
@@ -1047,13 +1049,15 @@ class SourceAlignedValidatorTest(unittest.TestCase):
             check=False,
         )
         self.assertEqual(proc.returncode, 0, proc.stderr)
-        self.assertTrue((output_dir / "foundation-reference/foundation-runtime-substrate.md").exists())
-        self.assertFalse((output_dir / "change-capability-anchors/bootstrap-runtime-substrate").exists())
+        self.assertFalse((output_dir / "foundation-reference").exists())
+        self.assertTrue((output_dir / "change-capability-anchors/bootstrap-runtime-substrate/bootstrap-runtime-substrate.md").exists())
         packet_index = json.loads((output_dir / "phase-works/phase-5/final-packet-index.json").read_text(encoding="utf-8"))
-        self.assertEqual([packet["change"] for packet in packet_index["packets"]], ["change-a"])
+        self.assertEqual([packet["change"] for packet in packet_index["packets"]], ["bootstrap-runtime-substrate", "change-a"])
+        self.assertEqual(packet_index["packets"][0]["change-kind"], "foundation")
         rendered_mapping = json.loads((output_dir / "phase-works/phase-5/atom-plan-mapping.json").read_text(encoding="utf-8"))
-        self.assertEqual(rendered_mapping["rows"][1]["final-owner-type"], "foundation-reference")
-        self.assertEqual(rendered_mapping["rows"][1]["final-owner-change"], "None")
+        self.assertEqual(rendered_mapping["rows"][1]["final-owner-type"], "executable-change")
+        self.assertEqual(rendered_mapping["rows"][1]["final-owner-change"], "bootstrap-runtime-substrate")
+        self.assertEqual(rendered_mapping["rows"][1]["final-owner-capability"], "runtime-substrate-foundation")
 
     def test_phase5_non_direct_atom_missing_from_packet_fails(self) -> None:
         self._write(

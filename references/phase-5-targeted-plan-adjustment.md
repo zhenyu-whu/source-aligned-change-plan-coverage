@@ -119,7 +119,7 @@ Phase 5 may:
 
 - accept the Phase 1 framework when global atoms prove it is coherent
 - add, remove, split, merge, reorder, or rename changes when atom groups and dependencies require it
-- convert one qualifying pre-business foundation candidate into a read-only foundation reference
+- emit one qualifying pre-business foundation candidate as the first executable foundation change
 - add, remove, split, merge, or rename capabilities when atoms reveal a durable behavior boundary gap
 - move a global atom to a different owner change/capability when Phase 3 left placement to refit or when sequencing proves the initial candidate owner was wrong
 - reclassify a global atom as contextual future-compatibility, dependency, preserve, reference, later-change, or explicit non-goal when it constrains design but is not current direct scope
@@ -138,11 +138,11 @@ Phase 5 must not:
 - edit Phase 4 source-window dossier outputs
 - generate replacement source-window dossiers that bypass Phase 4
 - invent new atoms without Phase 3 normalization
-- emit any pre-business foundation/governance candidate as an executable final change, keep multiple foundation references, or keep a standalone low-level change without an independently runnable user/system or operational loop
+- emit more than one pre-business foundation/governance candidate, place a foundation change after a business change, or keep a standalone low-level business change without an independently runnable user/system or operational loop
 - use raw uncovered line counts as a plan-adjustment driver without semantic review
 - treat Phase 4 source-window dossiers as permission to extract, rewrite, merge, split, or invent new obligation atoms outside Phase 3
-- decide change splits, merges, reorders, capability boundaries, or foundation reference handling from atom counts or summaries alone when the corresponding Phase 4 source windows are available
-- leave any executable direct global atom without exactly one final owner change/capability, or any foundation reference atom without `final-owner-type: foundation-reference`, unless it is non-direct, non-coverage, or blocked
+- decide change splits, merges, reorders, capability boundaries, or foundation executable handling from atom counts or summaries alone when the corresponding Phase 4 source windows are available
+- leave any executable direct global atom without exactly one final owner change/capability, unless it is non-direct, non-coverage, or blocked
 - leave any direct global atom without final artifact projection
 - leave any final direct global atom with `contextual-only`; contextual-only atoms must be moved to the context table, non-direct handling, or blocker status
 - force a `design-obligation` or `verification-obligation` atom into specs as a `spec-requirement` merely because it is direct
@@ -187,7 +187,7 @@ Rules:
 - If Phase 4 reports `grounded` but a required source-window profile is missing for an input change/capability that Phase 5 must judge, return `blocked` or ask for a fresh Phase 4 grounding pass. Do not silently regenerate the missing dossier inside Phase 5.
 - If Phase 4 source windows show several capabilities are directly required for one truthful business loop, keep those capability deltas together even when the atom count is high, unless a source-window-backed split preserves independent acceptance.
 - If Phase 4 source windows show one input change mixes multiple independently acceptable business outcomes, split, defer, or record why the source windows prove indivisibility.
-- If Phase 4 source windows show technical preparation without an independently runnable operational loop, apply the Foundation Reference Conversion Gate instead of treating it as ordinary executable direct scope.
+- If Phase 4 source windows show technical preparation without an independently runnable operational loop, apply the Foundation Executable Gate instead of treating it as ordinary business direct scope.
 
 ### Source Window Semantic Grounding Gate
 
@@ -199,7 +199,7 @@ For the initial change plan, answer:
 - Does it mix multiple business outcomes that can be independently implemented, manually accepted, and archived?
 - Does it split capabilities that the source windows show must be delivered together for one truthful loop?
 - Does it package pure technical preparation as a business change without an independently runnable operational loop?
-- Does it move domain behavior, user-facing API contracts, business worker semantics, entitlement/export concepts, project/figure/version semantics, or recovery/privacy behavior into a foundation reference instead of the first business change that needs it?
+- Does it move domain behavior, user-facing API contracts, business worker semantics, entitlement/export concepts, project/figure/version semantics, or recovery/privacy behavior into a foundation change instead of the first business change that needs it?
 - Does any later change depend on a fact, state, contract, entitlement, version, asset, or lifecycle rule that is not established by an earlier direct owner?
 - Is each capability a durable behavior boundary, or is it only a temporary implementation module, page, table, source section, SDK, queue, provider, component, or one-change alias?
 - Does the roadmap order follow behavior maturity, or does any early change mainly collect future prerequisites?
@@ -208,7 +208,7 @@ For the initial change plan, answer:
 Only after these questions are answered may Phase 5 map `GA-####` rows to final ownership. At that point each relevant global atom must be assigned:
 
 - final owner type
-- final executable change and capability, or foundation reference id
+- final executable change and capability
 - final artifact projection
 - final relation: `direct`, contextual, dependency, evidence-burden, preserve/reference, explicit non-goal, later-change, or blocker
 
@@ -218,7 +218,7 @@ Every final change must pass this reviewer-facing gate:
 | --- | --- |
 | Which source windows does this final change cite? | Phase 4 dossier paths and line ranges. |
 | What business/system semantics do those source windows express together? | Chinese source-window semantic profile summary. |
-| Why should these atoms be delivered in one change? | Entry/fact/projection/failure/verification cohesion. Foundation atoms belong in the foundation reference, not in this executable packet. |
+| Why should these atoms be delivered in one change? | Entry/fact/projection/failure/verification cohesion. Foundation atoms belong only in the first executable foundation packet when they are zero-domain engineering substrate. |
 | Why does this change appear at this point in the roadmap? | Upstream realized baseline and downstream dependency explanation. |
 | How can a human manually accept this completed change? | Concrete acceptance scenario and observable result. |
 | Which source obligations were made contextual, dependency, evidence-burden, preserve/reference, later-change, or non-goal, and why are they not direct scope? | `source-window-refit-trace.md`, `atom-plan-mapping.md`, and final packet context/non-goal/evidence tables. |
@@ -248,7 +248,7 @@ Use these rules:
 
 - A final executable change should represent a reviewable, implementable, verifiable user/system loop.
 - A final change is also the unit a later AI agent will implement in one focused `openspec-apply-change` pass. Closed-loop coherence alone does not justify a large change.
-- Foundation handling must pass the Foundation Reference Conversion Gate, and executable business sequencing must start from the first real business/user workflow.
+- Foundation handling must pass the Foundation Executable Gate, and business sequencing must start after any first executable foundation change.
 - Do not split reusable contracts, UI state vocabularies, object specimens, design token systems, visual harnesses, or async scaffolds into standalone changes merely because they can be unit-tested. They need real business/user/system loops or must become part of a business change's design/tasks/evidence burden.
 - Attach an atom to an existing change only when that change owns the same coherent loop: entry, fact, projection, failure path, and verification surface.
 - Add or split a change when atom groups reveal an independently verifiable loop that can be implemented, verified, reviewed, and archived separately.
@@ -321,18 +321,18 @@ Rules:
 - Split access/quota enforcement, delivery, observability, and operations atoms out of a feature change unless they are required to make the current feature's behavior truthful rather than merely production-complete in a future sense.
 - Do not split a change solely because it advances several capabilities. If the split would create a diagonal matrix where each new change mostly owns one capability with a similar name, keep or redesign the vertical loop instead and record the reason.
 
-### Foundation Reference Conversion Gate
+### Foundation Executable Gate
 
-Foundation candidates are valid only as minimal enabling scaffolds and are never emitted as executable final changes. Treat this as a hard gate for Phase 5 plan acceptance:
+Foundation candidates are valid only as minimal enabling scaffolds and may be emitted only as the first executable final change. Treat this as a hard gate for Phase 5 plan acceptance:
 
-- A terminal Phase 5 plan may have at most one foundation candidate. If it qualifies, Phase 5 writes `openspec/orchestrate/foundation-reference/foundation-runtime-substrate.md` and `.trace.json`.
-- The executable final roadmap starts with the first production business/user workflow. `change-plan.md`, `final-packet-index.json`, capability progression, anchor index, final packets, and capability views list executable business changes only.
-- Foundation reference rows in `atom-plan-mapping.json` must use `final-owner-type: foundation-reference`, `foundation-reference-id: foundation-runtime-substrate`, no executable `final-owner-change`, no `final-owner-capability`, and `capability-advancement: does-not-advance-capability`.
-- A foundation reference may include only zero-domain engineering substrate: repository/package skeleton, package/app boundaries, root scripts, lint/typecheck/test harnesses, configuration loading, local dependency manifests, migration tooling without business schema, empty adapter seams, empty web/worker smoke entrypoints, environment/deploy conventions, and smoke/conformance proof expectations.
-- Foundation reference atoms keep their original source trace and artifact projection, often `design-obligation`, `verification-obligation`, or `spec-guard`; they do not create specs, runtime rows, required Proof Slices, tasks, or capability advancement by themselves.
+- A terminal Phase 5 plan may have at most one foundation candidate. If it qualifies, Phase 5 writes it as the first final packet and the first `final-packet-index.json` row with `change-kind: foundation`.
+- Business changes use `change-kind: business`. The technical foundation capability `runtime-substrate-foundation` may appear in the foundation packet and capability view, but it must not count as business capability `New` / `Modified` progression.
+- Foundation direct rows in `atom-plan-mapping.json` must use `final-owner-type: executable-change`, `final-owner-change: <foundation-change-slug>`, `final-owner-capability: runtime-substrate-foundation`, `final-relation: direct`, and `capability-advancement: foundation-substrate`.
+- A foundation change may include only zero-domain engineering substrate: repository/package skeleton, package/app boundaries, root scripts, lint/typecheck/test harnesses, configuration loading, local dependency manifests, migration tooling without business schema, empty adapter seams, empty web/worker smoke entrypoints, environment/deploy conventions, and smoke/conformance proof expectations.
+- Foundation atoms keep their original source trace and artifact projection, often `design-obligation`, `verification-obligation`, or `spec-guard`. Later proposal artifacts may generate specs, runtime acceptance, verification, and tasks only when those artifacts express current observable engineering substrate facts for the foundation change.
 - Direct domain behavior, business table creation, user-facing API contracts, worker or async business semantics, identity/authorization/tenancy mappings, entitlement/accounting/delivery/export concepts, lifecycle/versioning rules, operational observability, privacy workflows, recovery behavior, responsive behavior, visual quality, or design-system behavior must move to the first business change that directly needs them.
 - Low-level or governance-heavy atom groups such as action/job runtime, UI stage/overlay contracts, object disabled-state governance, design tokens, responsive proof, observability, privacy, or quota policy must be attached to the first business workflow that directly needs them unless source evidence requires an independently runnable operational loop.
-- A plan with multiple pre-business foundation/governance candidates must merge them into the single foundation reference, move them into business changes, defer them as contextual/evidence burden, or return `blocked`.
+- A plan with multiple pre-business foundation/governance candidates must merge them into the single executable foundation change, move them into business changes, defer them as contextual/evidence burden, or return `blocked`.
 
 ### Required Split Analysis
 
@@ -343,8 +343,8 @@ For every over-budget trigger, write a split analysis before the final decision:
 
 Candidate split patterns include:
 
-- scaffold-only foundation candidate -> foundation reference + first production business workflow
-- domain foundation/spine candidate -> zero-domain foundation reference + first business workflows that own the domain atoms
+- scaffold-only foundation candidate -> executable foundation change + first production business workflow
+- domain foundation/spine candidate -> zero-domain executable foundation change + first business workflows that own the domain atoms
 - input capture/validation/preparation -> downstream execution
 - command/job contract -> concrete executor or external integration
 - durable result fact creation -> result projection/history/interaction surface
@@ -478,7 +478,7 @@ Each `change-capability-anchors/<change-slug>/<change-slug>.md` final packet mus
 - downstream constraints that must not be designed out
 - explicit non-goals
 - complexity budget status, over-budget triggers, and split/defer decisions
-- executable roadmap status and foundation reference handling summary
+- executable roadmap status and foundation executable handling summary
 - evidence burden
 - source atom, source-window dossier, source-window refit trace, and global atom index links
 - blockers, or `None`
@@ -540,14 +540,14 @@ Rules:
 4. Read Phase 3 handoff items, especially atoms marked `phase-5-refit-required`, ownership ambiguities, and source-backed non-direct constraints.
 5. Ensure `phase-works/phase-5/` exists. For `accepted` or `adjusted` terminal output, write `input-change-plan.md` directly in that directory; for `needs-coverage-recheck` or `blocked`, record the input plan reference in `source-window-refit-trace.md` instead of requiring the terminal input snapshot.
 6. Build the atom-driven planning graph using the global atom index and Phase 4 source-window semantic profiles.
-7. Apply the implementation-ready complexity gate, Foundation Reference Conversion Gate, required split analysis, and Change/Capability Coupling Gate to every candidate final change.
+7. Apply the implementation-ready complexity gate, Foundation Executable Gate, required split analysis, and Change/Capability Coupling Gate to every candidate final change.
 8. Decide whether the Phase 1 framework is accepted, adjusted, needs coverage recheck, or blocked.
 9. Write `phase-works/phase-5/source-window-refit-trace.md` to explain how Phase 4 input change/capability source windows and atoms were reconstructed into final changes/capabilities.
-10. If accepted or adjusted, write `phase-works/phase-5/change-plan.md`, canonical `phase-works/phase-5/atom-plan-mapping.json`, rendered `phase-works/phase-5/atom-plan-mapping.md`, `phase-works/phase-5/final-packet-index.json`, and when applicable `foundation-reference/foundation-runtime-substrate.md` plus `.trace.json`. If status is `needs-coverage-recheck` or `blocked`, skip terminal mapping/final packet artifacts and write the blocker or recheck rationale in `change-plan-adjustments.md`.
+10. If accepted or adjusted, write `phase-works/phase-5/change-plan.md`, canonical `phase-works/phase-5/atom-plan-mapping.json`, rendered `phase-works/phase-5/atom-plan-mapping.md`, and `phase-works/phase-5/final-packet-index.json`. If status is `needs-coverage-recheck` or `blocked`, skip terminal mapping/final packet artifacts and write the blocker or recheck rationale in `change-plan-adjustments.md`.
 11. If adjusted, update root `openspec/orchestrate/change-plan.md` to the latest effective plan after the Phase 5 snapshot and mapping are written.
 12. If accepted or adjusted, write `phase-works/phase-5/capability-progression-review.md`, `change-complexity-review.md`, and `plan-refit-decision-log.md`.
 13. If the status is `adjusted`, `needs-coverage-recheck`, or `blocked`, write `phase-works/phase-5/change-plan-adjustments.md` with the plan-impact and next-action summary.
-14. Derive final `change-capability-anchors/<business-change-slug>/` packets and capability views from the global atom index, source-window refit trace, and final plan when the status is `accepted` or `adjusted`. Final change packets must explicitly list every owner-scoped non-direct atom; capability views must include only executable direct atoms. Foundation reference atoms must stay out of final packets and capability views.
+14. Derive final `change-capability-anchors/<change-slug>/` packets and capability views from the global atom index, source-window refit trace, and final plan when the status is `accepted` or `adjusted`. Final change packets must explicitly list every owner-scoped non-direct atom; capability views must include only executable direct atoms. Foundation capability views are allowed only for `runtime-substrate-foundation`.
 15. If accepted or adjusted, write `change-capability-anchors/index.md`.
 16. If accepted or adjusted, run the Final Capability Relation Consistency Check and packet-level non-direct coverage check. Repair stale `First change`, matrix cells, roadmap `New`/`Modified` labels, final anchors index rows, capability views, final packet context/evidence/dependency/non-goal rows, and human-plan summaries before proceeding.
 17. Write `phase-works/phase-5/change-capability-human-plan.md` as a readable synthesis of final change packets and capability progression when the status is `accepted` or `adjusted`.
@@ -563,8 +563,8 @@ Rules:
 
 Canonical `phase-works/phase-5/atom-plan-mapping.json` must include every global atom mapping row. Rendered `phase-works/phase-5/atom-plan-mapping.md` must use this table:
 
-| Global Atom ID | Source Document | Lines | Phase 3 Owner / Status | Phase 3 Artifact Projection | Final Owner Type | Final Owner Change | Final Owner Capability | Final Artifact Projection | Final Relation | Foundation Reference | Capability Advancement | Plan Decision | Reason |
-| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| Global Atom ID | Source Document | Lines | Phase 3 Owner / Status | Phase 3 Artifact Projection | Final Owner Type | Final Owner Change | Final Owner Capability | Final Artifact Projection | Final Relation | Capability Advancement | Plan Decision | Reason |
+| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
 
 The rendered mirror must also include `Trace Appendix` with trace file, trace schema, trace sha256, and render contract `source-aligned-render-v1`.
 
@@ -608,7 +608,7 @@ It must also include:
 - new, split, merged, removed, reordered, or renamed changes
 - new, split, merged, removed, or renamed capabilities
 - atoms moved, reclassified, or left as contextual
-- confirmation that every executable direct global atom has exactly one final owner change/capability and every foundation reference atom has no executable owner
+- confirmation that every executable direct global atom has exactly one final owner change/capability, and every foundation direct atom is owned by the first executable foundation change with capability `runtime-substrate-foundation`
 - confirmation that every direct global atom has final artifact projection
 - confirmation that `design-obligation` and `verification-obligation` atoms were not forced into `spec-requirement`
 - confirmation that every owner-scoped non-direct atom in `atom-plan-mapping.md` appears explicitly in the owning final change packet and was not represented only by a count, summary, `additional-context`, capability view, or link-only placeholder
@@ -619,8 +619,8 @@ It must also include:
 - confirmation that change packets contain upstream baseline and downstream design context without pulling future scope into current direct ownership
 - confirmation that final change complexity is implementation-ready or explicitly blocked with split options
 - confirmation that every over-budget trigger was split, deferred, or justified with concrete indivisibility analysis
-- confirmation that any foundation candidate was converted into `foundation-reference/foundation-runtime-substrate.md` and `.trace.json`, or that no foundation reference was needed
-- confirmation that foundation reference atoms do not appear in `final-packet-index.json`, capability views, capability progression, runtime acceptance coverage, or required Proof Slices
+- confirmation that any foundation candidate was converted into the first executable foundation packet with `change-kind: foundation`, or that no foundation change was needed
+- confirmation that foundation atoms do not count as business capability progression and that later runtime acceptance / Proof Slices are generated only for current observable engineering substrate facts
 - confirmation that deferrable domain behavior and post-foundation low-level capability deltas are advanced inside the first business workflow that needs them
 - confirmation that the final roadmap order follows the Behavior Maturity Ordering Gate and that support/governance/operation-heavy changes are not placed early solely because future changes will need them
 - confirmation that source atom files and the Phase 3 global atom index were not modified

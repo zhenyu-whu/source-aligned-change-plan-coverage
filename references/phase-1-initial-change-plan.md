@@ -129,7 +129,7 @@ Every executable business change candidate must satisfy the Closed-loop Test:
 - Failure: at least one failure path is explicit, with explainable, recoverable, or blocked state.
 - Verification: executable proof exists, such as unit, contract, integration, E2E, visual smoke, manual checklist, fixture replay, or dry run.
 
-If a candidate change only proves that a low-level component exists, it cannot stand alone as an executable business change. It may be recorded as a foundation candidate for Phase 2/3 slicing and Phase 4 grounding, but Phase 5 will convert qualifying foundation scope into a read-only foundation reference rather than an executable change.
+If a candidate change only proves that a low-level component exists, it cannot stand alone as an executable business change. It may be recorded as a foundation candidate for Phase 2/3 slicing and Phase 4 grounding, but Phase 5 decides whether it qualifies as the first executable foundation change. It must remain zero-domain engineering substrate and must not be counted as business capability `New` / `Modified` progression.
 
 ## Foundation Candidate
 
@@ -167,7 +167,7 @@ The Phase 1 foundation candidate must not include:
 
 Source-backed domain behavior found during Phase 1 should be sliced into business change candidates or recorded as non-canonical ownership hints for Phase 2. Do not hide it inside a foundation/spine change.
 
-Phase 1 must not promise that the foundation candidate will become an executable final change. Phase 5 owns that decision and must render qualifying foundation atoms as `openspec/orchestrate/foundation-reference/foundation-runtime-substrate.md` plus `.trace.json`; executable roadmap rows start from the first business change.
+Phase 1 must not promise that the foundation candidate will become an executable final change. Phase 5 owns that decision. If it qualifies, Phase 5 renders it as the first executable foundation change packet with `change-kind: foundation`, final owner capability `runtime-substrate-foundation`, and `capability-advancement: foundation-substrate`; otherwise Phase 5 must move, defer, contextualize, or block it. Business roadmap progression starts with the first `change-kind: business` packet.
 
 ## Workflow
 

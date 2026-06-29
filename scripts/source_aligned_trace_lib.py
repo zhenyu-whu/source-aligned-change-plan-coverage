@@ -32,7 +32,6 @@ SOURCE_REMAINDER_REVIEW_SCHEMA = "source-aligned-source-remainder-review-v1"
 SOURCE_WINDOW_INDEX_SCHEMA = "source-aligned-source-window-index-v1"
 ATOM_PLAN_MAPPING_SCHEMA = "source-aligned-atom-plan-mapping-v1"
 FINAL_PACKET_INDEX_SCHEMA = "source-aligned-final-packet-index-v1"
-FOUNDATION_REFERENCE_SCHEMA = "source-aligned-foundation-reference-v1"
 
 GLOBAL_ATOM_ID_RE = re.compile(r"^GA-\d{4}$")
 GLOBAL_ATOM_ID_FIND_RE = re.compile(r"GA-\d{4}")
