@@ -10,7 +10,7 @@ Phase 5 必须由 fresh independent subagent 执行。不得重新运行 Phase 2
 
 ## 输入
 
-- `openspec/orchestrate/change-plan.md`
+- `openspec/orchestrate/phase-works/phase-4/input-change-plan.md`
 - `openspec/orchestrate/phase-works/phase-3/source-doc-manifest.md`
 - `openspec/orchestrate/phase-works/phase-2/source-obligation-atoms/index.md`
 - `openspec/orchestrate/change-capability-anchors/obligation-atom-index.json`，作为 canonical global atom index
@@ -51,10 +51,11 @@ status 为 `accepted` 或 `adjusted` 时，还要写入 terminal mapping 和 fin
 - `openspec/orchestrate/change-capability-anchors/<change-slug>/<change-slug>.md`
 - `openspec/orchestrate/change-capability-anchors/<change-slug>/capability-anchors/<capability-slug>.md`
 - `openspec/orchestrate/phase-works/phase-5/change-capability-human-plan.md`
+- `openspec/orchestrate/change-plan.md`
 
-status 为 `needs-coverage-recheck` 或 `blocked` 时，不得伪造 terminal mapping 或 final packet artifact。写入 `trace/phase-5.trace.json`、`phase-5-agent-report.md`、`source-window-refit-trace.md` 和 `change-plan-adjustments.md`，其中包含 recheck 或 blocker 的 source-window-backed 原因。
+status 为 `needs-coverage-recheck` 或 `blocked` 时，不得伪造或保留 terminal plan、mapping、final packet、Capability view、alignment report、human plan 或根 `change-plan.md`。如果当前目录来自较早 terminal run，先删除这些 stale terminal artifact，再写入 `trace/phase-5.trace.json`、`phase-5-agent-report.md`、`source-window-refit-trace.md` 和 `change-plan-adjustments.md`，其中包含 recheck 或 blocker 的 source-window-backed 原因。Phase 3 global atom index 及其他 upstream evidence 必须保留。
 
-即使 Phase 5 原样接受 input plan，也必须写入当前 Phase 5 packet 和 final Change packet。如果 Phase 5 调整计划，将 adjusted snapshot 写入 `phase-works/phase-5/change-plan.md`；只有 Phase 5 packet 记录 input plan、output plan 和 atom-plan mapping 后，才能将根 `openspec/orchestrate/change-plan.md` 更新为 latest effective plan。
+即使 Phase 5 原样接受 input plan，也必须写入当前 Phase 5 packet 和 final Change packet。Phase 5 的 `input-change-plan.md` 必须每次从 Phase 4 input snapshot 覆盖生成；不得复用旧 snapshot。只有 Phase 5 packet 记录 input plan、output plan 和 atom-plan mapping 后，才能同时写入 `phase-works/phase-5/change-plan.md` 与根 `openspec/orchestrate/change-plan.md`。两个 final plan 必须逐字节一致。
 
 `phase-works/phase-2/source-obligation-atoms/`、canonical `change-capability-anchors/obligation-atom-index.json` 及其 Markdown mirror、`phase-works/phase-4/source-window-dossiers/` 都是 upstream evidence。Phase 5 不得编辑。
 
@@ -95,7 +96,7 @@ python3 .codex/skills/source-aligned-change-plan-coverage/scripts/phase5_plan_re
   --validate-rendered
 ```
 
-覆盖 active orchestration output 前 review 生成 file 时，使用 `--output-orchestrate-dir /tmp/phase5-check/openspec/orchestrate` 在临时 tree 中执行 dry render。只有 subagent 已 review config 且 main-agent gate 通过，helper output 才有效。如果 validation 失败，repair mapping/config 或返回 `needs-coverage-recheck`/`blocked`；不得削弱 script 中的 check。
+覆盖 active orchestration output 前 review 生成 file 时，使用 `--output-orchestrate-dir /tmp/phase5-check/openspec/orchestrate` 在临时 tree 中执行 dry render。`--no-root-update` 只允许用于此类暂存检查；使用该参数的 output 不满足 terminal artifact contract。只有 subagent 已 review config 且 main-agent gate 通过，helper output 才有效。如果 validation 失败，repair mapping/config 或返回 `needs-coverage-recheck`/`blocked`；不得削弱 script 中的 check。
 
 helper render 后，按 `references/trace-sidecar-contract.md` 运行 Phase 5 validator；不得在本文件复制或分叉 validator 命令契约。
 
@@ -547,13 +548,13 @@ derived-view invariant：
 2. 读取 Phase 4 `phase-works/phase-4/phase-4-agent-report.md`，确认 `Phase 4 Status: grounded`。
 3. 读取 Phase 4 source-window dossier、semantic profile 和 grounding issue。
 4. 读取 Phase 3 handoff item，尤其是标记为 `phase-5-refit-required` 的 atom、ownership ambiguity 和 source-backed non-direct constraint。
-5. 确保 `phase-works/phase-5/` 存在。对 `accepted` 或 `adjusted` terminal output，直接在该目录写入 `input-change-plan.md`；对 `needs-coverage-recheck` 或 `blocked`，在 `source-window-refit-trace.md` 中记录 input plan reference，不要求 terminal input snapshot。
+5. 确保 `phase-works/phase-5/` 存在。对 `accepted` 或 `adjusted` terminal output，将 Phase 4 `input-change-plan.md` 覆盖复制到该目录；对 `needs-coverage-recheck` 或 `blocked`，在 `source-window-refit-trace.md` 中记录 input plan reference，不要求 terminal input snapshot。
 6. 使用 global atom index 和 Phase 4 source-window semantic profile 建立 atom-driven planning graph。
 7. 对每个 candidate final Change 应用 implementation-ready complexity gate、Foundation Executable Gate、必需 split analysis 和 Change/Capability Coupling Gate。
 8. 决定 Phase 1 framework 是 accepted、adjusted、needs coverage recheck 还是 blocked。
 9. 写入 `phase-works/phase-5/source-window-refit-trace.md`，说明 Phase 4 input Change/Capability source window 和 atom 如何重构为 final Change/Capability。
 10. accepted 或 adjusted 时，写入 `phase-works/phase-5/change-plan.md`、canonical `phase-works/phase-5/atom-plan-mapping.json`、rendered `phase-works/phase-5/atom-plan-mapping.md` 和 `phase-works/phase-5/final-packet-index.json`。status 为 `needs-coverage-recheck` 或 `blocked` 时，跳过 terminal mapping/final packet artifact，在 `change-plan-adjustments.md` 中写入 blocker 或 recheck rationale。
-11. adjusted 时，在 Phase 5 snapshot 和 mapping 写入后，将根 `openspec/orchestrate/change-plan.md` 更新为 latest effective plan。
+11. accepted 或 adjusted 时，在 Phase 5 snapshot 和 mapping 写入后，将相同内容写入根 `openspec/orchestrate/change-plan.md`，作为 latest effective plan。
 12. accepted 或 adjusted 时，写入 `phase-works/phase-5/capability-progression-review.md`、`change-complexity-review.md` 和 `plan-refit-decision-log.md`。
 13. status 为 `adjusted`、`needs-coverage-recheck` 或 `blocked` 时，写入 `phase-works/phase-5/change-plan-adjustments.md`，包含 plan-impact 和 next-action summary。
 14. status 为 `accepted` 或 `adjusted` 时，根据 global atom index、source-window refit trace 和 final plan 派生 final `change-capability-anchors/<change-slug>/` packet 和 Capability view。final Change packet 必须显式列出每个归属 Change 的 direct atom 和 owner-scoped non-direct atom。business Capability view 只包含对应 target 的 direct `new` / `modified` spec atom；专用 foundation view 只包含 `runtime-substrate-foundation` 的 `foundation-substrate` 行。

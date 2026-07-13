@@ -9,7 +9,7 @@ import json
 import re
 import sys
 from pathlib import Path
-from typing import Dict, Iterable, List, Set
+from typing import Dict, Iterable, List, Set, Tuple
 
 from source_aligned_trace_lib import (
     ATOM_PLAN_MAPPING_SCHEMA,
@@ -306,6 +306,80 @@ def require_file(path: Path, reporter: IssueReporter, rule_id: str, message: str
         reporter.error(rule_id, path, message)
 
 
+def require_same_file(
+    expected_path: Path,
+    actual_path: Path,
+    reporter: IssueReporter,
+    rule_id: str,
+    message: str,
+) -> None:
+    if not expected_path.exists() or not actual_path.exists():
+        return
+    if expected_path.read_bytes() != actual_path.read_bytes():
+        reporter.error(rule_id, actual_path, message)
+
+
+def validate_phase1_plan_structure(path: Path, reporter: IssueReporter) -> None:
+    if not path.exists():
+        return
+    text = path.read_text(encoding="utf-8")
+    lines = text.splitlines()
+    required_headings = [
+        "## 输入",
+        "## 切分原则",
+        "## Capability Map",
+        "## Capability Progression Matrix",
+        "## Change Roadmap",
+        "## Phase 1 风险检查",
+        "## Phase 1 语言自检",
+    ]
+    heading_positions: List[int] = []
+    for heading in required_headings:
+        try:
+            heading_positions.append(lines.index(heading))
+        except ValueError:
+            reporter.error("phase1-plan-heading", path, f"缺少必需 heading：{heading}")
+    if len(heading_positions) == len(required_headings) and heading_positions != sorted(heading_positions):
+        reporter.error("phase1-plan-heading-order", path, "Phase 1 plan heading 顺序不符合固定输出模板")
+
+    if "## Change Roadmap" not in lines or "## Phase 1 风险检查" not in lines:
+        return
+    roadmap_start = lines.index("## Change Roadmap") + 1
+    risk_start = lines.index("## Phase 1 风险检查")
+    roadmap = "\n".join(lines[roadmap_start:risk_start])
+    required_roadmap_patterns = {
+        "Change 名称": r"(?m)^- Change 名称[：:]",
+        "闭环结果": r"(?m)^- 闭环结果[：:]",
+        "来源 evidence hint": r"(?m)^- 来源 evidence hint[：:]",
+        "Capability 变更": r"(?m)^- Capability 变更[：:]",
+        "New": r"(?m)^\s+- New[：:]",
+        "Modified": r"(?m)^\s+- Modified[：:]",
+        "范围内": r"(?m)^- 范围内[：:]",
+        "范围外": r"(?m)^- 范围外[：:]",
+        "vertical slice": r"(?m)^- vertical slice[：:]",
+        "入口": r"(?m)^\s+- 入口[：:]",
+        "事实": r"(?m)^\s+- 事实[：:]",
+        "projection": r"(?m)^\s+- projection[：:]",
+        "失败": r"(?m)^\s+- 失败[：:]",
+        "验证": r"(?m)^\s+- 验证[：:]",
+        "硬依赖": r"(?m)^- 硬依赖[：:]",
+        "归档就绪性": r"(?m)^- 归档就绪性[：:]",
+    }
+    for label, pattern in required_roadmap_patterns.items():
+        if not re.search(pattern, roadmap):
+            reporter.error("phase1-plan-roadmap", path, f"Change Roadmap 缺少字段：{label}")
+
+    risk_end = lines.index("## Phase 1 语言自检") if "## Phase 1 语言自检" in lines else len(lines)
+    risk_lines = lines[risk_start + 1 : risk_end]
+    risk_numbers = [
+        int(match.group(1))
+        for line in risk_lines
+        if (match := re.match(r"^([1-8])[.)]\s+", line.strip()))
+    ]
+    if risk_numbers != list(range(1, 9)):
+        reporter.error("phase1-plan-risk-checks", path, "Phase 1 风险检查必须按 1–8 顺序包含八个编号门禁")
+
+
 def check_ranges(
     path: Path,
     reporter: IssueReporter,
@@ -370,6 +444,53 @@ def phase1_sources(orchestrate_dir: Path, repo_root: Path) -> List[Dict[str, obj
     return sources if isinstance(sources, list) else []
 
 
+def expected_manifest_artifacts(orchestrate_dir: Path, repo_root: Path) -> Dict[str, Tuple[str, str]]:
+    specs: List[Tuple[Path, str, str]] = [
+        (orchestrate_dir / "trace/phase-1.trace.json", PHASE_TRACE_SCHEMAS["phase-1"], "phase-1"),
+        (orchestrate_dir / "trace/phase-2.trace.json", PHASE_TRACE_SCHEMAS["phase-2"], "phase-2"),
+        (
+            orchestrate_dir / "change-capability-anchors/obligation-atom-index.json",
+            GLOBAL_ATOM_INDEX_SCHEMA,
+            "phase-3",
+        ),
+        (
+            orchestrate_dir / "phase-works/phase-3/phase-3-trace/source-to-global-atom-map.json",
+            SOURCE_TO_GLOBAL_MAP_SCHEMA,
+            "phase-3",
+        ),
+        (
+            orchestrate_dir / "phase-works/phase-3/phase-3-trace/source-remainder-review.json",
+            SOURCE_REMAINDER_REVIEW_SCHEMA,
+            "phase-3",
+        ),
+        (orchestrate_dir / "trace/phase-3.trace.json", PHASE_TRACE_SCHEMAS["phase-3"], "phase-3"),
+        (
+            orchestrate_dir / "phase-works/phase-4/source-window-dossiers/source-window-index.json",
+            SOURCE_WINDOW_INDEX_SCHEMA,
+            "phase-4",
+        ),
+        (orchestrate_dir / "trace/phase-4.trace.json", PHASE_TRACE_SCHEMAS["phase-4"], "phase-4"),
+        (
+            orchestrate_dir / "phase-works/phase-5/atom-plan-mapping.json",
+            ATOM_PLAN_MAPPING_SCHEMA,
+            "phase-5",
+        ),
+        (
+            orchestrate_dir / "phase-works/phase-5/final-packet-index.json",
+            FINAL_PACKET_INDEX_SCHEMA,
+            "phase-5",
+        ),
+        (orchestrate_dir / "trace/phase-5.trace.json", PHASE_TRACE_SCHEMAS["phase-5"], "phase-5"),
+    ]
+    atom_root = orchestrate_dir / "phase-works/phase-2/source-obligation-atoms"
+    specs.extend((path, SOURCE_ATOMS_SCHEMA, "phase-2") for path in sorted(atom_root.glob("*.atoms.json")))
+    return {
+        rel(path, repo_root): (schema, phase)
+        for path, schema, phase in specs
+        if path.exists()
+    }
+
+
 def validate_manifest(orchestrate_dir: Path, repo_root: Path, reporter: IssueReporter, complete: bool = False) -> None:
     path = orchestrate_dir / "trace/manifest.json"
     data = json_obj(path, reporter, MANIFEST_SCHEMA)
@@ -432,6 +553,8 @@ def validate_manifest(orchestrate_dir: Path, repo_root: Path, reporter: IssueRep
     if not isinstance(artifacts, list):
         reporter.error("manifest-artifacts", path, "artifacts 必须是 array")
         return
+    expected_artifacts = expected_manifest_artifacts(orchestrate_dir, repo_root)
+    seen_trace_paths: Set[str] = set()
     for index, item in enumerate(artifacts):
         if not isinstance(item, dict):
             reporter.error("manifest-artifact", path, f"artifacts[{index}] 必须是 object")
@@ -441,6 +564,12 @@ def validate_manifest(orchestrate_dir: Path, repo_root: Path, reporter: IssueRep
         if not isinstance(trace_rel, str) or not trace_rel:
             reporter.error("manifest-artifact-trace-path", path, f"artifacts[{index}] 缺少 trace-path")
             continue
+        if trace_rel in seen_trace_paths:
+            reporter.error("manifest-artifact-duplicate", path, f"trace-path 重复：{trace_rel}")
+        seen_trace_paths.add(trace_rel)
+        for field in ("artifact-path", "trace-schema", "phase", "role"):
+            if not isinstance(item.get(field), str) or not str(item.get(field)).strip():
+                reporter.error("manifest-artifact-field", path, f"{trace_rel} 缺少非空 {field}")
         trace_path = repo_root / trace_rel
         if not trace_path.exists():
             reporter.error("manifest-artifact-trace-path", path, f"{trace_rel} 不存在")
@@ -448,6 +577,21 @@ def validate_manifest(orchestrate_dir: Path, repo_root: Path, reporter: IssueRep
         current = sha256_file(trace_path)
         if digest != current:
             reporter.error("manifest-digest", path, f"{trace_rel} 的 sha256 不匹配")
+        expected = expected_artifacts.get(trace_rel)
+        if expected:
+            expected_schema, expected_phase = expected
+            if item.get("trace-schema") != expected_schema:
+                reporter.error("manifest-artifact-schema", path, f"{trace_rel} 的 trace-schema 必须为 {expected_schema}")
+            if item.get("phase") != expected_phase:
+                reporter.error("manifest-artifact-phase", path, f"{trace_rel} 的 phase 必须为 {expected_phase}")
+        try:
+            trace_data = read_json(trace_path)
+        except Exception:  # noqa: BLE001
+            trace_data = {}
+        if trace_data and item.get("trace-schema") != trace_data.get("trace-schema"):
+            reporter.error("manifest-artifact-schema", path, f"{trace_rel} 的 trace-schema 与 canonical JSON 不一致")
+    for trace_rel in sorted(set(expected_artifacts) - seen_trace_paths):
+        reporter.error("manifest-artifact-missing", path, f"manifest artifacts 缺少 canonical JSON：{trace_rel}")
 
 
 def validate_phase_1(orchestrate_dir: Path, repo_root: Path, reporter: IssueReporter) -> None:
@@ -456,10 +600,42 @@ def validate_phase_1(orchestrate_dir: Path, repo_root: Path, reporter: IssueRepo
     if not data:
         return
     validate_trace_status(data, path, reporter, "phase-1", "phase1-status")
-    require_file(orchestrate_dir / "change-plan.md", reporter, "phase1-interface-artifact", "缺少根目录 change-plan.md")
-    require_file(orchestrate_dir / "phase-works/phase-1/change-plan.md", reporter, "phase1-interface-artifact", "缺少 Phase 1 change-plan.md")
-    require_file(orchestrate_dir / "phase-works/phase-1/source-doc-manifest.md", reporter, "phase1-interface-artifact", "缺少 Phase 1 source-doc-manifest.md")
+    initial_plan_path = orchestrate_dir / "phase-works/phase-1/initial-change-plan.md"
+    source_manifest_path = orchestrate_dir / "phase-works/phase-1/source-doc-manifest.md"
+    require_file(initial_plan_path, reporter, "phase1-interface-artifact", "缺少 Phase 1 initial-change-plan.md")
+    require_file(source_manifest_path, reporter, "phase1-interface-artifact", "缺少 Phase 1 source-doc-manifest.md")
     require_file(orchestrate_dir / "phase-works/phase-1/phase-1-agent-report.md", reporter, "phase1-interface-artifact", "缺少 Phase 1 agent 报告")
+    validate_phase1_plan_structure(initial_plan_path, reporter)
+
+    if "change-plan" in data:
+        reporter.error("phase1-legacy-plan-trace", path, "Phase 1 v2 trace 不得包含旧 change-plan object")
+    initial_plan = data.get("initial-change-plan")
+    if not isinstance(initial_plan, dict):
+        reporter.error("phase1-initial-plan-trace", path, "initial-change-plan 必须是 object")
+    else:
+        legacy_fields = {
+            "phase-plan-path",
+            "phase-plan-sha256",
+            "root-plan-path",
+            "root-plan-sha256",
+        }
+        present_legacy_fields = sorted(legacy_fields.intersection(initial_plan))
+        if present_legacy_fields:
+            reporter.error(
+                "phase1-legacy-plan-trace",
+                path,
+                f"initial-change-plan 包含旧字段：{', '.join(present_legacy_fields)}",
+            )
+        expected_plan_path = rel(initial_plan_path, repo_root)
+        if initial_plan.get("artifact-path") != expected_plan_path:
+            reporter.error(
+                "phase1-initial-plan-path",
+                path,
+                f"initial-change-plan.artifact-path 必须为 {expected_plan_path}",
+            )
+        if initial_plan_path.exists() and initial_plan.get("sha256") != sha256_file(initial_plan_path):
+            reporter.error("phase1-initial-plan-sha", path, "initial-change-plan.sha256 与当前文件不一致")
+
     sources = data.get("source-documents")
     if not isinstance(sources, list) or not sources:
         reporter.error("phase1-source-documents", path, "source-documents 必须是非空 array")
@@ -476,6 +652,16 @@ def validate_phase_1(orchestrate_dir: Path, repo_root: Path, reporter: IssueRepo
         if source_document in seen:
             reporter.error("phase1-source-duplicate", path, f"source-document 重复：{source_document}")
         seen.add(source_document)
+        read_status = source.get("read-status")
+        if read_status not in {"read-full", "non-source-artifact"}:
+            reporter.error(
+                "phase1-source-read-status",
+                path,
+                f"{source_document} 的 read-status 必须为 read-full 或 non-source-artifact",
+            )
+        for field in ("source-role", "coarse-topics-paths", "notes"):
+            if not isinstance(source.get(field), str):
+                reporter.error("phase1-source-field", path, f"{source_document} 的 {field} 必须是 string")
         source_path = repo_root / source_document
         if not source_path.exists():
             reporter.error("phase1-source-exists", path, f"来源文档不存在：{source_document}")
@@ -484,6 +670,48 @@ def validate_phase_1(orchestrate_dir: Path, repo_root: Path, reporter: IssueRepo
             reporter.error("phase1-source-line-count", path, f"{source_document} 的 line-count 发生 drift")
         if source.get("source-sha256") != sha256_file(source_path):
             reporter.error("phase1-source-sha", path, f"{source_document} 的 source-sha256 发生 drift")
+
+    manifest_rows = table_rows(
+        source_manifest_path,
+        ["Source Document", "Read Status", "Source Role", "Coarse Topics / Paths", "Notes"],
+    )
+    if len(manifest_rows) != len(sources):
+        reporter.error(
+            "phase1-source-manifest-count",
+            source_manifest_path,
+            f"source manifest 行数 {len(manifest_rows)} 与 trace source-documents 数量 {len(sources)} 不一致",
+        )
+    manifest_by_source: Dict[str, Dict[str, str]] = {}
+    for row in manifest_rows:
+        source_document = normalize_code(cell(row, "Source Document"))
+        if not source_document:
+            reporter.error("phase1-source-manifest-row", source_manifest_path, "source manifest 行缺少 Source Document")
+            continue
+        if source_document in manifest_by_source:
+            reporter.error("phase1-source-manifest-duplicate", source_manifest_path, f"source manifest 重复：{source_document}")
+        manifest_by_source[source_document] = row
+    for source in sources:
+        if not isinstance(source, dict):
+            continue
+        source_document = str(source.get("source-document", ""))
+        row = manifest_by_source.get(source_document)
+        if row is None:
+            reporter.error("phase1-source-manifest-missing", source_manifest_path, f"source manifest 缺少：{source_document}")
+            continue
+        expected_fields = {
+            "Read Status": source.get("read-status", ""),
+            "Source Role": source.get("source-role", ""),
+            "Coarse Topics / Paths": source.get("coarse-topics-paths", ""),
+            "Notes": source.get("notes", ""),
+        }
+        for header, expected in expected_fields.items():
+            actual = squash(normalize_code(cell(row, header)))
+            if actual != squash(expected):
+                reporter.error(
+                    "phase1-source-manifest-drift",
+                    source_manifest_path,
+                    f"{source_document} 的 {header} 与 trace 不一致",
+                )
 
 
 def work_queue_counts(orchestrate_dir: Path) -> Dict[str, int]:
@@ -530,6 +758,12 @@ def validate_phase2_mirror(orchestrate_dir: Path, reporter: IssueReporter) -> No
 
 
 def validate_phase_2(orchestrate_dir: Path, repo_root: Path, reporter: IssueReporter) -> None:
+    require_file(
+        orchestrate_dir / "phase-works/phase-1/initial-change-plan.md",
+        reporter,
+        "phase2-interface-input",
+        "缺少 Phase 2 输入：Phase 1 initial-change-plan.md",
+    )
     trace_path = orchestrate_dir / "trace/phase-2.trace.json"
     trace = json_obj(trace_path, reporter, PHASE_TRACE_SCHEMAS["phase-2"])
     if trace:
@@ -894,6 +1128,12 @@ def validate_phase3_remainder_review(
 
 
 def validate_phase_3(orchestrate_dir: Path, repo_root: Path, reporter: IssueReporter) -> None:
+    require_file(
+        orchestrate_dir / "phase-works/phase-1/initial-change-plan.md",
+        reporter,
+        "phase3-interface-input",
+        "缺少 Phase 3 输入：Phase 1 initial-change-plan.md",
+    )
     phase3_trace = json_obj(orchestrate_dir / "trace/phase-3.trace.json", reporter, PHASE_TRACE_SCHEMAS["phase-3"])
     phase3_decision = ""
     if phase3_trace:
@@ -1049,7 +1289,17 @@ def validate_phase_4(orchestrate_dir: Path, repo_root: Path, reporter: IssueRepo
     status = ""
     if phase4_trace:
         status = validate_trace_status(phase4_trace, phase4_trace_path, reporter, "phase-4", "phase4-status")
-    require_file(orchestrate_dir / "phase-works/phase-4/input-change-plan.md", reporter, "phase4-interface-artifact", "缺少 Phase 4 input change plan")
+    phase1_plan_path = orchestrate_dir / "phase-works/phase-1/initial-change-plan.md"
+    phase4_input_plan_path = orchestrate_dir / "phase-works/phase-4/input-change-plan.md"
+    require_file(phase1_plan_path, reporter, "phase4-interface-input", "缺少 Phase 4 输入：Phase 1 initial-change-plan.md")
+    require_file(phase4_input_plan_path, reporter, "phase4-interface-artifact", "缺少 Phase 4 input change plan")
+    require_same_file(
+        phase1_plan_path,
+        phase4_input_plan_path,
+        reporter,
+        "phase4-input-plan-drift",
+        "Phase 4 input-change-plan.md 必须与 Phase 1 initial-change-plan.md 完全一致",
+    )
     require_file(orchestrate_dir / "phase-works/phase-4/source-window-dossiers/index.md", reporter, "phase4-interface-artifact", "缺少 Phase 4 source-window dossier index")
     require_file(orchestrate_dir / "phase-works/phase-4/source-window-semantic-profile-review.md", reporter, "phase4-interface-artifact", "缺少 Phase 4 semantic profile review")
     require_file(orchestrate_dir / "phase-works/phase-4/source-window-grounding-issues.md", reporter, "phase4-interface-artifact", "缺少 Phase 4 grounding issues 报告")
@@ -1392,12 +1642,68 @@ def validate_phase_5(orchestrate_dir: Path, repo_root: Path, reporter: IssueRepo
     require_file(orchestrate_dir / "phase-works/phase-5/phase-5-agent-report.md", reporter, "phase5-interface-artifact", "缺少 Phase 5 agent 报告")
     if status in NON_FINAL_PHASE5_STATUSES:
         require_file(orchestrate_dir / "phase-works/phase-5/change-plan-adjustments.md", reporter, "phase5-interface-artifact", f"Phase 5 状态为 {status} 时必须提供 change-plan-adjustments.md")
+        terminal_paths = [
+            orchestrate_dir / "phase-works/phase-5/input-change-plan.md",
+            orchestrate_dir / "phase-works/phase-5/change-plan.md",
+            orchestrate_dir / "phase-works/phase-5/atom-plan-mapping.md",
+            orchestrate_dir / "phase-works/phase-5/atom-plan-mapping.json",
+            orchestrate_dir / "phase-works/phase-5/final-packet-index.json",
+            orchestrate_dir / "phase-works/phase-5/capability-progression-review.md",
+            orchestrate_dir / "phase-works/phase-5/change-complexity-review.md",
+            orchestrate_dir / "phase-works/phase-5/plan-refit-decision-log.md",
+            orchestrate_dir / "phase-works/phase-5/alignment-final-report.md",
+            orchestrate_dir / "phase-works/phase-5/change-capability-human-plan.md",
+            orchestrate_dir / "change-capability-anchors/index.md",
+        ]
+        for terminal_path in terminal_paths:
+            if terminal_path.exists():
+                reporter.error(
+                    "phase5-nonfinal-terminal-artifact",
+                    terminal_path,
+                    f"Phase 5 状态为 {status} 时不得保留 terminal artifact",
+                )
+        anchors_dir = orchestrate_dir / "change-capability-anchors"
+        if anchors_dir.exists():
+            for child in anchors_dir.iterdir():
+                if child.is_dir():
+                    reporter.error(
+                        "phase5-nonfinal-terminal-artifact",
+                        child,
+                        f"Phase 5 状态为 {status} 时不得保留 final Change packet 或 Capability view",
+                    )
+        root_plan_path = orchestrate_dir / "change-plan.md"
+        if root_plan_path.exists():
+            reporter.error(
+                "phase5-nonfinal-root-plan",
+                root_plan_path,
+                f"Phase 5 状态为 {status} 时不得发布根 change-plan.md",
+            )
         if complete:
             reporter.error("phase5-complete-status", trace_path, f"--complete 要求 accepted/adjusted status，实际为 {status}")
         return
     if status in FINAL_PHASE5_STATUSES:
-        require_file(orchestrate_dir / "phase-works/phase-5/input-change-plan.md", reporter, "phase5-interface-artifact", "缺少 Phase 5 input change plan")
-        require_file(orchestrate_dir / "phase-works/phase-5/change-plan.md", reporter, "phase5-interface-artifact", "缺少 Phase 5 change plan")
+        phase4_input_plan_path = orchestrate_dir / "phase-works/phase-4/input-change-plan.md"
+        phase5_input_plan_path = orchestrate_dir / "phase-works/phase-5/input-change-plan.md"
+        phase5_plan_path = orchestrate_dir / "phase-works/phase-5/change-plan.md"
+        root_plan_path = orchestrate_dir / "change-plan.md"
+        require_file(phase4_input_plan_path, reporter, "phase5-interface-input", "缺少 Phase 5 输入：Phase 4 input-change-plan.md")
+        require_file(phase5_input_plan_path, reporter, "phase5-interface-artifact", "缺少 Phase 5 input change plan")
+        require_file(phase5_plan_path, reporter, "phase5-interface-artifact", "缺少 Phase 5 change plan")
+        require_file(root_plan_path, reporter, "phase5-interface-artifact", "缺少 Phase 5 发布的根 change-plan.md")
+        require_same_file(
+            phase4_input_plan_path,
+            phase5_input_plan_path,
+            reporter,
+            "phase5-input-plan-drift",
+            "Phase 5 input-change-plan.md 必须与 Phase 4 input-change-plan.md 完全一致",
+        )
+        require_same_file(
+            phase5_plan_path,
+            root_plan_path,
+            reporter,
+            "phase5-root-plan-drift",
+            "根 change-plan.md 必须与 Phase 5 change-plan.md 完全一致",
+        )
         require_file(orchestrate_dir / "phase-works/phase-5/atom-plan-mapping.md", reporter, "phase5-interface-artifact", "缺少 Phase 5 atom-plan-mapping.md")
         require_file(orchestrate_dir / "phase-works/phase-5/atom-plan-mapping.json", reporter, "phase5-interface-artifact", "缺少 Phase 5 atom-plan-mapping.json")
         require_file(orchestrate_dir / "phase-works/phase-5/final-packet-index.json", reporter, "phase5-interface-artifact", "缺少 Phase 5 final-packet-index.json")

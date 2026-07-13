@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 import json
+import shutil
 import subprocess
 import sys
 import tempfile
@@ -52,11 +53,68 @@ class SourceAlignedValidatorTest(unittest.TestCase):
     def _source_sha(self) -> str:
         return sha256_file(self.root / "docs/source.md")
 
+    def _phase1_plan(self) -> str:
+        return """# Phase 1 初始计划
+
+## 输入
+
+- 已完整阅读 `docs/source.md`。
+
+## 切分原则
+
+- 从 user/system loop 切分 Change。
+
+## Capability Map
+
+| Capability | Behavior boundary | First change | Later expansion |
+| --- | --- | --- | --- |
+| `cap-a` | 持久行为边界。 | `change-a` | 后续继续增强。 |
+
+## Capability Progression Matrix
+
+| Change | `cap-a` |
+| --- | --- |
+| `change-a` | 建立行为基线。 |
+
+## Change Roadmap
+
+- Change 名称：`change-a`
+- 闭环结果：交付可验证行为。
+- 来源 evidence hint：`docs/source.md`。
+- Capability 变更：
+  - New：`cap-a`
+  - Modified：`None`
+- 范围内：行为基线。
+- 范围外：后续增强。
+- vertical slice：
+  - 入口：API。
+  - 事实：记录。
+  - projection：响应。
+  - 失败：返回错误。
+  - 验证：integration test。
+- 硬依赖：无。
+- 归档就绪性：可以独立实现、验证和归档。
+
+## Phase 1 风险检查
+
+1. Source 完整性：通过。
+2. Closed loop：通过。
+3. Change 粒度：通过。
+4. Capability 持久性：通过。
+5. Relation 一致性：通过。
+6. Foundation 合法性：通过。
+7. Roadmap 顺序：通过。
+8. Phase 1 边界：通过。
+
+## Phase 1 语言自检
+
+解释内容已使用简体中文。
+"""
+
     def _build_valid_fixture(self) -> None:
         source = "\n".join(f"line {i}" for i in range(1, 21)) + "\n"
         self._write("docs/source.md", source)
-        self._write("openspec/orchestrate/change-plan.md", "# Plan\n")
-        self._write("openspec/orchestrate/phase-works/phase-1/change-plan.md", "# Phase 1 Plan\n")
+        self._write("openspec/orchestrate/phase-works/phase-1/initial-change-plan.md", self._phase1_plan())
         self._write(
             "openspec/orchestrate/phase-works/phase-1/source-doc-manifest.md",
             "| Source Document | Read Status | Source Role | Coarse Topics / Paths | Notes |\n"
@@ -104,14 +162,15 @@ class SourceAlignedValidatorTest(unittest.TestCase):
         self._write("openspec/orchestrate/phase-works/phase-3/phase-3-agent-report.md", "ok\n")
         self._write("openspec/orchestrate/phase-works/phase-3/phase-3-trace/duplicate-ownership-review.md", "ok\n")
         self._write("openspec/orchestrate/phase-works/phase-3/phase-3-trace/atom-normalization-decision-log.md", "ok\n")
-        self._write("openspec/orchestrate/phase-works/phase-4/input-change-plan.md", "input\n")
+        self._write("openspec/orchestrate/phase-works/phase-4/input-change-plan.md", self._phase1_plan())
         self._write("openspec/orchestrate/phase-works/phase-4/source-window-dossiers/index.md", "index\n")
         self._write("openspec/orchestrate/phase-works/phase-4/source-window-semantic-profile-review.md", "profile\n")
         self._write("openspec/orchestrate/phase-works/phase-4/source-window-grounding-issues.md", "issues\n")
         self._write("openspec/orchestrate/phase-works/phase-4/phase-4-agent-report.md", "Phase 4 Status: grounded\n")
-        self._write("openspec/orchestrate/phase-works/phase-5/input-change-plan.md", "input\n")
+        self._write("openspec/orchestrate/phase-works/phase-5/input-change-plan.md", self._phase1_plan())
         self._write("openspec/orchestrate/phase-works/phase-5/source-window-refit-trace.md", "trace\n")
-        self._write("openspec/orchestrate/phase-works/phase-5/change-plan.md", "plan\n")
+        self._write("openspec/orchestrate/phase-works/phase-5/change-plan.md", "# Final Plan\n")
+        self._write("openspec/orchestrate/change-plan.md", "# Final Plan\n")
         self._write("openspec/orchestrate/phase-works/phase-5/capability-progression-review.md", "progression\n")
         self._write("openspec/orchestrate/phase-works/phase-5/plan-refit-decision-log.md", "decisions\n")
         self._write("openspec/orchestrate/phase-works/phase-5/alignment-final-report.md", "alignment\n")
@@ -167,11 +226,9 @@ class SourceAlignedValidatorTest(unittest.TestCase):
                         "source-sha256": source_sha,
                     }
                 ],
-                "change-plan": {
-                    "phase-plan-path": "openspec/orchestrate/phase-works/phase-1/change-plan.md",
-                    "root-plan-path": "openspec/orchestrate/change-plan.md",
-                    "phase-plan-sha256": sha256_file(self.orchestrate / "phase-works/phase-1/change-plan.md"),
-                    "root-plan-sha256": sha256_file(self.orchestrate / "change-plan.md"),
+                "initial-change-plan": {
+                    "artifact-path": "openspec/orchestrate/phase-works/phase-1/initial-change-plan.md",
+                    "sha256": sha256_file(self.orchestrate / "phase-works/phase-1/initial-change-plan.md"),
                 },
             },
         )
@@ -670,6 +727,11 @@ class SourceAlignedValidatorTest(unittest.TestCase):
         specs = [
             ("openspec/orchestrate/trace/phase-1.trace.json", PHASE_TRACE_SCHEMAS["phase-1"], "phase-1"),
             ("openspec/orchestrate/trace/phase-2.trace.json", PHASE_TRACE_SCHEMAS["phase-2"], "phase-2"),
+            (
+                "openspec/orchestrate/phase-works/phase-2/source-obligation-atoms/docs--source.atoms.json",
+                SOURCE_ATOMS_SCHEMA,
+                "phase-2",
+            ),
             ("openspec/orchestrate/change-capability-anchors/obligation-atom-index.json", GLOBAL_ATOM_INDEX_SCHEMA, "phase-3"),
             ("openspec/orchestrate/phase-works/phase-3/phase-3-trace/source-to-global-atom-map.json", SOURCE_TO_GLOBAL_MAP_SCHEMA, "phase-3"),
             (
@@ -847,9 +909,72 @@ class SourceAlignedValidatorTest(unittest.TestCase):
             path = self.orchestrate / "trace" / f"{trace}.trace.json"
             if path.exists():
                 path.unlink()
+        (self.orchestrate / "change-plan.md").unlink()
         self._write_manifest()
         result = self._validate_phase("phase-1")
         self.assertTrue(result["ok"], result)
+
+    def test_phase1_legacy_plan_filename_does_not_satisfy_contract(self) -> None:
+        (self.orchestrate / "phase-works/phase-1/initial-change-plan.md").unlink()
+        legacy_plan = "openspec/orchestrate/phase-works/phase-1" + "/change-plan.md"
+        self._write(legacy_plan, self._phase1_plan())
+        result = self._validate_phase("phase-1")
+        self.assertFalse(result["ok"], result)
+        self.assertTrue(any(issue["rule_id"] == "phase1-interface-artifact" for issue in result["issues"]), result)
+
+    def test_phase1_trace_plan_path_must_match_contract(self) -> None:
+        path = self.orchestrate / "trace/phase-1.trace.json"
+        data = json.loads(path.read_text(encoding="utf-8"))
+        data["initial-change-plan"]["artifact-path"] = (
+            "openspec/orchestrate/phase-works/phase-1" + "/change-plan.md"
+        )
+        write_json(path, data)
+        self._write_manifest()
+        self.assert_error("phase1-initial-plan-path")
+
+    def test_phase1_plan_digest_drift_fails(self) -> None:
+        self._write(
+            "openspec/orchestrate/phase-works/phase-1/initial-change-plan.md",
+            self._phase1_plan() + "\n计划已发生变化。\n",
+        )
+        self.assert_error("phase1-initial-plan-sha")
+
+    def test_phase1_manifest_trace_drift_fails(self) -> None:
+        self._write(
+            "openspec/orchestrate/phase-works/phase-1/source-doc-manifest.md",
+            "| Source Document | Read Status | Source Role | Coarse Topics / Paths | Notes |\n"
+            "| --- | --- | --- | --- | --- |\n"
+            "| docs/source.md | read-full | main | changed-topic | note |\n",
+        )
+        self.assert_error("phase1-source-manifest-drift")
+
+    def test_phase1_required_heading_missing_fails(self) -> None:
+        plan_path = self.orchestrate / "phase-works/phase-1/initial-change-plan.md"
+        plan_path.write_text(self._phase1_plan().replace("## 切分原则", "## 其他原则"), encoding="utf-8")
+        trace_path = self.orchestrate / "trace/phase-1.trace.json"
+        trace = json.loads(trace_path.read_text(encoding="utf-8"))
+        trace["initial-change-plan"]["sha256"] = sha256_file(plan_path)
+        write_json(trace_path, trace)
+        self._write_manifest()
+        self.assert_error("phase1-plan-heading")
+
+    def test_phase4_input_plan_must_match_phase1_initial_plan(self) -> None:
+        self._write("openspec/orchestrate/phase-works/phase-4/input-change-plan.md", "stale input\n")
+        self.assert_error("phase4-input-plan-drift")
+
+    def test_phase5_input_plan_must_match_phase4_input_plan(self) -> None:
+        self._write("openspec/orchestrate/phase-works/phase-5/input-change-plan.md", "stale input\n")
+        self.assert_error("phase5-input-plan-drift")
+
+    def test_phase5_final_status_requires_root_plan(self) -> None:
+        (self.orchestrate / "change-plan.md").unlink()
+        result = self._validate_phase("phase-5")
+        self.assertFalse(result["ok"], result)
+        self.assertTrue(any(issue["rule_id"] == "phase5-interface-artifact" for issue in result["issues"]), result)
+
+    def test_phase5_root_plan_must_match_phase5_snapshot(self) -> None:
+        self._write("openspec/orchestrate/change-plan.md", "stale final plan\n")
+        self.assert_error("phase5-root-plan-drift")
 
     def test_manifest_digest_drift_fails(self) -> None:
         path = self.orchestrate / "trace/phase-1.trace.json"
@@ -859,6 +984,13 @@ class SourceAlignedValidatorTest(unittest.TestCase):
         result = self._validate_phase("phase-1")
         self.assertFalse(result["ok"], result)
         self.assertTrue(any(issue["rule_id"] == "manifest-digest" for issue in result["issues"]), result)
+
+    def test_manifest_cannot_omit_existing_canonical_artifacts(self) -> None:
+        path = self.orchestrate / "trace/manifest.json"
+        data = json.loads(path.read_text(encoding="utf-8"))
+        data["artifacts"] = []
+        write_json(path, data)
+        self.assert_error("manifest-artifact-missing")
 
     def test_manifest_present_status_is_rejected(self) -> None:
         path = self.orchestrate / "trace/manifest.json"
@@ -1063,6 +1195,7 @@ class SourceAlignedValidatorTest(unittest.TestCase):
         markdown = (self.orchestrate / "phase-works/phase-2/source-obligation-atoms/docs--source.atoms.md").read_text(encoding="utf-8")
         self.assertIn("中文事实包含 \\| 管道符和 换行。", markdown)
         self.assertIn("Render contract: `source-aligned-render-v2`", markdown)
+        self._write_manifest()
         result = self._validate_phase("phase-2")
         self.assertTrue(result["ok"], result)
 
@@ -1334,18 +1467,50 @@ class SourceAlignedValidatorTest(unittest.TestCase):
         trace["status"] = "blocked"
         write_json(trace_path, trace)
         for rel_path in (
+            "phase-works/phase-5/input-change-plan.md",
+            "phase-works/phase-5/change-plan.md",
             "phase-works/phase-5/atom-plan-mapping.json",
             "phase-works/phase-5/atom-plan-mapping.md",
             "phase-works/phase-5/final-packet-index.json",
+            "phase-works/phase-5/capability-progression-review.md",
+            "phase-works/phase-5/change-complexity-review.md",
+            "phase-works/phase-5/plan-refit-decision-log.md",
+            "phase-works/phase-5/alignment-final-report.md",
+            "phase-works/phase-5/change-capability-human-plan.md",
+            "change-capability-anchors/index.md",
         ):
             path = self.orchestrate / rel_path
             if path.exists():
                 path.unlink()
+        anchors_dir = self.orchestrate / "change-capability-anchors"
+        for child in anchors_dir.iterdir():
+            if child.is_dir():
+                shutil.rmtree(child)
+        (self.orchestrate / "change-plan.md").unlink()
         self._write("openspec/orchestrate/phase-works/phase-5/change-plan-adjustments.md", "blocked\n")
         self._write("openspec/orchestrate/phase-works/phase-5/phase-5-agent-report.md", "Phase 5 Status: blocked\n")
         self._write_manifest()
         result = self._validate_phase("phase-5")
         self.assertTrue(result["ok"], result)
+
+    def test_phase5_nonfinal_status_rejects_terminal_artifacts(self) -> None:
+        trace_path = self.orchestrate / "trace/phase-5.trace.json"
+        trace = json.loads(trace_path.read_text(encoding="utf-8"))
+        trace["status"] = "needs-coverage-recheck"
+        write_json(trace_path, trace)
+        (self.orchestrate / "change-plan.md").unlink()
+        self._write("openspec/orchestrate/phase-works/phase-5/change-plan-adjustments.md", "recheck\n")
+        self._write_manifest()
+        self.assert_error("phase5-nonfinal-terminal-artifact")
+
+    def test_phase5_nonfinal_status_rejects_root_plan(self) -> None:
+        trace_path = self.orchestrate / "trace/phase-5.trace.json"
+        trace = json.loads(trace_path.read_text(encoding="utf-8"))
+        trace["status"] = "blocked"
+        write_json(trace_path, trace)
+        self._write("openspec/orchestrate/phase-works/phase-5/change-plan-adjustments.md", "blocked\n")
+        self._write_manifest()
+        self.assert_error("phase5-nonfinal-root-plan")
 
     def test_phase5_accepted_requires_final_packet_index(self) -> None:
         (self.orchestrate / "phase-works/phase-5/final-packet-index.json").unlink()
@@ -1429,7 +1594,7 @@ class SourceAlignedValidatorTest(unittest.TestCase):
         write_json(
             config_path,
             {
-                "status": "adjusted",
+                "status": "accepted",
                 "changes": [
                     {
                         "slug": "change-a",
@@ -1445,6 +1610,7 @@ class SourceAlignedValidatorTest(unittest.TestCase):
             },
         )
         output_dir = self.root / "out/orchestrate"
+        self._write("out/orchestrate/phase-works/phase-5/input-change-plan.md", "stale input\n")
         proc = subprocess.run(
             [
                 sys.executable,
@@ -1465,6 +1631,14 @@ class SourceAlignedValidatorTest(unittest.TestCase):
             check=False,
         )
         self.assertEqual(proc.returncode, 0, proc.stderr)
+        self.assertEqual(
+            (output_dir / "phase-works/phase-5/input-change-plan.md").read_bytes(),
+            (self.orchestrate / "phase-works/phase-4/input-change-plan.md").read_bytes(),
+        )
+        self.assertEqual(
+            (output_dir / "change-plan.md").read_bytes(),
+            (output_dir / "phase-works/phase-5/change-plan.md").read_bytes(),
+        )
         self.assertTrue((output_dir / "change-capability-anchors/index.md").exists())
         packet_path = output_dir / "change-capability-anchors/change-a/change-a.md"
         self.assertTrue(packet_path.exists())
@@ -1580,6 +1754,10 @@ class SourceAlignedValidatorTest(unittest.TestCase):
             check=False,
         )
         self.assertEqual(proc.returncode, 0, proc.stderr)
+        self.assertEqual(
+            (output_dir / "change-plan.md").read_bytes(),
+            (output_dir / "phase-works/phase-5/change-plan.md").read_bytes(),
+        )
         plan = (output_dir / "phase-works/phase-5/change-plan.md").read_text(encoding="utf-8")
         self.assertIn("## Capability Map", plan)
         self.assertIn("本计划没有业务 Capability delta", plan)

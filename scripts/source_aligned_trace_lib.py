@@ -19,7 +19,7 @@ from typing import Dict, Iterable, List, Optional, Sequence, Tuple
 TRACE_CONTRACT_VERSION = "source-aligned-trace-v2"
 MANIFEST_SCHEMA = "source-aligned-orchestrate-manifest-v1"
 PHASE_TRACE_SCHEMAS = {
-    "phase-1": "source-aligned-phase-1-trace-v1",
+    "phase-1": "source-aligned-phase-1-trace-v2",
     "phase-2": "source-aligned-phase-2-trace-v1",
     "phase-3": "source-aligned-phase-3-trace-v1",
     "phase-4": "source-aligned-phase-4-trace-v1",

@@ -18,7 +18,7 @@ source anchor 和行范围仍可用于导航和 mechanical check，但 semantic 
 
 ## 输入
 
-- `openspec/orchestrate/change-plan.md`
+- `openspec/orchestrate/phase-works/phase-1/initial-change-plan.md`
 - `openspec/orchestrate/phase-works/phase-1/source-doc-manifest.md`
 - `openspec/orchestrate/phase-works/phase-2/source-obligation-atoms/work-queue.md`
 - `openspec/orchestrate/phase-works/phase-2/source-obligation-atoms/index.md`

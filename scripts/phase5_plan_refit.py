@@ -1285,6 +1285,7 @@ def render_phase5_report(
     mapping_path: Path,
     changes: Sequence[ChangeDef],
     by_change: Dict[str, List[FinalAtom]],
+    root_plan_published: bool,
 ) -> str:
     findings = optional_list(config, "report_findings")
     lines = [
@@ -1323,7 +1324,7 @@ def render_phase5_report(
         lines.append(f"- `{change.slug}`: `{len(by_change[change.slug])}` 个 direct atom，budget=`{budget_status(by_change[change.slug])}`。\n")
 
     lines.append("\n## 已写入文件\n\n")
-    for path in [
+    written_paths = [
         "openspec/orchestrate/phase-works/phase-5/input-change-plan.md",
         "openspec/orchestrate/phase-works/phase-5/source-window-refit-trace.md",
         "openspec/orchestrate/phase-works/phase-5/change-plan.md",
@@ -1335,11 +1336,13 @@ def render_phase5_report(
         "openspec/orchestrate/phase-works/phase-5/change-complexity-review.md",
         "openspec/orchestrate/phase-works/phase-5/plan-refit-decision-log.md",
         "openspec/orchestrate/phase-works/phase-5/phase-5-agent-report.md",
-        "openspec/orchestrate/change-plan.md",
         "openspec/orchestrate/change-capability-anchors/index.md",
         "openspec/orchestrate/phase-works/phase-5/change-capability-human-plan.md",
         "openspec/orchestrate/phase-works/phase-5/alignment-final-report.md",
-    ]:
+    ]
+    if root_plan_published:
+        written_paths.append("openspec/orchestrate/change-plan.md")
+    for path in written_paths:
         lines.append(f"- `{path}`\n")
     lines.append("\n## 语言自检\n\n本文解释内容已按 Artifact Language Gate 检查为简体中文。\n")
     return "".join(lines)
@@ -1354,7 +1357,6 @@ def write_outputs(
     changes: Sequence[ChangeDef],
     capabilities: Sequence[CapabilityDef],
     final_atoms: Sequence[FinalAtom],
-    no_root_update: bool,
 ) -> None:
     status = config_status(config)
     require_terminal_status(status)
@@ -1380,15 +1382,14 @@ def write_outputs(
     if output_config.resolve() != config_path.resolve():
         shutil.copyfile(config_path, output_config)
 
-    input_plan = orchestrate_dir / "change-plan.md"
+    input_plan = orchestrate_dir / "phase-works/phase-4/input-change-plan.md"
     output_input_plan = work_dir / "input-change-plan.md"
-    if input_plan.exists() and not output_input_plan.exists():
-        shutil.copyfile(input_plan, output_input_plan)
+    if not input_plan.exists():
+        raise ValueError(f"缺少 Phase 4 input change plan: {input_plan}")
+    shutil.copyfile(input_plan, output_input_plan)
 
     change_plan = render_change_plan(config, executable_plan, capabilities, by_change, cap_changes, rel_work_dir)
     write_text(work_dir / "change-plan.md", change_plan)
-    if not no_root_update:
-        write_text(output_orchestrate_dir / "change-plan.md", change_plan)
 
     write_text(
         work_dir / "capability-progression-review.md",
@@ -1458,7 +1459,14 @@ def write_outputs(
             "reviewer-gate-outcomes": [],
         },
     )
-    report = render_phase5_report(config, status, output_mapping, executable_plan, by_change)
+    report = render_phase5_report(
+        config,
+        status,
+        output_mapping,
+        executable_plan,
+        by_change,
+        root_plan_published=False,
+    )
     write_text(work_dir / "phase-5-agent-report.md", report)
 
 
@@ -1574,7 +1582,11 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--config", type=Path, help="已审阅的 Phase 5 JSON config；默认使用 mapping 同目录的 phase5-refit.config.json。")
     parser.add_argument("--output-orchestrate-dir", type=Path, help="将输出写入该 orchestrate 目录，而不是 --orchestrate-dir。")
     parser.add_argument("--write", action="store_true", help="写入渲染后的 artifact；不指定时只检查输入。")
-    parser.add_argument("--no-root-update", action="store_true", help="不更新输出根目录中的 change-plan.md。")
+    parser.add_argument(
+        "--no-root-update",
+        action="store_true",
+        help="仅用于暂存输出；不更新根 change-plan.md，因此结果不能通过 terminal validator。",
+    )
     parser.add_argument("--validate-rendered", action="store_true", help="依据 atom-plan-mapping JSON 校验 final packet、capability view 和 anchor index。")
     parser.add_argument("--print-config-template", action="store_true", help="输出根据 mapping 推断的 JSON config 模板并退出。")
     return parser
@@ -1626,7 +1638,6 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
             changes=changes,
             capabilities=capabilities,
             final_atoms=final_atoms,
-            no_root_update=args.no_root_update,
         )
 
     if args.validate_rendered:
@@ -1635,6 +1646,20 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
             for error in rendered_errors:
                 print(f"error: {error}", file=sys.stderr)
             return 1
+
+    if args.write and not args.no_root_update:
+        phase5_plan = output_orchestrate_dir / "phase-works/phase-5/change-plan.md"
+        shutil.copyfile(phase5_plan, output_orchestrate_dir / "change-plan.md")
+        executable_plan = planned_changes(changes)
+        report = render_phase5_report(
+            config,
+            config_status(config),
+            output_orchestrate_dir / "phase-works/phase-5/atom-plan-mapping.md",
+            executable_plan,
+            direct_by_change(final_atoms, executable_plan),
+            root_plan_published=True,
+        )
+        write_text(output_orchestrate_dir / "phase-works/phase-5/phase-5-agent-report.md", report)
 
     direct_count = sum(1 for item in final_atoms if is_executable_direct(item))
     changes_by_slug = {change.slug: change for change in changes}

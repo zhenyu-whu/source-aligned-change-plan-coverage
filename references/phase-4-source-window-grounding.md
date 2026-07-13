@@ -10,8 +10,7 @@ Phase 4 必须由 fresh independent subagent 执行。不得重新运行 Phase 2
 
 ## 输入
 
-- `openspec/orchestrate/change-plan.md`
-- `openspec/orchestrate/phase-works/phase-1/change-plan.md`
+- `openspec/orchestrate/phase-works/phase-1/initial-change-plan.md`
 - `openspec/orchestrate/phase-works/phase-3/source-doc-manifest.md`
 - `openspec/orchestrate/phase-works/phase-2/source-obligation-atoms/index.md`
 - `openspec/orchestrate/phase-works/phase-2/source-obligation-atoms/*.atoms.json`，作为 canonical extraction evidence
@@ -37,6 +36,8 @@ Phase 4 必须由 fresh independent subagent 执行。不得重新运行 Phase 2
 - `openspec/orchestrate/phase-works/phase-4/source-window-grounding-issues.md`
 - `openspec/orchestrate/phase-works/phase-4/phase-4-agent-report.md`
 - `openspec/orchestrate/trace/phase-4.trace.json`
+
+开始 grounding 前，将 Phase 1 `initial-change-plan.md` 原样复制为 Phase 4 `input-change-plan.md`。两个文件必须逐字节一致；不得在 Phase 4 input snapshot 中修订初始计划。
 
 以下 scope rule 明确 authority boundary：`phase-works/phase-4/source-window-dossiers/` 是复制得到的 review evidence，不能替代原始 source document、source atom ledger、global atom index 或 Phase 5 final packet。
 

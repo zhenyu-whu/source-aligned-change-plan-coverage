@@ -12,12 +12,13 @@
 - 每个 trace JSON 必须包含 `trace-schema` 和 `trace-contract-version`。
 - Renderer-backed Markdown mirror 可包含中文解释，但必须由 canonical JSON 重新渲染得到，不得手工修补 canonical 字段。
 - render contract version 为 `source-aligned-render-v2`。
-- v2 是单轨契约，不提供旧 Capability owner 字段的兼容读取。canonical artifact 集合中若出现 `source-aligned-source-atoms-v1`、`source-aligned-global-atom-index-v1`、`source-aligned-source-to-global-map-v1`、`source-aligned-atom-plan-mapping-v1`、`source-aligned-final-packet-index-v1` 或 `source-aligned-render-v1`，必须拒绝；不得混用 v1/v2 字段或 schema。
+- v2 是单轨契约，不提供旧 Phase 1 plan trace 或旧 Capability owner 字段的兼容读取。canonical artifact 集合中若出现 `source-aligned-phase-1-trace-v1`、`source-aligned-source-atoms-v1`、`source-aligned-global-atom-index-v1`、`source-aligned-source-to-global-map-v1`、`source-aligned-atom-plan-mapping-v1`、`source-aligned-final-packet-index-v1` 或 `source-aligned-render-v1`，必须拒绝；不得混用 v1/v2 字段或 schema。
 
 ## 必需布局
 
 ```text
 openspec/orchestrate/
+├── change-plan.md                 # Phase 5 accepted/adjusted 后发布
 ├── trace/
 │   ├── manifest.json
 │   ├── phase-1.trace.json
@@ -29,14 +30,22 @@ openspec/orchestrate/
 │   ├── obligation-atom-index.md
 │   └── obligation-atom-index.json
 └── phase-works/
+    ├── phase-1/
+    │   ├── initial-change-plan.md
+    │   ├── source-doc-manifest.md
+    │   └── phase-1-agent-report.md
     ├── phase-2/source-obligation-atoms/<source>.atoms.md
     ├── phase-2/source-obligation-atoms/<source>.atoms.json
     ├── phase-3/phase-3-trace/source-to-global-atom-map.md
     ├── phase-3/phase-3-trace/source-to-global-atom-map.json
     ├── phase-3/phase-3-trace/source-remainder-review.md
     ├── phase-3/phase-3-trace/source-remainder-review.json
-    ├── phase-4/source-window-dossiers/source-window-index.json
+    ├── phase-4/
+    │   ├── input-change-plan.md
+    │   └── source-window-dossiers/source-window-index.json
     └── phase-5/
+        ├── input-change-plan.md       # accepted/adjusted only
+        ├── change-plan.md             # accepted/adjusted only
         ├── source-window-refit-trace.md
         ├── atom-plan-mapping.md      # accepted/adjusted only
         ├── atom-plan-mapping.json    # accepted/adjusted only
@@ -49,7 +58,7 @@ openspec/orchestrate/
 
 Manifest lifecycle 如下：
 
-1. 初始化 orchestration 目录时，创建或刷新 `trace/manifest.json` 作为 skeleton manifest。尚无 trace sidecar 的 Phase 使用 `missing`，并且只包含当前 `trace-path` 确实存在的 artifact 行。
+1. 初始化 orchestration 目录时，创建或刷新 `trace/manifest.json` 作为 skeleton manifest。尚无 trace sidecar 的 Phase 使用 `missing`。每个当前存在的 canonical JSON sidecar 必须恰好对应一个 artifact 行；不得遗漏、重复或列出不存在的 `trace-path`。
 2. 每次运行 `validate_source_aligned_orchestrate.py --phase ...` 前刷新 `trace/manifest.json`，确保列出的每个 artifact 行都保存其 JSON `trace-path` 的当前 sha256。
 3. validator 和 independent reviewer 通过后再次刷新 `trace/manifest.json`，让 `phase-statuses` 记录 trace sidecar 中 canonical Phase `status` 或 `decision`。不得把 reviewer-loop bookkeeping value 用作 Phase decision。
 
@@ -72,7 +81,7 @@ Manifest lifecycle 如下：
 - `phase`
 - `role`
 
-`sha256` 根据 `trace-path` 指向的 JSON trace file 计算。刷新 manifest 时，`artifacts[]` 只能列出 `trace-path` 已存在的行。
+`sha256` 根据 `trace-path` 指向的 JSON trace file 计算。刷新 manifest 时，`artifacts[]` 只能列出 `trace-path` 已存在的行，并必须覆盖当前存在的 Phase trace、Phase 2 source atom JSON、Phase 3 global/map/remainder JSON、Phase 4 source-window index JSON 和 Phase 5 terminal mapping/index JSON。`trace-schema`、`phase` 和 canonical JSON 内的 schema 必须一致。
 
 ## renderer contract
 
@@ -93,7 +102,7 @@ python3 .codex/skills/source-aligned-change-plan-coverage/scripts/render_source_
 
 Phase trace schema：
 
-- `source-aligned-phase-1-trace-v1`
+- `source-aligned-phase-1-trace-v2`
 - `source-aligned-phase-2-trace-v1`
 - `source-aligned-phase-3-trace-v1`
 - `source-aligned-phase-4-trace-v1`
@@ -109,7 +118,7 @@ artifact schema：
 - `source-aligned-atom-plan-mapping-v2`
 - `source-aligned-final-packet-index-v2`
 
-上面列出的五个 v2 artifact schema 是发生字段变化的 schema，必须整体采用 v2。`manifest`、Phase trace、source remainder review、source window index 的 payload 未发生字段变化，因此继续使用各自现有的 `*-v1` schema 名称，但其 `trace-contract-version` 必须是 `source-aligned-trace-v2`；这不属于禁止的 v1/v2 capability-field 混用。
+Phase 1 trace 和上面列出的五个 v2 artifact schema 都发生了字段变化，必须整体采用 v2。Phase 2–5 trace、`manifest`、source remainder review 和 source window index 的 payload 未发生字段变化，因此继续使用各自现有的 `*-v1` schema 名称，但其 `trace-contract-version` 必须是 `source-aligned-trace-v2`；这不属于禁止的 v1/v2 capability-field 混用。
 
 ## 必需数据模型
 
@@ -117,7 +126,9 @@ Phase 1 trace：
 
 - `status`：必须为 `initial-plan-written`
 - `source-documents[]`: `source-document`, `read-status`, `source-role`, `coarse-topics-paths`, `notes`, `line-count`, `source-sha256`
-- `change-plan`: `phase-plan-path`, `root-plan-path`, `root-plan-sha256`, `phase-plan-sha256`
+- `initial-change-plan`: `artifact-path`, `sha256`
+- `initial-change-plan.artifact-path` 必须为 `openspec/orchestrate/phase-works/phase-1/initial-change-plan.md`。
+- Phase 1 trace 不得包含 `change-plan`、`phase-plan-path`、`phase-plan-sha256`、`root-plan-path` 或 `root-plan-sha256` 等旧字段。
 
 Phase 2 trace：
 
@@ -163,6 +174,8 @@ Phase 5：
 - `atom-plan-mapping.json`：`accepted` 或 `adjusted` 时必需；每个 global atom 一行，包含 final owner type/Change/projection/relation、`final-capability-impact`、`final-target-capability`、`related-capabilities[]`、decision 和 reason。executable direct 行使用 `final-owner-type: executable-change` 和恰好一个 `final-owner-change`；不得输出 `final-owner-capability` 或 `capability-advancement`。
 - `final-packet-index.json`：`accepted` 或 `adjusted` 时必需；每个 executable planned Change 包含 direct atom ID、owner-scoped non-direct atom ID、从显式 mapping impact/target pair 派生的 Capability view path、packet path、packet digest 和 `change-kind`。`change-kind` 必须为 `foundation` 或 `business`；最多允许一个 foundation packet，且必须是第一个 packet。zero-business-Capability plan 不生成 business Capability view path；Phase 5 refit config 可以使用 `capabilities: []`。
 - `phase-5.trace.json`：包含 final status、atom-plan mapping path、final packet index path、complexity summary、Capability progression summary 和 reviewer/validator gate outcome
+- `accepted` 或 `adjusted` 时，`phase-works/phase-5/change-plan.md` 与根 `change-plan.md` 必须逐字节一致；`phase-works/phase-5/input-change-plan.md` 必须与 Phase 4 input snapshot 逐字节一致。
+- `needs-coverage-recheck` 或 `blocked` 时不得发布根 `change-plan.md`。
 
 Phase 5 Capability field 规则：
 

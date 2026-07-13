@@ -77,13 +77,13 @@ description: 当用户明确要求从指定 source document 出发，在 openspe
 
 1. 读取现有 manifest、Phase trace、artifact digest、validator result 和 reviewer evidence，从 Phase 1 起寻找第一个未完成或失效的 Phase。
 2. Phase 只有同时满足以下条件才可跳过：canonical trace status/decision 正确；manifest status 与 trace 一致且 digest 当前有效；Phase validator 通过；存在由不同身份完成且明确 pass 的 independent reviewer report；所有 finding 已 repair 或记录 accepted non-blocking warning。
-3. 仅存在根 `change-plan.md` 不代表 Phase 1 完成。若缺少有效 Phase 1 evidence，运行 fresh Phase 1，并把用户提供的现有计划作为 candidate input。
+3. Phase 1 只发布 `phase-works/phase-1/initial-change-plan.md`；根 `change-plan.md` 仅由 Phase 5 在 `accepted` 或 `adjusted` 后发布。仅存在根计划、旧文件名的 Phase 1 snapshot 或 v1 Phase 1 trace 均不代表 Phase 1 完成。若缺少有效 Phase 1 evidence，运行 fresh Phase 1，并把用户提供的现有计划作为 candidate input。
 4. 缺少有效 writer output 或 Phase trace 时运行 fresh Phase writer；已有完整 writer output 但存在 validator/reviewer finding 时进入 repair loop。最早失效 Phase 之后的 output 均视为 stale，不得用于跳过后续 Phase。
 5. source document 集合或 digest 变化使 Phase 1 及其下游失效；Phase 2 frozen evidence 仅在其 source digest、canonical owner 或必需 output 本身失效时重建。
 
 ## 完成与 handoff
 
-- Phase 5 为 `accepted` 或 `adjusted` 后，按 trace contract 执行 all-phase complete validation，再运行 fresh independent final integration reviewer。
+- Phase 5 为 `accepted` 或 `adjusted` 后，必须让 `phase-works/phase-5/change-plan.md` 与根 `change-plan.md` 完全一致，再按 trace contract 执行 all-phase complete validation，并运行 fresh independent final integration reviewer。
 - final integration reviewer 必须核对 global atom index、source-window index、atom-plan mapping、final Change packet、Capability view、根 `change-plan.md` 和 human plan 的一致性。
 - 只有 complete validator 和 final integration reviewer 都通过，且 final Change packet 已存在时，才允许从 packet 启动 `openspec-propose`。
 - 任一 Phase 返回 `blocked` 时停止工作流，报告 blocker、已验证 evidence 和恢复所需的最小用户决定；main agent 不得越权补做 Phase 内容。

@@ -8,7 +8,7 @@ Phase 2 生成不可变 raw extraction evidence 和独立的 Phase 2 aggregate i
 
 ## 输入
 
-- `openspec/orchestrate/change-plan.md`
+- `openspec/orchestrate/phase-works/phase-1/initial-change-plan.md`
 - `openspec/orchestrate/phase-works/phase-1/source-doc-manifest.md`
 - 用户指定的 source document 根目录或精确 source path，仅用于解析 manifest path 和行引用。
 
@@ -36,7 +36,7 @@ Phase 2 output responsibility 分为 orchestration、source extraction 和 aggre
 - main orchestrating agent 可以在 Phase 2A 编写 `phase-works/phase-2/source-obligation-atoms/work-queue.md`，因为这是轻量 scheduling，而不是 source obligation extraction。
 - source-extraction subagent 只能写入分配给自己的 canonical `phase-works/phase-2/source-obligation-atoms/<source>.atoms.json` sidecar。随后 main orchestrating agent 或 writer 运行 `scripts/render_source_aligned_orchestrate.py --artifact phase2-source-atoms --write`，生成匹配的 `.atoms.md` mirror。
 - 所有 extraction subagent 完成后，启动 fresh independent Phase 2 index/report subagent。该 subagent 只能写入 `phase-works/phase-2/source-obligation-atoms/index.md`、`phase-works/phase-2/phase-2-agent-report.md` 和 `trace/phase-2.trace.json`。
-- Phase 2 index/report subagent 可以读取 `change-plan.md`、`phase-works/phase-1/source-doc-manifest.md`、`phase-works/phase-2/source-obligation-atoms/work-queue.md` 和所有生成的 `phase-works/phase-2/source-obligation-atoms/*.atoms.json` file。它可以检查 rendered `.atoms.md` mirror 是否便于 reviewer 阅读，但 count、status distribution、required section、line-range format 和 missing output 必须从 JSON 推导。
+- Phase 2 index/report subagent 可以读取 `phase-works/phase-1/initial-change-plan.md`、`phase-works/phase-1/source-doc-manifest.md`、`phase-works/phase-2/source-obligation-atoms/work-queue.md` 和所有生成的 `phase-works/phase-2/source-obligation-atoms/*.atoms.json` file。它可以检查 rendered `.atoms.md` mirror 是否便于 reviewer 阅读，但 count、status distribution、required section、line-range format 和 missing output 必须从 JSON 推导。
 - Phase 2 index/report subagent 不得提取新 atom、编辑 source atom file、重新读取 source 正文以创建新 evidence、执行 global duplicate resolution、决定 final atom ownership、闭合 semantic coverage，也不得读取 Phase 3/Phase 4/Phase 5 output。
 - 如果 aggregation pass 发现缺失、格式错误或不完整的 extraction output，必须在 `phase-works/phase-2/phase-2-agent-report.md` 中记录 blocker，并继续把 aggregate 严格限制在 Phase 2 scope。
 `phase-works/phase-2/source-obligation-atoms/index.md` 和 `phase-works/phase-2/phase-2-agent-report.md` 仅作为 Phase 2 summary/review aid，不得成为规范化 global atom index 或 final plan ownership map。
@@ -124,7 +124,7 @@ candidate Capability field 使用以下 v2 contract：
 
 启动 extraction subagent 前，创建 `phase-works/phase-2/source-obligation-atoms/work-queue.md`。
 
-这是轻量 scheduling step。可以读取 `change-plan.md`、`phase-works/phase-1/source-doc-manifest.md`、source path、document name、source role、directory grouping、file size 和 line count。不得提取 obligation atom、决定 coverage、分类 source obligation，也不得使用 filename/path heuristic 证明某 document 不含 production obligation。
+这是轻量 scheduling step。可以读取 `phase-works/phase-1/initial-change-plan.md`、`phase-works/phase-1/source-doc-manifest.md`、source path、document name、source role、directory grouping、file size 和 line count。不得提取 obligation atom、决定 coverage、分类 source obligation，也不得使用 filename/path heuristic 证明某 document 不含 production obligation。
 
 使用此 step 保持 context quality 并提高 parallelism：
 
@@ -156,7 +156,7 @@ candidate Capability field 使用以下 v2 contract：
 
 Phase 2 必须能够作为一组 source document extraction 接受 review。
 
-1. 阅读 `change-plan.md`，了解 candidate Change、Capability、sequencing assumption 和当前 planned boundary。
+1. 阅读 `phase-works/phase-1/initial-change-plan.md`，了解 candidate Change、Capability、sequencing assumption 和当前 planned boundary。
 2. 阅读 `phase-works/phase-1/source-doc-manifest.md`，列出每份 `Read Status: read-full` source document。
 3. 使用 Phase 2A scheduling rule 建立 `phase-works/phase-2/source-obligation-atoms/work-queue.md`。
 4. 每个 work queue batch 启动一个 fresh source-extraction subagent。
