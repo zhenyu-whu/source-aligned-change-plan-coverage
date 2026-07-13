@@ -49,6 +49,8 @@ openspec/orchestrate/
         ├── source-window-refit-trace.md
         ├── atom-plan-mapping.md      # accepted/adjusted only
         ├── atom-plan-mapping.json    # accepted/adjusted only
+        ├── capability-baseline-reconciliation.md # accepted/adjusted only
+        ├── capability-baseline-reconciliation.json # accepted/adjusted only
         └── final-packet-index.json   # accepted/adjusted only
 ```
 
@@ -148,7 +150,7 @@ Phase 2 source atom sidecar：
 Phase 2 Capability field 规则：
 
 - `candidate-capability-impact`: `new | modified | none | unresolved`。
-- `new | modified` 仅允许 `spec-requirement | spec-guard`，且 `candidate-target-capability` 必须是具体 capability（`candidate-new-capability` 仅允许与 `new` 配对）。
+- `new | modified` 仅允许 `spec-requirement | spec-guard`，且 `candidate-target-capability` 必须是具体 capability（`candidate-new-capability` 仅允许与 `new` 配对）。Phase 2 没有可信 repository baseline evidence 时，direct spec candidate 必须使用带 rationale 的 `unresolved`，不得从 Phase 1 roadmap role 猜测 impact。
 - `none` 必须与 `candidate-target-capability: none` 配对；普通 `design-obligation | verification-obligation` direct row 必须使用该组合。
 - `unresolved` 可带具体 target 或 `unresolved`，但 `rationale` 必须非空。
 - `candidate-related-capabilities` 必须是去重的已声明 capability id 数组，默认 `[]`，不得包含 target，也不得替代 target；关联必须由 source window 明示。
@@ -162,7 +164,7 @@ Phase 3：
   - 每个 `rows[]` 行包含 `source-document`、`lines`、`line-ranges[]`、`how-found`、`read-scope`、`semantic-classification`、`production-obligation`、`linked-global-atom-ids[]`、`non-coverage-status`、`blocker` 和 `reason`
 - `phase-3.trace.json`：包含 source classification、review path、normalization decision、remainder review path 和 decision value
 
-Phase 3 Capability field 规则与 Phase 2 对应，但使用规范化名称：`capability-impact`、`target-capability` 和 `related-capabilities[]`。direct spec 行使用 `new | modified` 或具有 rationale 的 `unresolved`；普通 direct design/verification 行和 non-direct 行使用 `none` / `none`。`related-capabilities[]` 不具有 ownership，也不代表 progression。
+Phase 3 Capability field 规则与 Phase 2 对应，但使用规范化名称：`capability-impact`、`target-capability` 和 `related-capabilities[]`。direct spec 行只有在具备可信 repository baseline evidence 时使用 `new | modified`，否则使用具有 rationale 的 `unresolved`；普通 direct design/verification 行和 non-direct 行使用 `none` / `none`。`related-capabilities[]` 不具有 ownership，也不代表 progression。
 
 Phase 4：
 
@@ -173,7 +175,8 @@ Phase 5：
 
 - `atom-plan-mapping.json`：`accepted` 或 `adjusted` 时必需；每个 global atom 一行，包含 final owner type/Change/projection/relation、`final-capability-impact`、`final-target-capability`、`related-capabilities[]`、decision 和 reason。executable direct 行使用 `final-owner-type: executable-change` 和恰好一个 `final-owner-change`；不得输出 `final-owner-capability` 或 `capability-advancement`。
 - `final-packet-index.json`：`accepted` 或 `adjusted` 时必需；每个 executable planned Change 包含 direct atom ID、owner-scoped non-direct atom ID、从显式 mapping impact/target pair 派生的 Capability view path、packet path、packet digest 和 `change-kind`。`change-kind` 必须为 `foundation` 或 `business`；最多允许一个 foundation packet，且必须是第一个 packet。zero-business-Capability plan 不生成 business Capability view path；Phase 5 refit config 可以使用 `capabilities: []`。
-- `phase-5.trace.json`：包含 final status、atom-plan mapping path、final packet index path、complexity summary、Capability progression summary 和 reviewer/validator gate outcome
+- `capability-baseline-reconciliation.json`：schema 为 `source-aligned-capability-baseline-v1`，是 baseline reconciliation 的 canonical authority；包含 `repository-specs-root` 和 `capabilities[]`。每个被 final business spec atom 直接推进的 Capability 恰好一行，记录 `capability`、`baseline-status: existing | absent`、`spec-path`、`spec-sha256`、`baseline-evidence`、`first-planned-advancement`、`required-first-relation` 和 `later-relation-rule`。匹配 Markdown 必须由 JSON 渲染；该 sidecar 只拥有 repository identity/existence evidence，不是 production obligation authority。
+- `phase-5.trace.json`：包含 final status、atom-plan mapping path、final packet index path、`capability-baseline-reconciliation-path`、`capability-baseline-reconciliation-sha256`、complexity summary、Capability progression summary 和 reviewer/validator gate outcome
 - `accepted` 或 `adjusted` 时，`phase-works/phase-5/change-plan.md` 与根 `change-plan.md` 必须逐字节一致；`phase-works/phase-5/input-change-plan.md` 必须与 Phase 4 input snapshot 逐字节一致。
 - `needs-coverage-recheck` 或 `blocked` 时不得发布根 `change-plan.md`。
 
@@ -182,7 +185,7 @@ Phase 5 Capability field 规则：
 - `final-capability-impact`: `new | modified | none | foundation-substrate`；`accepted | adjusted` 中禁止 `unresolved`。
 - `new | modified` 仅允许 direct `spec-requirement | spec-guard`，并要求具体 `final-target-capability`；`none` 要求 target `none`，普通 direct `design-obligation | verification-obligation` 必须使用 `none` / `none`。
 - Foundation 是唯一例外：direct foundation row 使用 `final-capability-impact: foundation-substrate`、`final-target-capability: runtime-substrate-foundation`，生成专用 view 但不计入 business progression；其 related 数组仍遵循通用非 owning 规则。
-- 同一 `(final-owner-change, final-target-capability)` 的 spec rows impact 必须一致；roadmap 首次出现某 target 必须显式为 `new`，后续必须显式为 `modified`。Renderer 只验证并呈现，不得从顺序猜测。
+- 同一 `(final-owner-change, final-target-capability)` 的 spec rows impact 必须一致。`existing` baseline 的 relation sequence 必须为 `modified+`；`absent` baseline 必须为 `new, modified*`，且后续 `modified` 依赖前序 Change 先 sync/archive。同一 target 最多一个 `new`，若存在必须是首次 advancement。Renderer 只验证并呈现，不得从顺序猜测。
 - `related-capabilities[]` 必须是唯一的合法 kebab-case capability id、指向已声明的 Capability、source-explicit、与 target 不相同；不得产生 ownership、progression、capability view 或 advanced-capability complexity count。Validator 只检查数组结构、唯一性、ID 格式和不等于 target；独立 reviewer 审核 Capability 是否已声明以及 source-explicit 语义。
 
 ## validator 命令

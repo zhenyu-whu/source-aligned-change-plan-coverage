@@ -11,6 +11,7 @@ from typing import Dict, Iterable, List, Optional, Sequence
 
 from source_aligned_trace_lib import (
     ATOM_PLAN_MAPPING_SCHEMA,
+    CAPABILITY_BASELINE_SCHEMA,
     GLOBAL_ATOM_INDEX_SCHEMA,
     SOURCE_ATOMS_SCHEMA,
     SOURCE_REMAINDER_REVIEW_SCHEMA,
@@ -29,6 +30,7 @@ SUPPORTED_ARTIFACTS = {
     "phase3-source-map",
     "phase3-remainder-review",
     "phase5-atom-plan-mapping",
+    "phase5-capability-baseline",
     "all-supported",
 }
 
@@ -540,6 +542,49 @@ def render_atom_plan_mapping(orchestrate_dir: Path, json_path: Path) -> str:
     return "\n".join(body).rstrip() + "\n" + trace_appendix(json_path, ATOM_PLAN_MAPPING_SCHEMA, repo_root)
 
 
+def render_capability_baseline(orchestrate_dir: Path, json_path: Path) -> str:
+    data = read_json(json_path)
+    repo_root = repo_root_for(orchestrate_dir)
+    if data.get("trace-schema") != CAPABILITY_BASELINE_SCHEMA:
+        raise ValueError(f"{json_path} trace-schema 必须是 {CAPABILITY_BASELINE_SCHEMA}")
+    rows = data.get("capabilities")
+    if not isinstance(rows, list):
+        raise ValueError(f"{json_path} capabilities 必须是 array")
+    body = [
+        "# Capability repository baseline reconciliation",
+        "",
+        "该表只提供 repository spec identity/existence evidence；production obligation authority 仍是用户指定的 source document。",
+        "",
+        render_table(
+            [
+                "Capability",
+                "Repository Baseline",
+                "Spec Path",
+                "Spec SHA256",
+                "Baseline Evidence",
+                "First Planned Advancement",
+                "Required First Relation",
+                "Later Relation Rule",
+            ],
+            (
+                [
+                    code(row.get("capability")),
+                    code(row.get("baseline-status")),
+                    code(row.get("spec-path")),
+                    code(row.get("spec-sha256")),
+                    md(row.get("baseline-evidence")),
+                    code(row.get("first-planned-advancement")),
+                    code(row.get("required-first-relation")),
+                    code(row.get("later-relation-rule")),
+                ]
+                for row in rows
+                if isinstance(row, dict)
+            ),
+        ).rstrip(),
+    ]
+    return "\n".join(body).rstrip() + "\n" + trace_appendix(json_path, CAPABILITY_BASELINE_SCHEMA, repo_root)
+
+
 def render_jobs(orchestrate_dir: Path, artifact: str, source_document: str = "") -> List[Dict[str, object]]:
     jobs: List[Dict[str, object]] = []
     atom_root = orchestrate_dir / "phase-works/phase-2/source-obligation-atoms"
@@ -566,6 +611,10 @@ def render_jobs(orchestrate_dir: Path, artifact: str, source_document: str = "")
         path = orchestrate_dir / "phase-works/phase-5/atom-plan-mapping.json"
         if path.exists():
             jobs.append({"json-path": path, "md-path": path.with_suffix(".md"), "renderer": render_atom_plan_mapping})
+    if artifact in {"phase5-capability-baseline", "all-supported"}:
+        path = orchestrate_dir / "phase-works/phase-5/capability-baseline-reconciliation.json"
+        if path.exists():
+            jobs.append({"json-path": path, "md-path": path.with_suffix(".md"), "renderer": render_capability_baseline})
     return jobs
 
 
@@ -590,7 +639,7 @@ def render_orchestrate(orchestrate_dir: Path, artifact: str, source_document: st
             drift = False
         row_count = 0
         data = read_json(json_path)
-        for key in ("source-atoms", "global-atoms", "rows"):
+        for key in ("source-atoms", "global-atoms", "rows", "capabilities"):
             if isinstance(data.get(key), list):
                 row_count = len(data[key])
                 break

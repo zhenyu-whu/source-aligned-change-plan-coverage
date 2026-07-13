@@ -114,7 +114,7 @@ candidate Capability field 使用以下 v2 contract：
 
 规则：
 
-- direct `spec-requirement` 或 `spec-guard` 行使用具有具体 target 的 `new` / `modified`；Phase 2 无法安全决定时，使用具有非空 rationale 的 `unresolved`。`candidate-new-capability` 只允许与 impact `new` 及上述 spec projection 之一配对。
+- direct `spec-requirement` 或 `spec-guard` 行必须尽量识别具体 target。由于 Phase 2 不读取 repository spec baseline，impact 默认使用具有非空 rationale 的 `unresolved`；只有用户纳入 source authority 的材料明确提供可信 baseline identity/existence evidence 时，才可暂记 `new` / `modified`，且仍只是 candidate metadata。`candidate-new-capability` 只允许与 impact `new` 及上述 spec projection 之一配对。
 - direct `design-obligation` 或 `verification-obligation` 行始终使用 impact `none` 和 target `none`。它仍是 direct 且由 Change candidate-own；不得仅因没有 target Capability 而将其降级为 contextual。
 - non-direct/contextual 行使用 impact `none` 和 target `none`。
 - impact `none` 要求 target `none`。impact `unresolved` 允许已知 target 或 `unresolved`，要求 rationale，并且必须在 Phase 3 规范化或阻塞。
@@ -303,7 +303,7 @@ Phase 2 结束前：
 - 确认每个 source atom file 都声明 source document 已完整阅读。
 - 确认每个 source atom file 都包含 source section inventory、obligation atom candidate ledger、source anchor table、ownership ambiguity note、candidate missing plan boundary 和 blocker。
 - 确认每个 source atom ledger 行都有非空 `Candidate Artifact Projection`，且没有 direct candidate 仅因 direct 就被假定为 `spec-requirement`。
-- 确认每行都有 v2 candidate Capability field；`new` / `modified` 只出现在具有 target 的 `spec-requirement` / `spec-guard` 行，`none` 只与 target `none` 配对，`unresolved` 具有 rationale。
+- 确认每行都有 v2 candidate Capability field；`new` / `modified` 只出现在具有 target 且具备可信 baseline evidence 的 `spec-requirement` / `spec-guard` 行，`none` 只与 target `none` 配对，缺少 baseline evidence 的 direct spec 行使用具有 rationale 的 `unresolved`。
 - 确认每个 direct `design-obligation` / `verification-obligation` 行保持 direct，并使用 `Candidate Capability Impact: none` 和 `Candidate Target Capability: none`。
 - 确认 `Candidate Related Capabilities` 是唯一的 source-explicit array，排除 target，默认为空，并且绝不替代 target 或计入 candidate advancement。
 - 确认 `candidate-new-capability` 只出现在 impact 为 `new` 的 `spec-requirement` / `spec-guard` 行。

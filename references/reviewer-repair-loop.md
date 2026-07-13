@@ -66,8 +66,9 @@ complete validator 或 final integration reviewer 未通过时不得 handoff；�
 
 Phase 1 reviewer 检查项：
 
-- 检查 vertical loop、foundation exception、capability shape、anti one-to-one roadmap。
-- 检查 Phase 1 没有提前创建 atom、coverage status、line-range anchor 或 Phase 2 work queue。
+- 检查 Capability-first 顺序、Capability Purpose/Owns/Excludes 与 implementation-substitution、Change one-intent/cohesion/independent archive/indivisibility/acceptance、foundation exception 和 Change–Capability overlay。
+- 执行 Hide Capability Names、Hide Roadmap 和 post-mapping diagnostic；不得把 diagonal matrix 本身当作失败，也不得为改善形状扭曲真实 boundary。
+- 检查 Phase 1 没有提前创建 obligation、atom、coverage status、line-range anchor、unique owner、OpenSpec `New`/`Modified` 或 Phase 2 work queue。
 
 Phase 2 reviewer 检查项：
 
@@ -86,14 +87,14 @@ Phase 4 reviewer 检查项：
 
 Phase 5 reviewer 检查项：
 
-- 检查 final ownership、non-direct 承载、capability progression、complexity gate。
+- 检查 final ownership、non-direct 承载、Capability Purpose/Owns/Excludes、repository baseline reconciliation、capability progression、Change intent/cohesion/indivisibility 和 complexity gate。
 - 检查 final packet 是否显式列出 owner-scoped non-direct atom。
 - 检查 capability view 只包含 direct advancement rows。
 
 final integration reviewer 检查项：
 
 - 对 Phase 3/4/5 做跨 artifact reconciliation。
-- 检查 global atom index、source-window index、atom-plan mapping、final packets、capability views、root `change-plan.md` 和 human plan 是否一致。
+- 检查 global atom index、source-window index、atom-plan mapping、Capability baseline reconciliation、final packets、capability views、root `change-plan.md` 和 human plan 是否一致。
 
 ## repair 规则
 

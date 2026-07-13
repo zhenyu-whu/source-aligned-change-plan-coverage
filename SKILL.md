@@ -5,7 +5,9 @@ description: 当用户明确要求从指定 source document 出发，在 openspe
 
 # source-aligned-change-plan-coverage：五阶段编排协议
 
-将完整 source document 转换为规范化 global obligation atom index，再从稳定 atom 和原始 source-window semantics 推导可供 `openspec-propose` 消费的 final Change packet。本文件只定义 main agent 的编排协议；每个 Phase 的具体任务、artifact 和完成条件由对应 reference 定义。
+先从完整 source document 建立 Capability-first 的初始 Change/Capability framework，再由后续 Phase 提取并规范化 global obligation atom，最终结合原始 source-window semantics 推导可供 `openspec-propose` 消费的 final Change packet。本文件只定义 main agent 的编排协议；每个 Phase 的具体任务、artifact 和完成条件由对应 reference 定义。
+
+本工作流遵循 `Capability-first、Outcome-sliced、Obligation-later`：Phase 1 只建立 coarse semantic landscape、candidate Capability topology 和 outcome-based Change roadmap，不执行 obligation atom extraction、line-level coverage 或 final `New`/`Modified` 判定；Phase 2–5 才完成 obligation extraction、coverage closure、source-window grounding、baseline reconciliation 与 final plan refit。
 
 ## 输入与执行授权
 
@@ -47,7 +49,7 @@ description: 当用户明确要求从指定 source document 出发，在 openspe
 
 | Phase | 内容责任 | Canonical terminal status | 下一步 |
 | --- | --- | --- | --- |
-| Phase 1 | 完整阅读 source，形成初始 Change/Capability slicing hypothesis | `initial-plan-written` | Phase 2 |
+| Phase 1 | 完整阅读 source，先形成 candidate Capability topology，再形成 outcome-sliced Change roadmap；不提取 obligation | `initial-plan-written` | Phase 2 |
 | Phase 2 | source-first atom extraction 与独立 aggregation | `source-atoms-written` | Phase 3 |
 | Phase 3 | global atom normalization、coverage closure 和 gap audit | `coverage-complete` | Phase 4 |
 | Phase 3 | 无法稳定 coverage/identity/boundary | `blocked` | 停止并报告 |
@@ -84,6 +86,6 @@ description: 当用户明确要求从指定 source document 出发，在 openspe
 ## 完成与 handoff
 
 - Phase 5 为 `accepted` 或 `adjusted` 后，必须让 `phase-works/phase-5/change-plan.md` 与根 `change-plan.md` 完全一致，再按 trace contract 执行 all-phase complete validation，并运行 fresh independent final integration reviewer。
-- final integration reviewer 必须核对 global atom index、source-window index、atom-plan mapping、final Change packet、Capability view、根 `change-plan.md` 和 human plan 的一致性。
+- final integration reviewer 必须核对 global atom index、source-window index、atom-plan mapping、Capability baseline reconciliation、final Change packet、Capability view、根 `change-plan.md` 和 human plan 的一致性。
 - 只有 complete validator 和 final integration reviewer 都通过，且 final Change packet 已存在时，才允许从 packet 启动 `openspec-propose`。
 - 任一 Phase 返回 `blocked` 时停止工作流，报告 blocker、已验证 evidence 和恢复所需的最小用户决定；main agent 不得越权补做 Phase 内容。

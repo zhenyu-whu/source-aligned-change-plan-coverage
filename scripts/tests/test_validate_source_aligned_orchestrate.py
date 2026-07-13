@@ -16,6 +16,7 @@ sys.path.insert(0, str(SCRIPT_DIR))
 
 from source_aligned_trace_lib import (  # noqa: E402
     ATOM_PLAN_MAPPING_SCHEMA,
+    CAPABILITY_BASELINE_SCHEMA,
     FINAL_PACKET_INDEX_SCHEMA,
     GLOBAL_ATOM_INDEX_SCHEMA,
     MANIFEST_SCHEMA,
@@ -60,51 +61,61 @@ class SourceAlignedValidatorTest(unittest.TestCase):
 
 - 已完整阅读 `docs/source.md`。
 
-## 切分原则
+## Source Semantic Landscape
 
-- 从 user/system loop 切分 Change。
+| Semantic Area | Coarse Source-backed Understanding | Planning Relevance | Source Hint |
+| --- | --- | --- | --- |
+| 核心行为 | 用户请求产生可验证结果。 | 支撑能力边界和 Change outcome。 | `docs/source.md` |
 
 ## Capability Map
 
-| Capability | Behavior boundary | First change | Later expansion |
-| --- | --- | --- | --- |
-| `cap-a` | 持久行为边界。 | `change-a` | 后续继续增强。 |
+| Candidate Capability | Grouping Basis | Purpose | Owns | Excludes | Coarse Source Hint | Boundary Rationale |
+| --- | --- | --- | --- | --- | --- | --- |
+| `cap-a` | feature area | 规定持久行为。 | 拥有结果行为。 | 不拥有实现细节。 | `docs/source.md` | 实现替换后仍成立。 |
 
-## Capability Progression Matrix
+## Change 切分原则
 
-| Change | `cap-a` |
-| --- | --- |
-| `change-a` | 建立行为基线。 |
+- 按 source-backed outcome 切分；Capability 先形成，但不决定 Change 边界。
+- Phase 1 未执行 obligation extraction，所有 boundary 均为 hypothesis。
 
 ## Change Roadmap
 
 - Change 名称：`change-a`
-- 闭环结果：交付可验证行为。
+- 单一 intent：让用户获得可验证结果。
+- source-backed outcome：交付可观察且可验证的行为。
 - 来源 evidence hint：`docs/source.md`。
-- Capability 变更：
-  - New：`cap-a`
-  - Modified：`None`
 - 范围内：行为基线。
 - 范围外：后续增强。
-- vertical slice：
-  - 入口：API。
-  - 事实：记录。
-  - projection：响应。
-  - 失败：返回错误。
-  - 验证：integration test。
+- behavior completeness profile：
+  - trigger/context：API 请求。
+  - normative behavior：系统处理请求。
+  - observable outcome / invariant：返回可验证结果。
+  - important exception / error semantics：未由 source 指定。
+  - acceptance evidence：integration test。
 - 硬依赖：无。
-- 归档就绪性：可以独立实现、验证和归档。
+- 排序理由：无硬依赖，是最薄可验收 outcome。
+- 独立完成与归档：可以独立批准、实现、验收和归档。
+- 拆分/合并判断：再拆分会产生无意义半状态。
+
+## Change-Capability Overlay
+
+| Change | Candidate Capability | Roadmap Role | Direct Behavior Delta Hypothesis | Coarse Source Hint |
+| --- | --- | --- | --- | --- |
+| `change-a` | `cap-a` | `first-advancement` | 建立 source-backed 行为。 | `docs/source.md` |
 
 ## Phase 1 风险检查
 
 1. Source 完整性：通过。
-2. Closed loop：通过。
-3. Change 粒度：通过。
-4. Capability 持久性：通过。
-5. Relation 一致性：通过。
-6. Foundation 合法性：通过。
+2. Phase 边界：通过。
+3. Capability 稳定性：通过。
+4. Change 粒度：通过。
+5. Behavior 完整性：通过。
+6. Overlay 合法性：通过。
 7. Roadmap 顺序：通过。
-8. Phase 1 边界：通过。
+8. Foundation 合法性：通过。
+9. Hide Capability Names：通过。
+10. Hide Roadmap：通过。
+11. Post-mapping audit：通过。
 
 ## Phase 1 语言自检
 
@@ -706,6 +717,27 @@ class SourceAlignedValidatorTest(unittest.TestCase):
                 ],
             },
         )
+        baseline_path = self.orchestrate / "phase-works/phase-5/capability-baseline-reconciliation.json"
+        write_json(
+            baseline_path,
+            {
+                "trace-schema": CAPABILITY_BASELINE_SCHEMA,
+                "trace-contract-version": TRACE_CONTRACT_VERSION,
+                "repository-specs-root": "openspec/specs",
+                "capabilities": [
+                    {
+                        "capability": "cap-a",
+                        "baseline-status": "absent",
+                        "spec-path": "openspec/specs/cap-a/spec.md",
+                        "spec-sha256": None,
+                        "baseline-evidence": "已只读检查精确 spec 路径，当前不存在。",
+                        "first-planned-advancement": "change-a",
+                        "required-first-relation": "new",
+                        "later-relation-rule": "modified",
+                    }
+                ],
+            },
+        )
         write_json(
             self.orchestrate / "trace/phase-5.trace.json",
             {
@@ -714,6 +746,8 @@ class SourceAlignedValidatorTest(unittest.TestCase):
                 "status": "adjusted",
                 "atom-plan-mapping-path": "openspec/orchestrate/phase-works/phase-5/atom-plan-mapping.json",
                 "final-packet-index-path": "openspec/orchestrate/phase-works/phase-5/final-packet-index.json",
+                "capability-baseline-reconciliation-path": "openspec/orchestrate/phase-works/phase-5/capability-baseline-reconciliation.json",
+                "capability-baseline-reconciliation-sha256": sha256_file(baseline_path),
                 "complexity-summaries": [],
                 "capability-progression-summaries": [],
                 "validator-gate-outcomes": [],
@@ -743,6 +777,11 @@ class SourceAlignedValidatorTest(unittest.TestCase):
             ("openspec/orchestrate/phase-works/phase-4/source-window-dossiers/source-window-index.json", SOURCE_WINDOW_INDEX_SCHEMA, "phase-4"),
             ("openspec/orchestrate/trace/phase-4.trace.json", PHASE_TRACE_SCHEMAS["phase-4"], "phase-4"),
             ("openspec/orchestrate/phase-works/phase-5/atom-plan-mapping.json", ATOM_PLAN_MAPPING_SCHEMA, "phase-5"),
+            (
+                "openspec/orchestrate/phase-works/phase-5/capability-baseline-reconciliation.json",
+                CAPABILITY_BASELINE_SCHEMA,
+                "phase-5",
+            ),
             ("openspec/orchestrate/phase-works/phase-5/final-packet-index.json", FINAL_PACKET_INDEX_SCHEMA, "phase-5"),
             ("openspec/orchestrate/trace/phase-5.trace.json", PHASE_TRACE_SCHEMAS["phase-5"], "phase-5"),
         ]
@@ -950,13 +989,42 @@ class SourceAlignedValidatorTest(unittest.TestCase):
 
     def test_phase1_required_heading_missing_fails(self) -> None:
         plan_path = self.orchestrate / "phase-works/phase-1/initial-change-plan.md"
-        plan_path.write_text(self._phase1_plan().replace("## 切分原则", "## 其他原则"), encoding="utf-8")
+        plan_path.write_text(self._phase1_plan().replace("## Change 切分原则", "## 其他原则"), encoding="utf-8")
         trace_path = self.orchestrate / "trace/phase-1.trace.json"
         trace = json.loads(trace_path.read_text(encoding="utf-8"))
         trace["initial-change-plan"]["sha256"] = sha256_file(plan_path)
         write_json(trace_path, trace)
         self._write_manifest()
         self.assert_error("phase1-plan-heading")
+
+    def test_phase1_overlay_rejects_openspec_relation_label(self) -> None:
+        plan_path = self.orchestrate / "phase-works/phase-1/initial-change-plan.md"
+        plan_path.write_text(
+            self._phase1_plan().replace("`first-advancement`", "`New`"),
+            encoding="utf-8",
+        )
+        trace_path = self.orchestrate / "trace/phase-1.trace.json"
+        trace = json.loads(trace_path.read_text(encoding="utf-8"))
+        trace["initial-change-plan"]["sha256"] = sha256_file(plan_path)
+        write_json(trace_path, trace)
+        self._write_manifest()
+        self.assert_error("phase1-plan-overlay-role")
+
+    def test_phase1_roadmap_rejects_new_modified_fields(self) -> None:
+        plan_path = self.orchestrate / "phase-works/phase-1/initial-change-plan.md"
+        plan_path.write_text(
+            self._phase1_plan().replace(
+                "- 范围内：行为基线。",
+                "- New：`cap-a`\n- 范围内：行为基线。",
+            ),
+            encoding="utf-8",
+        )
+        trace_path = self.orchestrate / "trace/phase-1.trace.json"
+        trace = json.loads(trace_path.read_text(encoding="utf-8"))
+        trace["initial-change-plan"]["sha256"] = sha256_file(plan_path)
+        write_json(trace_path, trace)
+        self._write_manifest()
+        self.assert_error("phase1-plan-baseline-relation")
 
     def test_phase4_input_plan_must_match_phase1_initial_plan(self) -> None:
         self._write("openspec/orchestrate/phase-works/phase-4/input-change-plan.md", "stale input\n")
@@ -1420,7 +1488,80 @@ class SourceAlignedValidatorTest(unittest.TestCase):
         self._write_manifest()
         self.assert_error("phase5-capability-impact-mixed")
 
-    def test_phase5_first_delta_must_be_new_and_later_delta_modified(self) -> None:
+    def test_phase5_existing_baseline_allows_modified_first_advancement(self) -> None:
+        spec_path = self._write(
+            "openspec/specs/cap-a/spec.md",
+            "# cap-a\n\n## Purpose\n\n现有能力。\n",
+        )
+        mapping_path = self.orchestrate / "phase-works/phase-5/atom-plan-mapping.json"
+        mapping = json.loads(mapping_path.read_text(encoding="utf-8"))
+        mapping["rows"][0]["final-capability-impact"] = "modified"
+        write_json(mapping_path, mapping)
+        render_orchestrate(self.orchestrate, "phase5-atom-plan-mapping", write=True)
+
+        packet_path = self.orchestrate / "change-capability-anchors/change-a/change-a.md"
+        packet_path.write_text(
+            packet_path.read_text(encoding="utf-8").replace(
+                "| GA-0001 | new |",
+                "| GA-0001 | modified |",
+            ),
+            encoding="utf-8",
+        )
+        packet_index_path = self.orchestrate / "phase-works/phase-5/final-packet-index.json"
+        packet_index = json.loads(packet_index_path.read_text(encoding="utf-8"))
+        packet_index["packets"][0]["packet-digest"] = sha256_file(packet_path)
+        write_json(packet_index_path, packet_index)
+
+        baseline_path = self.orchestrate / "phase-works/phase-5/capability-baseline-reconciliation.json"
+        baseline = json.loads(baseline_path.read_text(encoding="utf-8"))
+        row = baseline["capabilities"][0]
+        row["baseline-status"] = "existing"
+        row["spec-sha256"] = sha256_file(spec_path)
+        row["baseline-evidence"] = "已只读检查精确 spec 路径，当前存在。"
+        row["required-first-relation"] = "modified"
+        write_json(baseline_path, baseline)
+        render_orchestrate(self.orchestrate, "phase5-capability-baseline", write=True)
+
+        trace_path = self.orchestrate / "trace/phase-5.trace.json"
+        trace = json.loads(trace_path.read_text(encoding="utf-8"))
+        trace["capability-baseline-reconciliation-sha256"] = sha256_file(baseline_path)
+        write_json(trace_path, trace)
+        self._write_manifest()
+        result = self._validate()
+        self.assertTrue(result["ok"], result)
+
+    def test_phase5_existing_baseline_rejects_new(self) -> None:
+        spec_path = self._write("openspec/specs/cap-a/spec.md", "# cap-a\n")
+        baseline_path = self.orchestrate / "phase-works/phase-5/capability-baseline-reconciliation.json"
+        baseline = json.loads(baseline_path.read_text(encoding="utf-8"))
+        row = baseline["capabilities"][0]
+        row["baseline-status"] = "existing"
+        row["spec-sha256"] = sha256_file(spec_path)
+        row["baseline-evidence"] = "已只读检查精确 spec 路径，当前存在。"
+        row["required-first-relation"] = "modified"
+        write_json(baseline_path, baseline)
+        render_orchestrate(self.orchestrate, "phase5-capability-baseline", write=True)
+        trace_path = self.orchestrate / "trace/phase-5.trace.json"
+        trace = json.loads(trace_path.read_text(encoding="utf-8"))
+        trace["capability-baseline-reconciliation-sha256"] = sha256_file(baseline_path)
+        write_json(trace_path, trace)
+        self._write_manifest()
+        self.assert_error("phase5-capability-impact-baseline")
+
+    def test_phase5_active_capability_requires_baseline_row(self) -> None:
+        baseline_path = self.orchestrate / "phase-works/phase-5/capability-baseline-reconciliation.json"
+        baseline = json.loads(baseline_path.read_text(encoding="utf-8"))
+        baseline["capabilities"] = []
+        write_json(baseline_path, baseline)
+        render_orchestrate(self.orchestrate, "phase5-capability-baseline", write=True)
+        trace_path = self.orchestrate / "trace/phase-5.trace.json"
+        trace = json.loads(trace_path.read_text(encoding="utf-8"))
+        trace["capability-baseline-reconciliation-sha256"] = sha256_file(baseline_path)
+        write_json(trace_path, trace)
+        self._write_manifest()
+        self.assert_error("phase5-capability-baseline-missing")
+
+    def test_phase5_absent_baseline_rejects_modified_first_advancement(self) -> None:
         mapping_path = self.orchestrate / "phase-works/phase-5/atom-plan-mapping.json"
         mapping = json.loads(mapping_path.read_text(encoding="utf-8"))
         second_change_spec = mapping["rows"][3]
@@ -1459,7 +1600,60 @@ class SourceAlignedValidatorTest(unittest.TestCase):
         )
         write_json(packet_index_path, packet_index)
         self._write_manifest()
-        self.assert_error("phase5-capability-impact-order")
+        self.assert_error("phase5-capability-impact-baseline")
+
+    def test_phase5_absent_baseline_allows_new_then_modified(self) -> None:
+        mapping_path = self.orchestrate / "phase-works/phase-5/atom-plan-mapping.json"
+        mapping = json.loads(mapping_path.read_text(encoding="utf-8"))
+        second = mapping["rows"][3]
+        second["final-owner-change"] = "change-b"
+        second["final-relation"] = "direct"
+        second["final-capability-impact"] = "modified"
+        second["final-target-capability"] = "cap-a"
+        second["related-capabilities"] = []
+        write_json(mapping_path, mapping)
+        render_orchestrate(self.orchestrate, "phase5-atom-plan-mapping", write=True)
+
+        first_packet_path = self.orchestrate / "change-capability-anchors/change-a/change-a.md"
+        first_packet_path.write_text(
+            first_packet_path.read_text(encoding="utf-8").replace(
+                "| GA-0004 | non-goal |\n",
+                "",
+            ),
+            encoding="utf-8",
+        )
+        second_packet = self._write(
+            "openspec/orchestrate/change-capability-anchors/change-b/change-b.md",
+            "# change-b\n\n## Final Direct Owner Atoms\n\n"
+            "| Global Atom ID | Capability Impact | Target Capability | Related Capabilities | Relation |\n"
+            "| --- | --- | --- | --- | --- |\n"
+            "| GA-0004 | modified | cap-a | None | direct |\n",
+        )
+        self._write(
+            "openspec/orchestrate/change-capability-anchors/change-b/capability-anchors/cap-a.md",
+            "# cap-a\n\n| Global Atom ID | Relation |\n| --- | --- |\n| GA-0004 | direct |\n",
+        )
+        packet_index_path = self.orchestrate / "phase-works/phase-5/final-packet-index.json"
+        packet_index = json.loads(packet_index_path.read_text(encoding="utf-8"))
+        packet_index["packets"][0]["packet-digest"] = sha256_file(first_packet_path)
+        packet_index["packets"][0]["owner-scoped-non-direct-atom-ids"] = []
+        packet_index["packets"].append(
+            {
+                "change": "change-b",
+                "change-kind": "business",
+                "packet-path": "openspec/orchestrate/change-capability-anchors/change-b/change-b.md",
+                "packet-digest": sha256_file(second_packet),
+                "direct-atom-ids": ["GA-0004"],
+                "owner-scoped-non-direct-atom-ids": [],
+                "capability-view-paths": [
+                    "openspec/orchestrate/change-capability-anchors/change-b/capability-anchors/cap-a.md"
+                ],
+            }
+        )
+        write_json(packet_index_path, packet_index)
+        self._write_manifest()
+        result = self._validate()
+        self.assertTrue(result["ok"], result)
 
     def test_phase5_blocked_does_not_require_final_packets(self) -> None:
         trace_path = self.orchestrate / "trace/phase-5.trace.json"
@@ -1471,6 +1665,8 @@ class SourceAlignedValidatorTest(unittest.TestCase):
             "phase-works/phase-5/change-plan.md",
             "phase-works/phase-5/atom-plan-mapping.json",
             "phase-works/phase-5/atom-plan-mapping.md",
+            "phase-works/phase-5/capability-baseline-reconciliation.json",
+            "phase-works/phase-5/capability-baseline-reconciliation.md",
             "phase-works/phase-5/final-packet-index.json",
             "phase-works/phase-5/capability-progression-review.md",
             "phase-works/phase-5/change-complexity-review.md",
@@ -1562,7 +1758,12 @@ class SourceAlignedValidatorTest(unittest.TestCase):
                     }
                 ],
                 "capabilities": [
-                    {"slug": "cap-a", "boundary": "cap-a"},
+                    {
+                        "slug": "cap-a",
+                        "boundary": "cap-a",
+                        "baseline_status": "absent",
+                        "baseline_evidence": "已只读检查精确 spec 路径，当前不存在。",
+                    },
                 ],
             },
         )
@@ -1604,7 +1805,12 @@ class SourceAlignedValidatorTest(unittest.TestCase):
                     }
                 ],
                 "capabilities": [
-                    {"slug": "cap-a", "boundary": "cap-a"},
+                    {
+                        "slug": "cap-a",
+                        "boundary": "cap-a",
+                        "baseline_status": "absent",
+                        "baseline_evidence": "已只读检查精确 spec 路径，当前不存在。",
+                    },
                     {"slug": "cap-support", "boundary": "仅作为 source-explicit related capability。"},
                 ],
             },
@@ -1640,6 +1846,16 @@ class SourceAlignedValidatorTest(unittest.TestCase):
             (output_dir / "phase-works/phase-5/change-plan.md").read_bytes(),
         )
         self.assertTrue((output_dir / "change-capability-anchors/index.md").exists())
+        rendered_plan = (output_dir / "phase-works/phase-5/change-plan.md").read_text(encoding="utf-8")
+        self.assertIn("- 单一 intent：", rendered_plan)
+        self.assertIn("- behavior completeness profile：", rendered_plan)
+        self.assertNotIn("- vertical slice：", rendered_plan)
+        self.assertTrue(
+            (output_dir / "phase-works/phase-5/capability-baseline-reconciliation.json").exists()
+        )
+        self.assertTrue(
+            (output_dir / "phase-works/phase-5/capability-baseline-reconciliation.md").exists()
+        )
         packet_path = output_dir / "change-capability-anchors/change-a/change-a.md"
         self.assertTrue(packet_path.exists())
         packet = packet_path.read_text(encoding="utf-8")
@@ -1801,7 +2017,12 @@ class SourceAlignedValidatorTest(unittest.TestCase):
                 ],
                 "capabilities": [
                     {"slug": "runtime-substrate-foundation", "boundary": "工程底座 substrate。"},
-                    {"slug": "cap-a", "boundary": "cap-a"},
+                    {
+                        "slug": "cap-a",
+                        "boundary": "cap-a",
+                        "baseline_status": "absent",
+                        "baseline_evidence": "已只读检查精确 spec 路径，当前不存在。",
+                    },
                 ],
             },
         )

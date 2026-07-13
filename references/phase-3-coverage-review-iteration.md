@@ -75,7 +75,7 @@ writer 完成后返回 main agent，由 main agent 完整执行 `references/revi
 - 如果 source fact 只 preserve 或依赖另一 atom，使用 `preserves:<global-atom-id>` 或 `depends-on:<global-atom-id>` 等 `Atom Relation`，不得计入 duplicate direct coverage。
 - 如果 source fact 只用于使当前 design 与后续 obligation 保持兼容，将其分类为 contextual future-compatibility；已知时链接到未来或 candidate global atom。
 - coverage 完成但 final Change placement 依赖 source-window grounding、sequence 或 granularity decision 时，`Owner Change` 可以保持 `phase-5-refit-required`。Phase 5 必须在 final output 前解决。
-- `Capability Impact` 为 `new`、`modified`、`none` 或 `unresolved`。`new` / `modified` 只适用于 direct `spec-requirement` / `spec-guard` 行，并要求具体、已声明的 `Target Capability`。`none` 要求 target `none`。`unresolved` 可以使用已知 target 或 `unresolved`，要求非空 `Review Judgment` 或 rationale，并且必须在 Phase 5 解决。
+- `Capability Impact` 为 `new`、`modified`、`none` 或 `unresolved`。`new` / `modified` 只适用于 direct `spec-requirement` / `spec-guard` 行，并要求具体、已声明的 `Target Capability` 与可信 repository baseline evidence；Phase 3 未读取或无法确认 baseline 时必须使用 `unresolved`。`none` 要求 target `none`。`unresolved` 可以使用已知 target 或 `unresolved`，要求非空 `Review Judgment` 或 rationale，并且必须在 Phase 5 baseline reconciliation 中解决。
 - direct `design-obligation` / `verification-obligation` 行使用 impact `none` 和 target `none`，同时保持 direct 且由 Change candidate-own。non-direct/contextual 行也使用 `none` / `none`。
 - `Related Capabilities` 是已声明 Capability ID 的唯一 array，其关联必须由引用 source window 明确表达。默认为 `[]`，排除 `Target Capability`，不得替代 target，也不产生 ownership、progression、Capability view 或 complexity count。
 - `Artifact Projection` 必须独立于 `Coverage Status` 并遵循 source semantics：direct architecture/runtime/package/schema/provider/deployment atom 可以为 `design-obligation`；test strategy、fixture、visual、smoke 和 evidence atom 可以为 `verification-obligation`；preserve 和显式 non-goal atom 可以为 `spec-guard`。
@@ -264,7 +264,7 @@ validator gate：
 - `Decision: coverage-complete`
 - `Decision: blocked`
 
-只有满足以下条件时才使用 `coverage-complete`：指定根目录下每份 source document 都已完成 manifest classification；每项具有生产意义的 source obligation 都恰好有一个 global atom 或合理的 non-coverage status；每个没有 atom 的 source range 都在 `source-remainder-review.json` 中分类为 production-safe non-atom content；不存在 unclassified atom、unresolved duplicate obligation、未拆分或未合理说明的 broad atom compression finding、blocking conflict；每个 Phase 5 placement question 都显式 handoff。每个 global 行还必须满足 v2 Capability field structure：direct spec 行使用 `new` / `modified` 或具有 rationale 的 `unresolved`，direct design/verification 行使用 `none` / `none`，related Capability array 唯一、source-explicit、已声明且 non-owning。
+只有满足以下条件时才使用 `coverage-complete`：指定根目录下每份 source document 都已完成 manifest classification；每项具有生产意义的 source obligation 都恰好有一个 global atom 或合理的 non-coverage status；每个没有 atom 的 source range 都在 `source-remainder-review.json` 中分类为 production-safe non-atom content；不存在 unclassified atom、unresolved duplicate obligation、未拆分或未合理说明的 broad atom compression finding、blocking conflict；每个 Phase 5 placement question 都显式 handoff。每个 global 行还必须满足 v2 Capability field structure：direct spec 行在具备可信 baseline evidence 时可使用 `new` / `modified`，否则使用具有 rationale 的 `unresolved`；direct design/verification 行使用 `none` / `none`，related Capability array 唯一、source-explicit、已声明且 non-owning。Capability impact unresolved 不阻碍 source coverage closure，但必须显式 handoff 给 Phase 5。
 
 此外，只有 `phase-works/phase-3/source-doc-manifest.md` 中列出的每份 source document 都有匹配的 `phase-works/phase-3/source-doc-coverage/<source>.coverage.md` file，且包括 `source-remainder-review.json` 在内的所有 Phase 3 trace file 均存在并与 final review 一致时，才能使用 `coverage-complete`。
 

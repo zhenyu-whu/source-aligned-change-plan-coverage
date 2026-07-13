@@ -26,6 +26,7 @@ Phase 5 必须由 fresh independent subagent 执行。不得重新运行 Phase 2
 - `openspec/orchestrate/phase-works/phase-3/phase-3-trace/*.json`，作为 canonical Phase 3 trace sidecar
 - `openspec/orchestrate/phase-works/phase-3/phase-3-trace/*.md`，作为 reviewer mirror
 - 用户指定的 source document 根目录或精确 source path；仅在 Phase 4 dossier 引用了必须本地验证的 window 时，用于 targeted context read。
+- 当前 `openspec/specs/` inventory 及 final target 对应的 `openspec/specs/<capability>/spec.md`，只作为 repository baseline identity/existence/comparison evidence；不得把现有 spec 当作 production obligation authority。
 
 ## 输出
 
@@ -44,6 +45,8 @@ status 为 `accepted` 或 `adjusted` 时，还要写入 terminal mapping 和 fin
 - 从匹配 JSON 渲染的 `openspec/orchestrate/phase-works/phase-5/atom-plan-mapping.md`
 - `openspec/orchestrate/phase-works/phase-5/final-packet-index.json`
 - `openspec/orchestrate/phase-works/phase-5/capability-progression-review.md`
+- `openspec/orchestrate/phase-works/phase-5/capability-baseline-reconciliation.md`
+- `openspec/orchestrate/phase-works/phase-5/capability-baseline-reconciliation.json`
 - `openspec/orchestrate/phase-works/phase-5/change-complexity-review.md`
 - `openspec/orchestrate/phase-works/phase-5/plan-refit-decision-log.md`
 - `openspec/orchestrate/phase-works/phase-5/alignment-final-report.md`
@@ -53,7 +56,7 @@ status 为 `accepted` 或 `adjusted` 时，还要写入 terminal mapping 和 fin
 - `openspec/orchestrate/phase-works/phase-5/change-capability-human-plan.md`
 - `openspec/orchestrate/change-plan.md`
 
-status 为 `needs-coverage-recheck` 或 `blocked` 时，不得伪造或保留 terminal plan、mapping、final packet、Capability view、alignment report、human plan 或根 `change-plan.md`。如果当前目录来自较早 terminal run，先删除这些 stale terminal artifact，再写入 `trace/phase-5.trace.json`、`phase-5-agent-report.md`、`source-window-refit-trace.md` 和 `change-plan-adjustments.md`，其中包含 recheck 或 blocker 的 source-window-backed 原因。Phase 3 global atom index 及其他 upstream evidence 必须保留。
+status 为 `needs-coverage-recheck` 或 `blocked` 时，不得伪造或保留 terminal plan、mapping、Capability baseline reconciliation、final packet、Capability view、alignment report、human plan 或根 `change-plan.md`。如果当前目录来自较早 terminal run，先删除这些 stale terminal artifact，再写入 `trace/phase-5.trace.json`、`phase-5-agent-report.md`、`source-window-refit-trace.md` 和 `change-plan-adjustments.md`，其中包含 recheck 或 blocker 的 source-window-backed 原因。Phase 3 global atom index 及其他 upstream evidence 必须保留。
 
 即使 Phase 5 原样接受 input plan，也必须写入当前 Phase 5 packet 和 final Change packet。Phase 5 的 `input-change-plan.md` 必须每次从 Phase 4 input snapshot 覆盖生成；不得复用旧 snapshot。只有 Phase 5 packet 记录 input plan、output plan 和 atom-plan mapping 后，才能同时写入 `phase-works/phase-5/change-plan.md` 与根 `openspec/orchestrate/change-plan.md`。两个 final plan 必须逐字节一致。
 
@@ -78,7 +81,7 @@ python3 .codex/skills/source-aligned-change-plan-coverage/scripts/phase5_plan_re
   --print-config-template > openspec/orchestrate/phase-works/phase-5/phase5-refit.config.json
 ```
 
-然后编辑 `phase5-refit.config.json`：每个 final Change 都要有经过 review 的中文 title/outcome/kind，每个 Capability 都要有经过 review 的中文 behavior boundary，并记录经过 review 的 decision/split analysis/adjustment/report finding。不存在 business spec delta 时，`capabilities` 可以为 `[]`；此时生成的 Capability Map 和 Matrix 必须保留 heading 并写入 `无业务 Capability delta`，不得产生格式错误的空表。随后运行：
+然后编辑 `phase5-refit.config.json`：每个 final Change 都要有经过 review 的中文 title/intent/outcome/kind；每个 active business Capability 都要有经过 review 的中文 Purpose/Owns/Excludes，以及与精确 `openspec/specs/<capability>/spec.md` 一致的 `baseline_status: existing | absent` 和 `baseline_evidence`。同时记录经过 review 的 decision/split analysis/adjustment/report finding。不存在 business spec delta 时，`capabilities` 可以为 `[]`；此时生成的 Capability Map 和 Matrix 必须保留 heading 并写入 `无业务 Capability delta`，不得产生格式错误的空表。随后运行：
 
 ```bash
 python3 -m py_compile .codex/skills/source-aligned-change-plan-coverage/scripts/phase5_plan_refit.py
@@ -102,7 +105,7 @@ helper render 后，按 `references/trace-sidecar-contract.md` 运行 Phase 5 va
 
 ## Artifact 语言门禁
 
-继承 `references/cross-phase-contract.md` 的 Artifact Language Gate。Phase 5 的 closed-loop outcome、behavior boundary、roadmap value、Capability progression、complexity decision、split/defer analysis、context handling、blocker、plan-decision reason、evidence burden、human review note 和 report summary 必须使用简体中文。
+继承 `references/cross-phase-contract.md` 的 Artifact Language Gate。Phase 5 的 intent/outcome、behavior boundary、baseline reconciliation、roadmap value、Capability progression、complexity decision、split/defer analysis、context handling、blocker、plan-decision reason、evidence burden、human review note 和 report summary 必须使用简体中文。
 
 ## Scope 规则
 
@@ -121,6 +124,7 @@ Phase 5 可以：
 - 根据 global atom index 派生 final per-Change 和 per-Capability atom file
 - 决定 plan refit 时引用 Phase 4 source-window dossier evidence
 - 需要验证 Phase 4 dossier 已引用的措辞或 dependency rationale 时，读取 Phase 3/4 handoff item 周围的 targeted source context
+- 只读检查 `openspec/specs/<capability>/spec.md` 是否存在，并在必要时比较已有 requirement identity，以决定 Capability-level `New` / `Modified`；该 baseline lane 不得改变 source obligation、final Change intent 或 target Capability 的 source-backed 语义
 
 Phase 5 不得：
 
@@ -130,7 +134,9 @@ Phase 5 不得：
 - 编辑 Phase 4 source-window dossier output
 - 生成绕过 Phase 4 的 replacement source-window dossier
 - 在未经 Phase 3 normalization 时发明新 atom
-- 输出多个 pre-business foundation/governance candidate、把 foundation Change 放在 business Change 之后，或保留没有可独立运行 user/system/operational loop 的 standalone low-level business Change
+- 从 roadmap 首次出现位置、Phase 1 `first-advancement`、Change 名称或 renderer order 猜测 OpenSpec `New` / `Modified`
+- 把 repository baseline spec 中额外出现、但 source document 未要求的行为变成当前 production obligation
+- 输出多个 pre-business foundation/governance candidate、把 foundation Change 放在 business Change 之后，或保留没有独立 intent、可验收 outcome 与独立生命周期边界的 standalone low-level business Change
 - 在没有 semantic review 时，使用 raw uncovered line count 驱动 plan adjustment
 - 将 Phase 4 source-window dossier 视为可以在 Phase 3 之外提取、改写、合并、拆分或发明新 obligation atom 的授权
 - 对应 Phase 4 source window 可用时，仅根据 atom count 或 summary 决定 Change split、merge、reorder、Capability boundary 或 foundation executable handling
@@ -180,9 +186,9 @@ Phase 5 不得从 atom clustering、按 atom count 排序或机械拆分 oversiz
 - 每项 accepted、adjusted、split、merge、reorder、rename、moved atom、contextual downgrade、dependency classification、evidence-burden classification 或 non-goal classification 都必须引用 Phase 4 dossier 或 semantic profile 行。
 - 如果 Phase 4 报告 `Phase 4 Status: needs-coverage-recheck` 或 `blocked`，停止；不得运行 Phase 5。
 - 如果 Phase 4 报告 `grounded`，但 Phase 5 必须判断的 input Change/Capability 缺少必需 source-window profile，则返回 `blocked` 或要求 fresh Phase 4 grounding pass。不得在 Phase 5 中静默重新生成缺失 dossier。
-- 如果 Phase 4 source window 表明一个真实 business loop 直接需要多个 Capability，即使 atom count 很高，也要保持这些 Capability delta 同组；除非 source-window-backed split 能保持独立 acceptance。
+- 如果 Phase 4 source window 表明一个真实 outcome 的 transaction/invariant/protocol/security/compatibility truth 直接需要多个 Capability，即使 atom count 很高，也要保持这些 Capability delta 同组；除非 source-window-backed split 能保持独立 intent、acceptance 和 coherent archive state。
 - 如果 Phase 4 source window 表明一个 input Change 混合多个可独立 acceptance 的 business outcome，执行 split、defer，或记录 source window 为何证明不可拆分。
-- 如果 Phase 4 source window 显示 technical preparation 但没有可独立运行 operational loop，应用 Foundation Executable Gate，不得将其视为普通 business direct scope。
+- 如果 Phase 4 source window 显示 technical preparation 但没有可独立验收的 system/engineering outcome 或独立 lifecycle boundary，应用 Foundation Executable Gate，不得将其视为普通 business direct scope。
 
 ### source window semantic grounding 门禁
 
@@ -190,13 +196,13 @@ Phase 5 不得从 atom clustering、按 atom count 排序或机械拆分 oversiz
 
 对初始 Change plan 回答：
 
-- input Change 是否描述完整 business/system loop，且 entry、fact、projection、failure path 和 verification truth 可以一并交付？
-- 是否混合了多个可独立实现、人工 acceptance 并 archive 的 business outcome？
-- 是否拆开了 source window 表明必须为一个真实 loop 一并交付的 Capability？
-- 是否把纯 technical preparation 包装成 business Change，却没有可独立运行的 operational loop？
+- input Change 是否只有一个清晰、source-backed intent，并形成可独立决策、实现、验收和 archive 的 outcome？
+- 是否混合了多个可独立批准、推迟、实现、人工 acceptance 并 archive 的 outcome？
+- 是否拆开了 source window 表明必须共享同一 transaction、invariant、protocol、security/consistency boundary 或 compatibility contract 的 Capability delta？
+- 是否把纯 technical preparation 包装成 business Change，却没有可独立验收的 system/engineering outcome 或独立 deployment/risk/rollback/ownership/review boundary？
 - 是否将 domain behavior、user-facing API contract、business worker semantics、entitlement/export concept、project/figure/version semantics 或 recovery/privacy behavior 移入 foundation Change，而不是首个需要它的 business Change？
 - 是否有后续 Change 依赖尚未由较早 direct owner 建立的 fact、state、contract、entitlement、version、asset 或 lifecycle rule？
-- 每个 Capability 是持久 behavior boundary，还是仅属于临时 implementation module、page、table、source section、SDK、queue、provider、component 或 one-Change alias？
+- 每个 Capability 是否具有清晰 Purpose、Owns/Excludes 与 archive durability，还是仅属于临时 implementation-only module、page、table、source section、SDK、queue、provider 或 one-Change alias？stable component/interface contract 不得仅因技术名称被拒绝。
 - roadmap order 是否遵循 behavior maturity，还是某个早期 Change 主要收集未来 prerequisite？
 - 对 web-system source，早期 product sequence 是否生成薄的 end-to-end user-visible behavior，而不只是 page shell 或 setup/governance bundle？
 
@@ -216,7 +222,7 @@ Phase 5 不得从 atom clustering、按 atom count 排序或机械拆分 oversiz
 | --- | --- |
 | 该 final Change 引用了哪些 source window？ | Phase 4 dossier path 和行范围。 |
 | 这些 source window 共同表达了哪些 business/system semantics？ | 中文 source-window semantic profile summary。 |
-| 这些 atom 为何应在一个 Change 中交付？ | entry/fact/projection/failure/verification cohesion。zero-domain engineering substrate 的 foundation atom 只属于第一个 executable foundation packet。 |
+| 这些 atom 为何应在一个 Change 中交付？ | one-intent、scope cohesion、transaction/invariant/protocol/security/compatibility indivisibility 与 acceptance evidence。zero-domain engineering substrate 的 foundation atom 只属于第一个 executable foundation packet。 |
 | 该 Change 为何处在 roadmap 的这个位置？ | upstream realized baseline 和 downstream dependency explanation。 |
 | 人工如何 acceptance 已完成的 Change？ | 具体 acceptance scenario 和 observable result。 |
 | 哪些 source obligation 被设为 contextual、dependency、evidence-burden、preserve/reference、later-change 或 non-goal，它们为何不属于 direct scope？ | `source-window-refit-trace.md`、`atom-plan-mapping.md` 和 final packet context/non-goal/evidence table。 |
@@ -229,9 +235,9 @@ final refit decision 完成后，使用 Required Mapping Tables 中定义的 tab
 
 接受 final order 前，判断 roadmap 遵循的是 behavior maturity，而不是 prerequisite availability。
 
-对典型 web system，早期 product Change 应创建最薄的 end-to-end user-visible behavior：真实 page 或 user-facing entry point，具备 action、system fact、visible result、基本 failure handling 和 verification。静态 UI shell 或 standalone prerequisite collection 不满足此 gate。
+对典型 web system，早期 product Change 应创建最薄、真实、可观察且可独立验收的 end-to-end behavior。它通常具有 trigger/context、normative behavior、observable outcome/invariant、当前 intent 必需的重要异常语义和 acceptance evidence；不得强制所有 Change 创建持久 fact 或 user-facing projection。静态 UI shell 或 standalone prerequisite collection 通常不满足此 gate。
 
-support、governance 或 operation-heavy Change 只有在下一行为的真实 acceptance 严格需要它，或它本身是可独立 acceptance 且拥有 entry、fact、projection、failure 和 verification 的 operational/system loop 时，才能先于它所支持的行为出现。
+support、governance 或 operation-heavy Change 只有在下一行为的真实 acceptance 严格需要它，或它本身具有独立 intent、可观察/可验证 outcome 和独立 deployment/risk/rollback/ownership/review boundary 时，才能先于它所支持的行为出现。
 
 如果 Change 主要因后续 Change 将需要它而提前排序，将其 atom 作为 direct/design/evidence burden 移入首个需要它的行为，defer 为 contextual/later-change，或记录具有 source-backed rationale 的 blocker。
 
@@ -244,13 +250,13 @@ support、governance 或 operation-heavy Change 只有在下一行为的真实 a
 
 使用以下规则：
 
-- final executable Change 应表示可 review、可实现、可验证的 user/system loop。
-- final Change 也是后续 AI agent 在一次聚焦 `openspec-apply-change` pass 中实现的单元。仅有 closed-loop coherence 不足以证明大型 Change 合理。
+- final executable Change 应围绕一个 source-backed intent，形成可 review、可实现、可验证、可独立完成和 archive 的 outcome。
+- final Change 也是后续 AI agent 在一次聚焦 `openspec-apply-change` pass 中实现的单元。仅有行为相关性不足以证明大型 Change 合理。
 - foundation handling 必须通过 Foundation Executable Gate；如果存在第一个 executable foundation Change，business sequence 必须从其后开始。
-- 不得仅因可 unit-test，就把 reusable contract、UI state vocabulary、object specimen、design token system、visual harness 或 async scaffold 拆成 standalone Change。它们需要真实 business/user/system loop，或必须成为 business Change 的 design/task/evidence burden 一部分。
-- 只有现有 Change 拥有同一个 coherent loop（entry、fact、projection、failure path 和 verification surface）时，才将 atom 附加到该 Change。
-- atom group 暴露可独立实现、验证、review 和 archive 的 loop 时，添加或拆分 Change。
-- 只有 atom 表明多个 Change 拆开了不可分割 closed loop，且任何一侧缺少另一侧都无法真实 archive 时，才合并 Change。
+- 不得仅因可 unit-test，就把 reusable contract、UI state vocabulary、object specimen、design token system、visual harness 或 async scaffold 拆成 standalone Change。它们需要独立 intent、可验收 system/engineering outcome 与独立生命周期边界，或成为 consumer Change 的 design/task/evidence burden 一部分。
+- 只有 atom 服务同一 intent、scope cohesive，并共享不可分割的 transaction/invariant/protocol/security/compatibility truth 或 acceptance evidence 时，才将 atom 附加到同一 Change。
+- atom group 暴露可独立批准、推迟、实现、验证、review 和 archive 的 outcome 时，添加或拆分 Change。
+- 只有 atom 表明多个 Change 拆开了不可分割的 transaction/invariant/protocol/security/compatibility truth，且任何一侧缺少另一侧都会形成无意义 half-state 或无法真实 archive 时，才合并 Change。
 - atom dependency 表明后续 Change 依赖当前引入过晚的 prerequisite 时，重排 Change。
 - atom 增强同一持久 behavior boundary 时，将其保留在现有 Capability 中。
 - atom 暴露缺失、混合、过于技术化或分配给错误长期 behavior boundary 的持久 behavior boundary 时，添加、拆分、合并或重命名 Capability。
@@ -262,69 +268,72 @@ support、governance 或 operation-heavy Change 只有在下一行为的真实 a
 - 独立于 final owner Change placement 保留 artifact projection。direct atom 可以由 Change implementation-own，同时投影到 design、task/proof 或 spec guard，而不是成为 spec requirement；final direct table 中不得继续为 `contextual-only`。
 - 只为具有具体 target Capability 的 direct `spec-requirement` / `spec-guard` 行分配 `new` / `modified`。普通 direct design/verification 行和所有 non-direct 行分配 `none` / `none`，但不得降低其 Change ownership。
 - 只有引用 source window 明确将 atom 与稳定 Capability ID 关联时，才保留 `related-capabilities[]`。related ID 绝不影响 Change ownership、progression、Capability view 或 complexity count。
-- 如果每个 slice 都可真实验证，优先采用 input preparation -> confirmed domain fact -> async execution -> external integration -> result projection -> hardening/delivery/operations 等 staged slice。
-- 多个 cross-Capability increment 共享同一 entry、fact、projection、failure path 和 verification truth 时，将直接必需的 increment 保留在同一 Change 中。不得仅为缩窄 matrix 行，把 identity、privacy、realtime state、versioning、entitlement、export、failure recovery 或 observability atom 移入人为 standalone Change。
+- 如果每个 slice 都具有 source-backed intent、独立 acceptance 和 coherent archive state，可优先采用 input preparation -> core result/state transition -> async execution -> external integration -> richer projection -> hardening/delivery/operations 等 staged slice；该顺序只是 source-constrained heuristic。
+- 多个 cross-Capability increment 共享同一 intent 和不可分割的 transaction/invariant/protocol/security/compatibility truth 时，将直接必需的 increment 保留在同一 Change 中。不得仅为缩窄 matrix 行，把 identity、privacy、realtime state、versioning、entitlement、export、failure recovery 或 observability atom 移入人为 standalone Change。
 - 重建 `New`/`Modified` label 和 Capability advancement surface 时，应用以下 Capability Relation Invariant。
 
 ### Capability relation 不变量
 
-final refit 后，丢弃 Phase 1 `New`/`Modified` label，根据显式 Phase 5 `final-capability-impact` 和 `final-target-capability` 值重建 Capability advancement。不得从 Change ownership、artifact count、related Capability 或 renderer order 推断 impact。
+final refit 后，丢弃 Phase 1 `first-advancement` / `later-advancement` hypothesis，先确定 source-backed final target Capability，再只读核对当前 repository baseline，最后写入显式 Phase 5 `final-capability-impact` 和 `final-target-capability`。不得从 Change ownership、artifact count、related Capability、Phase 1 roadmap role 或 renderer order 推断 impact。
 
 - business progression 只消费 impact 为 `new` 或 `modified`、target 为具体已声明 business Capability 的 direct `spec-requirement` / `spec-guard` 行。
 - 每个 `(final-owner-change, final-target-capability)` pair 的所有 contributing 行必须使用相同 impact。一个 pair 混用 `new` / `modified` 无效。
-- 按 roadmap 顺序，首次为 target Capability 提供 spec delta 的 Change 必须显式使用 `new`；后续每个为同一 target 增加 source-backed spec delta 的 Change 必须显式使用 `modified`。
+- 对每个 final target 必须记录 `Repository Baseline: existing | absent` 和可复查 evidence。`existing` 表示当前存在精确路径 `openspec/specs/<capability>/spec.md`；`absent` 表示只读 inventory 后该精确 target 不存在。
+- baseline 为 `existing` 时，roadmap 中首次及后续每个 source-backed delta 都必须使用 `modified`。
+- baseline 为 `absent` 时，roadmap 中首次 source-backed delta 必须使用 `new`；只有在 roadmap 明确要求前序 Change 先 sync/archive 后，后续 delta 才使用 `modified`。
+- 同一 target 最多出现一个 `new`；若出现，必须位于该 target 的第一个 advancement。向 existing Capability 新增 requirement 仍是 Capability-level `modified`，requirement-level operation 可以是 `ADDED`。
 - renderer 或 reviewer 必须验证这些显式值，不得根据首次出现位置静默推导或修复。
 - dependency-only、preserve-only、upstream-baseline、downstream-constraint、contextual、evidence-burden、reference、later-change 和 non-goal relation 不计入 Capability advancement。
 - 普通 direct `design-obligation` / `verification-obligation` 行使用 `none` / `none`；source-explicit `related-capabilities[]` 保持 non-owning，不计入 advancement。
 - target 为 `runtime-substrate-foundation` 的 `foundation-substrate` 是唯一 non-spec special case。它拥有专用 foundation view，但不进入 business `New` / `Modified` progression。
-- Capability Map `First change`、第一个非空 matrix cell、第一个 roadmap `New` entry、final packet target/impact metadata、第一个 anchor-index occurrence、Capability view 和 human plan 必须全部一致。
+- Capability Map `First Advancement`、第一个非空 matrix cell、第一个 roadmap advancement、baseline reconciliation、final packet target/impact metadata、第一个 anchor-index occurrence、Capability view 和 human plan 必须全部一致；只有 absent baseline 的首次 advancement 才应显示 `New`。
 - 如果唯一问题是 stale label，repair Phase 5 canonical mapping/config 并重新渲染。如果 mismatch 反映 final Change ownership 或 Capability target/impact 含糊，返回 `needs-coverage-recheck` 或 `blocked`。
 
 ## Capability progression 审阅
 
-编辑 final plan artifact 前，评估 Capability atom progression：
+编辑 final plan artifact 前，先完成 repository baseline reconciliation，再评估 Capability atom progression：
 
-| Capability | Atom Families | Current Change Sequence | Required Order | Sequence Problem | Adjustment |
-| --- | --- | --- | --- | --- | --- |
+| Capability | Repository Baseline | Baseline Evidence | Atom Families | Current Change Sequence | Required Relation Sequence | Sequence Problem | Adjustment |
+| --- | --- | --- | --- | --- | --- | --- | --- |
 
 规则：
 
-- 创建 behavior boundary 的 baseline atom 必须先于 refinement、hardening、extension 或 preserve-only atom 出现。
-- failure、recovery、verification、auth/privacy 和 data integrity atom 必须出现在首个需要它们以形成真实 closed loop 的 Change 中。
+- absent Capability 中创建 behavior boundary 的 baseline atom 必须先于 refinement、hardening、extension 或 preserve-only atom 出现；existing Capability 不得重新标为 `new`。
+- 当前 outcome 真实成立所必需的 exception/error、acceptance、auth/privacy、security、compatibility 和 data integrity atom 必须出现在首个适用 Change 中。
 - 后续 Change 只有具备 source-backed delta 时，才可 refine 或 harden 早期 atom。
 - 只 preserve 或依赖早期 atom 的后续 Change 不得把该 Capability 列为 advanced。
 - 如果 Capability 包含多个无关 atom family，只有它们属于持久 behavior boundary、而不是临时 implementation area 时，才拆分 Capability。
 - `Current Change Sequence` 必须按 roadmap 顺序，根据显式 final `new` / `modified` target-Capability pair 计算。排除仅归属 Change 的 design/verification 行、related-only mention、dependency-only 行和 contextual mention。
-- `Required Order` 必须应用 Capability Relation Invariant 并识别 baseline direct owner。
+- `Required Relation Sequence` 必须应用 repository baseline：`existing -> modified+`；`absent -> new, modified*`。
 - 如果 plan surface 不一致，在返回 `accepted` 或 `adjusted` 前 repair canonical mapping/config 并重新渲染；如果 final Change ownership 或 spec target/impact 不明确，返回 `needs-coverage-recheck` 或 `blocked`。
 
 ## Change complexity 审阅
 
 最终定案前评估 Change complexity：
 
-| Change | Direct Atom Count | Artifact Projection Mix | Atom Groups | New Capabilities | Modified Capabilities | Primary Functional Points | Entry/Fact/Projection Count | Failure/Recovery Count | Evidence Types | Surface Families | Foundation/Business Gate Status | Budget Status | Complexity Decision |
+| Change | Direct Atom Count | Artifact Projection Mix | Atom Groups | New Capabilities | Modified Capabilities | Primary Intent/Outcome Count | Trigger/Outcome/Invariant Families | Exception/Error Families | Evidence Types | Surface Families | Foundation/Business Gate Status | Budget Status | Complexity Decision |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
 
 将 direct atom count 用作 complexity signal，而不是 source coverage goal。fine-grained atom 是预期结果，但包含大量 direct atom 的 final Change 仍会带来 implementation、review 和 archival risk。
 
 规则：
 
-- target budget：20–60 个 direct atom、一个 primary functional point、仅包含直接必需的 Capability delta、最多两个 primary surface family，以及紧凑 evidence burden。当多个 new/modified Capability delta 都是同一真实 loop 的必需项时，可以超过一个。
+- target budget：20–60 个 direct atom、一个 primary intent/outcome、仅包含直接必需的 Capability delta、最多两个 primary surface family，以及紧凑 evidence burden。当多个 new/modified Capability delta 都是同一不可分割 outcome 的必需项时，可以超过一个。
 - `New Capabilities`、`Modified Capabilities` 和 unrelated Capability over-budget trigger 只根据互不相同的显式 `new` / `modified` target Capability 计数。排除 `none`、`foundation-substrate` 和所有 `related-capabilities[]` entry。
-- over-budget trigger：任何 Change 包含超过 80 个 direct atom、超过 4 个无关且被直接推进的 Capability、incoherent artifact projection mix、超过 12 个 failure/recovery atom、超过 2 个 primary entry point、超过 2 个 fact family、超过 2 个 projection family、超过 3 个 evidence type 或超过 3 个 surface family 时，必须拆分、defer，或用具体 indivisibility evidence 证明合理。related cross-cutting Capability delta 不会仅因数量触发 over-budget。
-- hard split/blocker trigger：任何 Change 包含超过 120 个 direct atom，或超过 6 个不共享同一 entry/fact/projection/failure truth 的无关且被直接推进 Capability，都不得原样标记为 `accepted` 或 `adjusted`。Phase 5 必须拆分、把 atom 移到后续 Change/context，或返回 `blocked` 由用户决定 slicing。
-- over-budget Change 的 `Keep` decision 必须列出被拒绝的 split candidate，并解释各自为何破坏 truthfulness。"One coherent loop"、"shared infrastructure" 或 "packet-level evidence grouping" 都不足以作为理由。
-- 不得仅因 direct atom count 超出 target range 就拆分 Change。只有 Source Window Semantic Grounding Gate 显示存在可独立 acceptance 的 business/system outcome、invalid sequencing、false foundation ownership、non-durable Capability boundary、incoherent evidence surface 或无关 entry/fact/projection/failure truth 时才拆分。
-- Change 包含多个可独立通过 Closed-loop Test 的 atom group 时拆分。
+- over-budget trigger：任何 Change 包含超过 80 个 direct atom、超过 4 个无关且被直接推进的 Capability、incoherent artifact projection mix、超过 12 个 exception/error atom、超过 2 个 independent trigger/outcome family、超过 3 个 evidence type 或超过 3 个 surface family 时，必须拆分、defer，或用具体 indivisibility evidence 证明合理。related cross-cutting Capability delta 不会仅因数量触发 over-budget。
+- hard split/blocker trigger：任何 Change 包含超过 120 个 direct atom，或超过 6 个不共享同一 intent、transaction/invariant/protocol/security/compatibility truth 的无关且被直接推进 Capability，都不得原样标记为 `accepted` 或 `adjusted`。Phase 5 必须拆分、把 atom 移到后续 Change/context，或返回 `blocked` 由用户决定 slicing。
+- over-budget Change 的 `Keep` decision 必须列出被拒绝的 split candidate，并解释各自为何破坏 truthfulness。"One coherent outcome"、"shared infrastructure" 或 "packet-level evidence grouping" 本身都不足以作为理由；必须给出具体 indivisibility evidence。
+- 不得仅因 direct atom count 超出 target range 就拆分 Change。只有 Source Window Semantic Grounding Gate 显示存在不同 intent、可独立 decision/acceptance/archive 的 outcome、invalid sequencing、false foundation ownership、non-durable Capability boundary、incoherent evidence surface 或无关 transaction/invariant/protocol/security/compatibility truth 时才拆分。
+- Change 包含多个可独立通过 one-intent、independent decision/archive 和 acceptance gate 的 atom group 时拆分。
 - Change 仅因 shared infrastructure 便于分组而推进许多 Capability 时拆分。
 - evidence burden 跨越许多无关 proof surface、会导致 review/archive 含糊时拆分。
-- 拆分会强制产生虚假 stub、破坏一个 user/system loop 或使任一侧无法验证时，保持 Change 整体。
-- 将最早的 minimal runnable production business loop 作为第一个 executable Change；只 defer 不属于该 loop production truth 必需项的 atom。
+- 拆分会强制产生虚假 stub、破坏同一 transaction/invariant/protocol/security/compatibility truth、产生无意义 half-state 或使任一侧无法独立验收时，保持 Change 整体。
+- 将最早的 minimal runnable、可独立验收 production outcome 作为第一个 executable Change；只 defer 不属于该 outcome production truth 必需项的 atom。
 - preparation state 无需执行 downstream job 就能保存、再次访问、验证和检查时，将 input preparation 与 downstream execution 拆开。
 - adapter contract、deterministic sandbox 或 integration-disabled path 可真实验证，且 concrete integration 可作为后续 direct Change 添加时，将 external integration 与 command/job/result semantics 拆开。
-- durable result fact 可独立于更丰富 projection loop 验证时，将 result projection、history 或 interaction surface 与 upstream execution 拆开。
+- durable result/state transition 可独立于更丰富 projection outcome 验证时，将 result projection、history 或 interaction surface 与 upstream execution 拆开。
 - 除非 access/quota enforcement、delivery、observability 和 operation atom 是使当前 feature 行为真实所必需，而不只是使未来 production-complete 所需，否则将其从 feature Change 中拆出。
-- 不得仅因 Change 推进多个 Capability 就拆分。如果拆分会生成 diagonal matrix，使每个新 Change 主要拥有名称相似的一个 Capability，则保留或重新设计 vertical loop，并记录原因。
+- 不得仅因 Change 推进多个 Capability 就拆分。如果拆分会让每个新 Change 只成为名称相似 Capability 的别名，应保留真实不可分割 outcome 或重新设计 boundary，并记录原因。
 
 ### Foundation 可执行性门禁
 
@@ -337,14 +346,14 @@ foundation candidate 仅可作为 minimal enabling scaffold，并且只能作为
 - foundation Change 只能包含 zero-domain engineering substrate：repository/package skeleton、package/app boundary、root script、lint/typecheck/test harness、configuration loading、local dependency manifest、不含 business schema 的 migration tooling、空 adapter seam、空 web/worker smoke entrypoint、environment/deploy convention 和 smoke/conformance proof expectation。
 - foundation atom 保留原始 source trace 和 artifact projection，通常为 `design-obligation`、`verification-obligation` 或 `spec-guard`。只有后续 proposal artifact 表达 foundation Change 当前可观察的 engineering substrate fact 时，才能生成相应 spec、runtime acceptance、verification 和 task。
 - direct domain behavior、business table creation、user-facing API contract、worker/async business semantics、identity/authorization/tenancy mapping、entitlement/accounting/delivery/export concept、lifecycle/versioning rule、operational observability、privacy workflow、recovery behavior、responsive behavior、visual quality 或 design-system behavior 必须移入首个直接需要它们的 business Change。
-- action/job runtime、UI stage/overlay contract、object disabled-state governance、design token、responsive proof、observability、privacy 或 quota policy 等 low-level/governance-heavy atom group 必须附加到首个直接需要它们的 business workflow；除非 source evidence 要求可独立运行的 operational loop。
+- action/job runtime、UI stage/overlay contract、object disabled-state governance、design token、responsive proof、observability、privacy 或 quota policy 等 low-level/governance-heavy atom group 必须附加到首个直接需要它们的 business outcome；除非 source evidence 支持独立 intent、可验收 operational/system outcome 和独立 lifecycle boundary。
 - 如果计划包含多个 pre-business foundation/governance candidate，必须将其合并到唯一 executable foundation Change、移入 business Change、defer 为 contextual/evidence burden，或返回 `blocked`。
 
 ### 必需拆分分析
 
 对每个 over-budget trigger，在 final decision 前编写 split analysis：
 
-| Change | Trigger | Candidate Split | Atoms / Capabilities Moved | New Closed-loop Outcome | Verification Surface | Decision | Reason |
+| Change | Trigger | Candidate Split | Atoms / Capabilities Moved | Resulting Intent/Outcome | Acceptance Evidence | Decision | Reason |
 | --- | --- | --- | --- | --- | --- | --- | --- |
 
 candidate split pattern 包括：
@@ -354,15 +363,15 @@ candidate split pattern 包括：
 - 输入采集/校验/准备 -> 下游执行
 - command/job contract -> 具体 executor 或外部 integration
 - durable result fact 创建 -> 结果 projection/history/interaction surface
-- 核心功能 loop -> access control、quota、delivery、observability 或 hardening
-- 面向用户的 workflow -> admin、reconciliation、maintenance 或 operations loop
+- 核心 outcome -> 可独立决策/部署的 access control、quota、delivery、observability 或 hardening outcome
+- 面向用户的 workflow -> 具有独立 intent/acceptance 的 admin、reconciliation、maintenance 或 operations outcome
 - 同步 happy path -> async processing、retry、recovery 或 audit trail
 
 禁止的 split pattern 包括：
 
-- Capability-column split：仅因 atom 属于多个 Capability，就把一个 vertical loop 拆成多个独立 Change
+- Capability-column split：仅因 atom 属于多个 Capability，就把一个不可分割 outcome 拆成多个独立 Change
 - same-name alias split：创建语义互为改写的新 Change 和新 Capability
-- cross-cutting concern evacuation：仅为减少 Capability count，把 identity、privacy、realtime state、versioning、entitlement、export、failure recovery 或 observability atom 移出直接需要它们的 loop
+- cross-cutting concern evacuation：仅为减少 Capability count，把 identity、privacy、realtime state、versioning、entitlement、export、failure recovery 或 observability atom 移出直接需要它们的 outcome
 
 ## Change/Capability 耦合门禁
 
@@ -370,18 +379,18 @@ candidate split pattern 包括：
 
 | Check | Signal | Required Action |
 | --- | --- | --- |
-| 对角 roadmap | 大多数 Change row 恰好只有一个非空 Capability cell | 重新评估 Change 是否按 Capability 而非 user/system loop 切分；重新切分，或逐一说明 focused loop 的合理性。 |
-| 单一 Change 的 Capability | 许多 Capability 恰好只由一个 Change 推进 | 除非 source evidence 证明其为 terminal 行为边界，否则合并、扩展或重命名 Capability。 |
+| 对角 roadmap | 大多数 Change row 恰好只有一个非空 Capability cell | 作为 diagnostic 重新评估 Change 是否按 Capability 列机械切分；只有 one-intent/cohesion/independent archive gate 失败时才调整，不能仅为改变矩阵形状而改写真实 boundary。 |
+| 单一 Change 的 Capability | 许多 Capability 恰好只由一个 Change 推进 | 重新执行 Purpose、Owns/Excludes、implementation-substitution 和 archive-durability gate；一个 source-backed、持久但当前只推进一次的 Capability 可以合法保留。 |
 | 名称别名 | Capability id 改写了推进它的唯一或首个 Change | 围绕持久行为边界重命名、合并到更广的 Capability，或记录 blocker。 |
-| 丢失横切 delta | 某个 loop 不再直接推进必需的 auth/privacy/realtime/versioning/entitlement/failure/export/observability 行为 | 将这些 atom 作为 direct delta 移回 loop，除非它们仅为 contextual 或 preserve constraint。 |
-| budget 导致的对角化 | 拆分决策减少 Capability 数量，却使矩阵更不符合 source | 拒绝拆分；保留跨 Capability loop，并提供具体的不可拆分分析。 |
+| 丢失横切 delta | 某个 outcome 不再直接推进其真实成立所必需的 auth/privacy/realtime/versioning/entitlement/failure/export/observability 行为 | 将这些 atom 作为 direct delta 移回 outcome Change，除非它们仅为 contextual 或 preserve constraint。 |
+| budget 导致的对角化 | 拆分决策减少 Capability 数量，却使 Change 成为 Capability 别名或破坏 source-backed indivisibility | 拒绝拆分；保留跨 Capability outcome，并提供具体的不可拆分分析。 |
 
 规则：
 
-- 只有 Change 的 entry、fact、projection、failure path 和 verification 确实不会直接改变其他持久 Capability 时，才允许 single-Capability Change。
-- 只有 source set 使一个 Capability 成为 terminal first-version boundary，或 later expansion 明确为 out of scope 时，才允许该 Capability 只由一个 Change 推进；必须在 progression review 中说明。
-- 如果 final plan 大部分为 diagonal matrix，且 coupling gate 无法根据 source evidence 证明合理，返回 `blocked`，不得返回 `accepted` 或 `adjusted`。
-- Phase 5 report 必须用 count 或 qualitative finding 概括此 audit，使 reviewer 能看出计划为何没有退化为 Change/Capability one-to-one mapping。
+- single-Capability Change 可以合法存在；其 boundary 仍必须由 source-backed intent、cohesion、independent archive 和 acceptance 解释，而不是由 Capability 名称解释。
+- 只由一个 Change 推进的 Capability 可以合法存在；progression review 必须说明其持久 Purpose 与 archive durability，不得为证明“未来还会变化”而发明 later expansion。
+- diagonal matrix 只是需要复核的形状，不是 blocker。只有具体 Change/Capability gate 失败、且无法 source-backed refit 时，才返回 `blocked`。
+- Phase 5 report 必须概括此 audit，明确矩阵形状是否来自真实 boundary；不得把“非对角”本身当作质量目标。
 
 ## 有效 Change 计划要求
 
@@ -396,14 +405,15 @@ final `change-plan.md` 必须包含：
 
 ### Capability Map
 
-| Capability | Behavior boundary | First change | Later expansion |
-| --- | --- | --- | --- |
+| Capability | Purpose | Owns | Excludes | Repository Baseline | Baseline Evidence | First Advancement | Source-backed Later Advancement |
+| --- | --- | --- | --- | --- | --- | --- | --- |
 
 规则：
 
 - Capability ID 必须是稳定的英文 kebab-case ID。
-- Behavior boundary 说明持久行为，而不是 implementation module。
-- `First change` 和 `Later expansion` 必须遵循 Capability Relation Invariant，并由 direct global atom 支撑。
+- Purpose、Owns 和 Excludes 说明持久行为边界，而不是 implementation-only module。
+- `Repository Baseline` 与 `Baseline Evidence` 必须来自只读 `openspec/specs/` reconciliation。
+- `First Advancement` 和 `Source-backed Later Advancement` 必须遵循 Capability Relation Invariant，并由 direct global atom 支撑；没有 later delta 时明确写 `无已知 source-backed later delta`，不得发明未来 Change。
 - Capability ID 不得只是改写 final Change slug。如果 Capability 只有一个 final direct Change，记录它为何是持久 terminal boundary，或执行 refit。
 - 不含 business spec delta 的计划可以使用 `capabilities: []`。保留 `Capability Map` heading 并写入 `无业务 Capability delta`；不得输出格式错误的空表或发明 technical Capability。符合条件的 foundation 仍是单独 special case。
 
@@ -420,7 +430,7 @@ final `change-plan.md` 必须包含：
 - matrix exclusion 不等于 coverage exclusion。每个被排除且具有 final owner Change 的 non-direct atom 仍必须显式出现在该 Change final packet 的 context/dependency/evidence/preserve/non-goal handling 中。
 - 每个非空 cell 必须由一个或多个 global atom ID 支撑。
 - 首个和后续非空 cell 必须遵循 Capability Relation Invariant，并与 roadmap relation label 和 final packet ownership 匹配。
-- matrix 必须通过 Change/Capability Coupling Gate。大部分为 diagonal 的 matrix 需要 source-backed exception，不得保持沉默。
+- matrix 必须通过 Change/Capability Coupling Gate。大部分为 diagonal 时必须执行 diagnostic，但只要每个独立 boundary gate 通过即可保留。
 - `capabilities: []` 时，保留 `Capability Progression Matrix` heading 并写入 `无业务 Capability delta`；不得输出 Capability column，也不得从仅归属 Change 的行推断 progression。
 
 ### Change Roadmap
@@ -428,7 +438,8 @@ final `change-plan.md` 必须包含：
 每个 final Change 包含：
 
 - Change 名称：
-- 闭环结果：
+- 单一 intent：
+- source-backed outcome：
 - source-window grounding：
   - 输入 source-window dossier：
   - source-backed semantic profile：
@@ -446,12 +457,12 @@ final `change-plan.md` 必须包含：
   - Modified:
 - 范围内：
 - 范围外：
-- vertical slice：
-  - 入口：
-  - 事实：
-  - projection：
-  - 失败：
-  - 验证：
+- behavior completeness profile：
+  - trigger/context：
+  - normative behavior：
+  - observable outcome / invariant：
+  - important exception / error semantics：
+  - acceptance evidence：
 - 依赖：
 - contextual atom / downstream design constraint：
 - 非目标：
@@ -469,14 +480,14 @@ roadmap relation 规则：
 
 - `New` 和 `Modified` list 必须从显式 `final-capability-impact` / `final-target-capability` pair 推导，遵循 Capability Relation Invariant，并与 final packet 和 `change-capability-anchors/index.md` 匹配。
 - Phase 5 split、merge、rename、reorder 或重新映射 atom ownership 时，必须在 final packet 派生后重新生成所有 roadmap relation label。不得沿用 Phase 1 label。
-- 每个 final Change 必须引用证明其 closed-loop outcome 和 order 合理的 input source-window dossier 和 refit trace 行。仅含 atom-count 或 Capability-count rationale 的 final Change 不完整。
+- 每个 final Change 必须引用证明其 intent、source-backed outcome、independent archive boundary 和 order 合理的 input source-window dossier 和 refit trace 行。仅含 atom-count 或 Capability-count rationale 的 final Change 不完整。
 
 ## final Change packet
 
 每个 `change-capability-anchors/<change-slug>/<change-slug>.md` final packet 必须包含：
 
 - Change 名称
-- 闭环结果
+- 单一 intent 与 source-backed outcome
 - source-window grounding 链接和 semantic profile 摘要
 - source window semantic grounding 门禁回答摘要
 - 按 spec target Capability 或仅归属 Change 的 artifact projection 分组的 final direct owner atom
@@ -530,8 +541,8 @@ derived-view invariant：
 
 必需 comparison：
 
-| Capability | Capability Map First Change | First Explicit `new` Target From Packets | First Matrix Cell | First Roadmap `New` | First Anchor Index Occurrence | Later Explicit `modified` Targets | Result | Repair If Failed |
-| --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| Capability | Repository Baseline | Baseline Evidence | Capability Map First Advancement | First Explicit Impact From Packets | First Matrix Cell | First Roadmap Advancement | First Anchor Index Occurrence | Later Explicit Impacts | Result | Repair If Failed |
+| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
 
 规则：
 
@@ -559,7 +570,7 @@ derived-view invariant：
 13. status 为 `adjusted`、`needs-coverage-recheck` 或 `blocked` 时，写入 `phase-works/phase-5/change-plan-adjustments.md`，包含 plan-impact 和 next-action summary。
 14. status 为 `accepted` 或 `adjusted` 时，根据 global atom index、source-window refit trace 和 final plan 派生 final `change-capability-anchors/<change-slug>/` packet 和 Capability view。final Change packet 必须显式列出每个归属 Change 的 direct atom 和 owner-scoped non-direct atom。business Capability view 只包含对应 target 的 direct `new` / `modified` spec atom；专用 foundation view 只包含 `runtime-substrate-foundation` 的 `foundation-substrate` 行。
 15. accepted 或 adjusted 时，写入 `change-capability-anchors/index.md`。
-16. accepted 或 adjusted 时，运行 Final Capability Relation Consistency Check 和 packet-level non-direct coverage check。repair canonical mapping/config value，再重新渲染 stale `First change`、matrix cell、roadmap `New`/`Modified` label、final anchor index 行、Capability view、final packet context/evidence/dependency/non-goal 行和 human-plan summary。不得让 renderer 根据 order 推断 `new` / `modified`。
+16. accepted 或 adjusted 时，写入 canonical `capability-baseline-reconciliation.json` 并渲染 matching Markdown，运行 Final Capability Relation Consistency Check 和 packet-level non-direct coverage check。repair canonical mapping/config value，再重新渲染 stale baseline、`First Advancement`、matrix cell、roadmap `New`/`Modified` label、final anchor index 行、Capability view、final packet context/evidence/dependency/non-goal 行和 human-plan summary。不得让 renderer 根据 order 推断 `new` / `modified`。
 17. status 为 `accepted` 或 `adjusted` 时，将 `phase-works/phase-5/change-capability-human-plan.md` 写成 final Change packet 和 Capability progression 的可读 synthesis。
 18. 始终写入 `phase-works/phase-5/phase-5-agent-report.md`。仅在 status 为 `accepted` 或 `adjusted` 时写入 `phase-works/phase-5/alignment-final-report.md`。
 19. 结束前，通过 inspection 或 deterministic parsing 运行 local artifact consistency check。
@@ -590,13 +601,13 @@ rendered mirror 还必须包含 `Trace Appendix`，其中列出 trace file、tra
 
 `phase-works/phase-5/change-capability-human-plan.md` 必须包含可读的 Change packet：
 
-| Change | Closed-loop Outcome | Source-Window Grounding | Direct Atom Groups | Complexity Budget | Contextual Atoms / Future Constraints | Upstream Realized Baseline | Downstream Constraints | Non-Goals | Evidence Burden | Ledger Links |
+| Change | Intent / Outcome | Source-Window Grounding | Direct Atom Groups | Complexity Budget | Contextual Atoms / Future Constraints | Upstream Realized Baseline | Downstream Constraints | Non-Goals | Evidence Burden | Ledger Links |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
 
 还必须包含 Capability progression narrative：
 
-| Capability | Baseline Change | Refinement / Hardening / Extension Changes | Atom Progression Summary | Human Review Notes |
-| --- | --- | --- | --- | --- |
+| Capability | Repository Baseline | First Advancement | Source-backed Later Advancements | Atom Progression Summary | Human Review Notes |
+| --- | --- | --- | --- | --- | --- |
 
 ## Phase 5 报告
 
@@ -621,13 +632,13 @@ rendered mirror 还必须包含 `Trace Appendix`，其中列出 trace file、tra
 - 确认每个 executable direct global atom 都恰好有一个 final owner Change；普通 design/verification atom 使用 `none` / `none`；每个 foundation direct atom 都由第一个 executable foundation Change 以 `foundation-substrate` / `runtime-substrate-foundation` 拥有
 - 确认每个 direct global atom 都有 final artifact projection
 - 确认没有把 `design-obligation` 和 `verification-obligation` atom 强制改为 `spec-requirement`
-- 确认 `new` / `modified` 只出现在具有具体 target 的 direct spec projection；每个 `(Change, target Capability)` pair 都有一个一致 impact；每条 Capability route 从显式 `new` 开始，随后使用显式 `modified`；accepted/adjusted 行中没有剩余 `unresolved`
+- 确认 `new` / `modified` 只出现在具有具体 target 的 direct spec projection；每个 `(Change, target Capability)` pair 都有一个一致 impact；existing baseline 使用 `modified+`，absent baseline 使用 `new, modified*`；accepted/adjusted 行中没有剩余 `unresolved`
 - 确认 `related-capabilities[]` 值唯一、已声明、source-explicit、不同于 target，并排除在 ownership、progression、Capability view 和 advanced-Capability complexity count 之外
 - 确认 `atom-plan-mapping.md` 中每个 owner-scoped non-direct atom 都显式出现在所属 final Change packet 中，没有仅通过 count、summary、`additional-context`、Capability view 或 link-only placeholder 表示
 - 确认 business Capability view 只包含对应 target 的 direct `new` / `modified` spec atom，foundation view 只包含 `foundation-substrate` 行；仅归属 Change/non-direct constraint 保留在 final Change packet，而不是 Capability view 中
 - 确认 final business Capability relation 只包含显式 `New` / `Modified` spec advancement，renderer 未根据 order 推断
-- 确认 refit 后 Capability Map `First change`、progression matrix 首个 cell、roadmap `New`/`Modified` label、final packet capability impact/target、Capability view、anchor index 和 human plan 全部一致
-- 确认 final plan 不是 diagonal 或 same-name Change/Capability roadmap；除非每个例外都有 source 支撑并已记录
+- 确认 refit 后 Capability Map `Repository Baseline` / `First Advancement`、progression matrix 首个 cell、roadmap `New`/`Modified` label、final packet capability impact/target、Capability view、anchor index 和 human plan 全部一致
+- 确认 diagonal matrix 已作为 diagnostic 审阅，且没有 capability-driven/same-name slicing；矩阵形状本身未被当作 blocker 或优化目标
 - 确认 Change packet 包含 upstream baseline 和 downstream design context，且没有把 future scope 拉入当前 direct ownership
 - 确认 final Change complexity 为 implementation-ready，或已提供 split option 并显式 blocked
 - 确认每个 over-budget trigger 都已 split、defer，或具有具体 indivisibility analysis

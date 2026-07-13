@@ -81,14 +81,14 @@ window selection 规则：
 
 - 包含精确的 atom 行范围。
 - 如果存在，包含最近的 section heading/path。
-- 包含理解 entry、fact、projection、failure/recovery、verification、auth/privacy、data、API、UI、worker、persistence 或 external integration semantics 所需的相邻行。
+- 包含理解 trigger/context、normative behavior、observable outcome/invariant、important exception/error semantics、acceptance evidence、auth/privacy、data、API、UI、worker、persistence 或 external integration semantics 所需的相邻行。
 - 当邻近的 contextual、duplicate、remainder 或 Phase 5 handoff evidence 影响同一局部 source 含义时，将其纳入。
 - 优先使用保持语义完整的紧凑 window；除非 section 之间高度耦合、无法在更小 window 中安全 review，否则不要复制整份大型 source document。
 - 保留行号和原始措辞。将中文 semantic note 写在复制 window 旁边，不得写入引用的 source text 内部。
 
 每个 `by-input-change/<input-change-slug>.md` dossier 必须包含：
 
-- input Change ID/name 和 Phase 1 closed-loop hypothesis
+- input Change ID/name、Phase 1 单一 intent 与 source-backed outcome hypothesis
 - 相关 input Capability
 - 按 source document 和 source section 分组的 source-window inventory
 - 复制的、带原始行号和精确行范围及局部 context 的 source window
@@ -96,15 +96,15 @@ window selection 规则：
 - 每个 atom 的 Phase 3 status/projection/owner
 - 每个 atom 的 Phase 3 capability impact、target Capability 和 source-explicit related Capability
 - 邻近 contextual、duplicate、remainder 或 Phase 5 handoff evidence
-- preliminary semantic profile：business outcome、entry、fact、projection、failure/recovery、verification surface、manual acceptance scenario 和 suspected Phase 5 refit pressure
+- preliminary semantic profile：intent、trigger/context、normative behavior、observable outcome/invariant、important exception/error semantics、acceptance evidence、cohesion/indivisibility 和 suspected Phase 5 refit pressure
 
 每个 `by-input-capability/<input-capability-slug>.md` dossier 必须包含：
 
 - input Capability ID/name 和 Phase 1 behavior-boundary hypothesis
 - 按 roadmap 顺序排列的相关 input Change
 - 按 Change 和 source document 分组的复制 source window
-- target `new` / `modified` spec atom 分组，以及单独标注的 contextual、dependency、evidence、non-goal 和 `non-owning-supporting-evidence` related atom 分组
-- behavior-boundary semantic profile：它拥有何种行为、不得拥有何种行为、何时首次可直接测试，以及哪些后续 Change 看起来增加了 source-backed delta
+- target `new` / `modified` / `unresolved` spec atom 分组，以及单独标注的 contextual、dependency、evidence、non-goal 和 `non-owning-supporting-evidence` related atom 分组；这些 impact 在 Phase 5 baseline reconciliation 前都不是 final authority
+- behavior-boundary semantic profile：Purpose、Owns、Excludes、implementation-substitution 判断、何时首次出现 source-backed advancement，以及哪些后续 Change 看起来增加了 source-backed delta
 - 显式确认 related-only 行不会产生 ownership、progression、Capability view 或 advanced-Capability complexity count
 
 同时按照 `references/trace-sidecar-contract.md` 写入 `source-window-dossiers/source-window-index.json`。它是 dossier window、关联 `GA-####` ID、source hash、行范围、window text hash、semantic profile、grounding issue 和 Phase 4 status 的 canonical machine-readable index。
@@ -121,11 +121,11 @@ Phase 4 status 为 `grounded` 时，`source-window-index.json` 必须包含非�
 规则：
 
 - 根据复制的 source window 推导每个 semantic profile，不得只依赖 `Source Fact` summary。
-- 对 input Change，判断 source window 是否描述了可 review 的 implementation unit：entry、fact、projection、failure path 和 verification truth 能否一并交付。
-- 对 input Capability，判断 source window 描述的是持久 behavior boundary，还是临时 implementation module、页面、source section 或 one-Change alias。
-- 如果 source window 表明一个真实 business loop 直接需要多个 Capability，记录 Phase 5 应保留这些 delta 的整体性；只有 source-window-backed split 能保持独立 acceptance 时才可拆分。
+- 对 input Change，判断 source window 是否描述一个 intent-cohesive、可独立决策/实现/验收/archive 的 delivery unit；检查 trigger/context、normative behavior、observable outcome/invariant、重要异常和 acceptance evidence 是否共同支持该 boundary，而不是要求每项都具有固定 entry/fact/projection 形态。
+- 对 input Capability，判断 source window 描述的是具有清晰 Purpose、Owns/Excludes 且实现替换后仍成立的持久 behavior boundary，还是临时 implementation-only module、页面、source section 或 one-Change alias。stable component/interface contract 不得仅因技术名称被拒绝。
+- 如果 source window 表明一个真实 outcome 直接需要多个 Capability，记录 Phase 5 应保留这些 delta 的整体性；只有 source-window-backed split 能保持独立 intent、acceptance 和 coherent archive state 时才可拆分。
 - 如果 source window 表明一个 input Change 混合了多个可独立 acceptance 的 business outcome，记录 Phase 5 split pressure。
-- 如果 source window 只显示 technical preparation，而没有可独立运行的 operational loop，记录供 Phase 5 处理的 foundation/fold-in/context/evidence pressure。
+- 如果 source window 只显示 technical preparation，而没有可独立验收的 system/engineering outcome、独立 deployment/risk/rollback/ownership/review boundary，记录供 Phase 5 处理的 foundation/fold-in/context/evidence pressure。
 - 如果 evidence 缺失、过宽、冲突或不明确，无法安全推导 profile，则记录 grounding issue，不得猜测。
 
 ## grounding 问题

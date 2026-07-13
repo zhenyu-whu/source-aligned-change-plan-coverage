@@ -21,6 +21,7 @@ from typing import Dict, Iterable, List, Optional, Sequence, Tuple
 
 from source_aligned_trace_lib import (
     ATOM_PLAN_MAPPING_SCHEMA,
+    CAPABILITY_BASELINE_SCHEMA,
     FINAL_PACKET_INDEX_SCHEMA,
     GLOBAL_ATOM_INDEX_SCHEMA,
     PHASE_TRACE_SCHEMAS,
@@ -29,7 +30,7 @@ from source_aligned_trace_lib import (
     sha256_file,
     write_json,
 )
-from render_source_aligned_orchestrate import render_atom_plan_mapping
+from render_source_aligned_orchestrate import render_atom_plan_mapping, render_capability_baseline
 
 
 GLOBAL_ATOM_ID_RE = re.compile(r"^GA-\d{4}$")
@@ -52,6 +53,7 @@ SPEC_PROJECTIONS = {"spec-requirement", "spec-guard"}
 CHANGE_ONLY_PROJECTIONS = {"design-obligation", "verification-obligation"}
 BUSINESS_CAPABILITY_IMPACTS = {"new", "modified"}
 TERMINAL_CAPABILITY_IMPACTS = {*BUSINESS_CAPABILITY_IMPACTS, "none", FOUNDATION_IMPACT}
+BUSINESS_BASELINE_STATUSES = {"existing", "absent"}
 LEGACY_CAPABILITY_FIELDS = {
     "candidate-owner-capability",
     "owner-capability",
@@ -73,6 +75,7 @@ RESERVED_CAPABILITY_MARKERS = {
 class ChangeDef:
     slug: str
     title: str
+    intent: str
     outcome: str
     kind: str
 
@@ -81,6 +84,11 @@ class ChangeDef:
 class CapabilityDef:
     slug: str
     boundary: str
+    purpose: str
+    owns: str
+    excludes: str
+    baseline_status: str
+    baseline_evidence: str
 
 
 @dataclass(frozen=True)
@@ -352,6 +360,7 @@ def parse_changes(config: Dict[str, object]) -> List[ChangeDef]:
             ChangeDef(
                 slug=slug,
                 title=str(raw.get("title") or slug),
+                intent=str(raw.get("intent") or raw.get("outcome") or slug),
                 outcome=str(raw.get("outcome") or slug),
                 kind=str(raw.get("kind") or "business"),
             )
@@ -369,7 +378,18 @@ def parse_capabilities(config: Dict[str, object]) -> List[CapabilityDef]:
         if slug in seen:
             raise ValueError(f"capabilities 中存在重复 slug: {slug}")
         seen.add(slug)
-        caps.append(CapabilityDef(slug=slug, boundary=str(raw.get("boundary") or slug)))
+        boundary = str(raw.get("boundary") or raw.get("purpose") or slug)
+        caps.append(
+            CapabilityDef(
+                slug=slug,
+                boundary=boundary,
+                purpose=str(raw.get("purpose") or boundary),
+                owns=str(raw.get("owns") or boundary),
+                excludes=str(raw.get("excludes") or "不拥有相邻 Capability 的行为。"),
+                baseline_status=str(raw.get("baseline_status") or "unknown"),
+                baseline_evidence=str(raw.get("baseline_evidence") or ""),
+            )
+        )
     return caps
 
 
@@ -427,11 +447,13 @@ def validate(
     final_atoms: Sequence[FinalAtom],
     changes: Sequence[ChangeDef],
     capabilities: Sequence[CapabilityDef],
+    specs_root: Path,
 ) -> List[str]:
     warnings: List[str] = []
     changes_by_slug = {change.slug: change for change in changes}
     change_slugs = set(changes_by_slug)
     capability_slugs = {cap.slug for cap in capabilities}
+    capabilities_by_slug = {cap.slug: cap for cap in capabilities}
     direct_seen: set[str] = set()
     foundation_changes = [change for change in changes if change.kind == FOUNDATION_CHANGE_KIND]
     if len(foundation_changes) > 1:
@@ -514,17 +536,36 @@ def validate(
         if len(impacts) != 1:
             raise ValueError(f"{change}/{target} 同一 capability delta 混用了 impact: {sorted(impacts)}")
 
-    seen_targets: set[str] = set()
+    advancement_index: Dict[str, int] = defaultdict(int)
     for change in changes:
         targets = sorted(target for owner, target in deltas_by_change_target if owner == change.slug)
         for target in targets:
             impact = next(iter(deltas_by_change_target[(change.slug, target)]))
-            expected = "modified" if target in seen_targets else "new"
+            capability = capabilities_by_slug[target]
+            if capability.baseline_status not in BUSINESS_BASELINE_STATUSES:
+                raise ValueError(
+                    f"{target} 是 active business Capability，baseline_status 必须是 existing 或 absent"
+                )
+            if not capability.baseline_evidence.strip():
+                raise ValueError(f"{target} 缺少 baseline_evidence")
+            spec_path = specs_root / target / "spec.md"
+            actual_status = "existing" if spec_path.is_file() else "absent"
+            if capability.baseline_status != actual_status:
+                raise ValueError(
+                    f"{target} baseline_status={capability.baseline_status} 与实际路径 "
+                    f"{spec_path} 的状态 {actual_status} 不一致"
+                )
+            expected = (
+                "modified"
+                if capability.baseline_status == "existing" or advancement_index[target] > 0
+                else "new"
+            )
             if impact != expected:
                 raise ValueError(
-                    f"{change.slug}/{target} capability impact 顺序错误：期望 {expected}，实际 {impact}"
+                    f"{change.slug}/{target} capability impact 与 repository baseline 不一致："
+                    f"baseline={capability.baseline_status}，期望 {expected}，实际 {impact}"
                 )
-            seen_targets.add(target)
+            advancement_index[target] += 1
 
     by_change = direct_by_change(final_atoms, changes)
     for change in changes:
@@ -719,6 +760,58 @@ def optional_list(config: Dict[str, object], key: str) -> List[Dict[str, object]
     return result
 
 
+def build_capability_baseline_data(
+    orchestrate_dir: Path,
+    changes: Sequence[ChangeDef],
+    capabilities: Sequence[CapabilityDef],
+    by_change: Dict[str, List[FinalAtom]],
+) -> Dict[str, object]:
+    specs_root = orchestrate_dir.parent / "specs"
+    active_targets = {
+        item.mapping.final_target_capability
+        for items in by_change.values()
+        for item in items
+        if is_business_capability_delta(item)
+    }
+    rows: List[Dict[str, object]] = []
+    for capability in capabilities:
+        if capability.slug not in active_targets:
+            continue
+        owners = [
+            change.slug
+            for change in changes
+            if any(
+                is_business_capability_delta(item)
+                and item.mapping.final_target_capability == capability.slug
+                for item in by_change[change.slug]
+            )
+        ]
+        spec_path = specs_root / capability.slug / "spec.md"
+        status = "existing" if spec_path.is_file() else "absent"
+        if capability.baseline_status != status:
+            raise ValueError(
+                f"{capability.slug} baseline_status={capability.baseline_status} 与实际 repository baseline={status} 不一致"
+            )
+        rows.append(
+            {
+                "capability": capability.slug,
+                "baseline-status": status,
+                "spec-path": f"openspec/specs/{capability.slug}/spec.md",
+                "spec-sha256": sha256_file(spec_path) if spec_path.is_file() else None,
+                "baseline-evidence": capability.baseline_evidence,
+                "first-planned-advancement": owners[0] if owners else "None",
+                "required-first-relation": "modified" if status == "existing" else "new",
+                "later-relation-rule": "modified",
+            }
+        )
+    return {
+        "trace-schema": CAPABILITY_BASELINE_SCHEMA,
+        "trace-contract-version": TRACE_CONTRACT_VERSION,
+        "repository-specs-root": "openspec/specs",
+        "capabilities": rows,
+    }
+
+
 def render_change_plan(
     config: Dict[str, object],
     changes: Sequence[ChangeDef],
@@ -745,8 +838,8 @@ def render_change_plan(
     if not progression_capabilities:
         lines.append("本计划没有业务 Capability delta；Change scope 仅包含 change-owned design/verification 义务。\n")
     else:
-        lines.append("| Capability | Behavior boundary | First change | Later expansion |\n")
-        lines.append("| --- | --- | --- | --- |\n")
+        lines.append("| Capability | Purpose | Owns | Excludes | Repository Baseline | Baseline Evidence | First Advancement | Source-backed Later Advancement |\n")
+        lines.append("| --- | --- | --- | --- | --- | --- | --- | --- |\n")
     for cap in progression_capabilities:
         owners = cap_changes.get(cap.slug, [])
         if cap.slug == FOUNDATION_CAPABILITY:
@@ -758,8 +851,9 @@ def render_change_plan(
             ]
             first = foundation_owners[0] if foundation_owners else "None"
             lines.append(
-                f"| `{cap.slug}` | {md(cap.boundary)} 只表达工程底座 substrate，不计入业务 New/Modified。 | "
-                f"`{first}` | 后续业务 change 只能消费其已归档 baseline。 |\n"
+                f"| `{cap.slug}` | {md(cap.purpose)} | {md(cap.owns)} | {md(cap.excludes)} | "
+                f"`not-applicable` | 工程底座 special case。 | `{first}` | "
+                "后续业务 Change 只能消费其已归档 baseline。 |\n"
             )
             continue
         first = owners[0] if owners else "None"
@@ -767,9 +861,12 @@ def render_change_plan(
         later_text = (
             "后续由 " + "、".join(code(owner) for owner in later) + " 直接拥有增量 atom。"
             if later
-            else "当前来源只要求首版基线；后续扩展需新增 source-backed delta。"
+            else "无已知 source-backed later delta。"
         )
-        lines.append(f"| `{cap.slug}` | {md(cap.boundary)} | `{first}` | {md(later_text)} |\n")
+        lines.append(
+            f"| `{cap.slug}` | {md(cap.purpose)} | {md(cap.owns)} | {md(cap.excludes)} | "
+            f"`{cap.baseline_status}` | {md(cap.baseline_evidence)} | `{first}` | {md(later_text)} |\n"
+        )
 
     lines.append("\n## Capability Progression Matrix\n\n")
     if not progression_capabilities:
@@ -811,7 +908,8 @@ def render_change_plan(
         gate = "foundation-executable" if change.kind == FOUNDATION_CHANGE_KIND else "business-executable"
         dep = "无" if change == changes[0] else "依赖前序 final change 已归档的 baseline；具体 upstream baseline 见 change packet。"
         lines.append(f"\n### Change 名称：`{change.slug}`\n\n")
-        lines.append(f"- 闭环结果：{md(change.outcome)}\n")
+        lines.append(f"- 单一 intent：{md(change.intent)}\n")
+        lines.append(f"- source-backed outcome：{md(change.outcome)}\n")
         lines.append("- source-window grounding：\n")
         lines.append("  - 输入 source-window dossier：`openspec/orchestrate/phase-works/phase-4/source-window-dossiers/`。\n")
         lines.append("  - source-backed semantic profile：`openspec/orchestrate/phase-works/phase-4/source-window-semantic-profile-review.md`。\n")
@@ -826,21 +924,21 @@ def render_change_plan(
         else:
             lines.append(f"- 范围内：{md(change.title)} 对应 direct atom 表中的行为、设计、guard 和验证义务。\n")
         lines.append("- 范围外：不直接拥有未映射到本 Change 的未来 atom；依赖、上下文、非目标和横切证据策略仅按 packet 中的 context/evidence burden 消费。\n")
-        lines.append("- vertical slice：\n")
+        lines.append("- behavior completeness profile：\n")
         if change.kind == FOUNDATION_CHANGE_KIND:
-            lines.append("  - 入口：repo/workspace、app skeleton、脚本、配置、生成链路或本地运行入口可被执行。\n")
-            lines.append("  - 事实：只表达当前工程底座已可构建、启动、健康检查、生成或迁移回读的可观察事实。\n")
-            lines.append("  - projection：只落到 health/readiness、script output、generated artifact、migration readback、package boundary 或 CI/local smoke。\n")
-            lines.append("  - 失败：底座启动、配置、生成、迁移或 package boundary 失败会产生可诊断信号。\n")
+            lines.append("  - trigger/context：repo/workspace、app skeleton、脚本、配置、生成链路或本地运行入口。\n")
+            lines.append("  - normative behavior：只交付 zero-domain engineering substrate。\n")
+            lines.append("  - observable outcome / invariant：工程底座可构建、启动、健康检查、生成或迁移回读。\n")
+            lines.append("  - important exception / error semantics：底座失败产生可诊断信号，不吸收 domain recovery。\n")
         else:
-            lines.append("  - 入口：由该 Change 的闭环入口触发，详见 final packet direct atom 表。\n")
-            lines.append("  - 事实：只持久化该闭环需要的 domain fact、snapshot、action、version、entitlement、project 或 export 事实。\n")
-            lines.append("  - projection：只展示该闭环产生的页面、对象、线程、列表、状态或下载结果。\n")
-            lines.append("  - 失败：失败路径不污染既有稳定事实，并保留可重试或可回流上下文。\n")
-        lines.append(f"  - 验证：{md(evidence_types(items))}。\n")
+            lines.append("  - trigger/context：由 source-window profile 中与该 intent 对应的上下文触发。\n")
+            lines.append("  - normative behavior：只包含 final packet direct atom 表中服务同一 intent 的行为与 guard。\n")
+            lines.append("  - observable outcome / invariant：以 source-backed outcome、状态转换或 invariant 为准，不强制持久 fact 或 user-facing projection。\n")
+            lines.append("  - important exception / error semantics：只纳入当前 outcome 真实成立所必需且 source-backed 的异常语义。\n")
+        lines.append(f"  - acceptance evidence：{md(evidence_types(items))}。\n")
         lines.append(f"- 依赖：{dep}\n")
         lines.append("- contextual atom / downstream design constraint：见 final packet context table 和 `atom-plan-mapping.md`。\n")
-        lines.append("- 非目标：只保留与本闭环相关的全局/局部非目标 guard，不扩展 prototype-only 页面、scene、fixture 或 mock 资产。\n")
+        lines.append("- 非目标：只保留与本 intent/outcome 相关的全局/局部非目标 guard，不扩展 prototype-only 页面、scene、fixture 或 mock 资产。\n")
         lines.append("- complexity budget：\n")
         lines.append(f"  - direct atom 数量：`{len(items)}`\n")
         lines.append("  - 推进的 Capability：" + (", ".join(code(cap) for cap in business_caps) if business_caps else "`None`") + "\n")
@@ -850,13 +948,13 @@ def render_change_plan(
         lines.append(f"  - 证据类型：{md(evidence_types(items))}\n")
         lines.append(f"  - executable roadmap 状态：`{gate}`\n")
         lines.append(f"  - budget 状态：`{budget_status(items)}`\n")
-        lines.append("  - split/defer 分析：Phase 5 已按 atom 级闭环、失败路径和验证面记录拆分、保留或阻断判断。\n")
-        lines.append("- 归档就绪性：direct atom 表中的成功、失败、guard 和验证义务可在一个 focused OpenSpec Change 中提案、实现、验证和归档。\n")
+        lines.append("  - split/defer 分析：Phase 5 已按 one-intent、独立决策/archive、indivisibility、acceptance 和 evidence surface 记录判断。\n")
+        lines.append("- 归档就绪性：direct atom 表服务同一 intent，能够在一个 focused OpenSpec Change 中提案、实现、验收和归档。\n")
 
     lines.append("\n## Phase 5 风险检查\n\n")
     lines.append("1. final executable roadmap 可从至多一个 foundation change 开始；若存在，它必须位于第一位且只拥有工程底座义务。\n")
-    lines.append("2. 计划不是 capability-driven 对角矩阵；长期 capability 可在多个业务闭环中演进。\n")
-    lines.append("3. 过大的 Phase 1 change 已按可保存、可验证、可归档的闭环拆分。\n")
+    lines.append("2. diagonal matrix 只作为 diagnostic；Change boundary 由 intent/cohesion/indivisibility/acceptance 决定。\n")
+    lines.append("3. 过大的 Phase 1 Change 已按可独立决策、验收和归档的 outcome 拆分。\n")
     lines.append("4. `design-obligation` 与 `verification-obligation` 保留原 projection，没有因为 direct ownership 被强制改成 `spec-requirement`。\n")
     lines.append("5. prototype-only、fixture、scene、mock asset 和非目标 row 只作为 guard/context 消费。\n")
     lines.append("\n## Phase 5 语言自检\n\n")
@@ -876,8 +974,8 @@ def render_capability_review(
     else:
         lines.extend(
             [
-                "| Capability | Atom Families | Current Change Sequence | Required Order | Sequence Problem | Adjustment |\n",
-                "| --- | --- | --- | --- | --- | --- |\n",
+                "| Capability | Repository Baseline | Baseline Evidence | Atom Families | Current Change Sequence | Required Relation Sequence | Sequence Problem | Adjustment |\n",
+                "| --- | --- | --- | --- | --- | --- | --- | --- |\n",
             ]
         )
     for cap in progression_capabilities:
@@ -893,14 +991,21 @@ def render_capability_review(
         )
         fam_text = ", ".join(f"{name}={count}" for name, count in fam.items()) if fam else "None"
         seq = " -> ".join(code(owner) for owner in owners) if owners else "`None`"
-        required = f"`{owners[0]}` 作为 baseline" if owners else "`None`"
+        required = (
+            "`modified+`"
+            if cap.baseline_status == "existing"
+            else "`new, modified*`"
+        )
         problem = (
-            "无；首个 direct owner 与 Capability Map、矩阵首格、roadmap New、anchor index 和 human plan 一致。"
+            "无；显式 impact 与 repository baseline、Capability Map、矩阵、anchor index 和 human plan 一致。"
             if owners
             else "该能力没有 final direct atom，不计入最终能力进展。"
         )
-        adjustment = "重算 New/Modified 标签；依赖、上下文、证据和非目标未计入 capability advancement。"
-        lines.append(f"| `{cap.slug}` | {md(fam_text)} | {md(seq)} | {md(required)} | {md(problem)} | {md(adjustment)} |\n")
+        adjustment = "按 baseline 重算 New/Modified；依赖、上下文、证据和非目标未计入 capability advancement。"
+        lines.append(
+            f"| `{cap.slug}` | `{cap.baseline_status}` | {md(cap.baseline_evidence)} | {md(fam_text)} | "
+            f"{md(seq)} | {md(required)} | {md(problem)} | {md(adjustment)} |\n"
+        )
     lines.append("\n## 语言自检\n\n本文解释内容已按 Artifact Language Gate 检查为简体中文。\n")
     return "".join(lines)
 
@@ -918,7 +1023,7 @@ def render_complexity_review(
     }
     lines = [
         "# Change complexity 审阅\n\n",
-        "| Change | Direct Atom Count | Artifact Projection Mix | Atom Groups | New Capabilities | Modified Capabilities | Primary Functional Points | Entry/Fact/Projection Count | Failure/Recovery Count | Evidence Types | Surface Families | Executable Roadmap Status | Budget Status | Complexity Decision |\n",
+        "| Change | Direct Atom Count | Artifact Projection Mix | Atom Groups | New Capabilities | Modified Capabilities | Primary Intent/Outcome Count | Trigger/Outcome/Invariant Families | Exception/Error Families | Evidence Types | Surface Families | Executable Roadmap Status | Budget Status | Complexity Decision |\n",
         "| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |\n",
     ]
     for change in changes:
@@ -937,24 +1042,24 @@ def render_complexity_review(
         default_decision = (
             "保留；该 foundation change 已是可独立验证的工程底座交付。"
             if change.kind == FOUNDATION_CHANGE_KIND
-            else "保留；该 change 已是可独立验证的业务闭环。"
+            else "保留；该 Change 已是单一 intent、可独立验收和归档的 outcome。"
         )
         decision = decision_overrides.get(change.slug, default_decision)
         functional_points = (
             f"1 个工程底座交付：{md(change.outcome)}"
             if change.kind == FOUNDATION_CHANGE_KIND
-            else f"1 个闭环：{md(change.outcome)}"
+            else f"1 个 intent/outcome：{md(change.outcome)}"
         )
         surface_families = (
             "workspace/script、app skeleton、health/readiness、config/env、migration/generation、package boundary 或 CI/local smoke"
             if change.kind == FOUNDATION_CHANGE_KIND
-            else "主要 surface 不超过该闭环的页面/对象/domain/worker 组合"
+            else "主要 surface 不超过该 intent/outcome 的必要页面/对象/domain/worker 组合"
         )
         lines.append(
             f"| `{change.slug}` | `{len(items)}` | {md(projection_mix(items))} | {md(atom_groups(items))} | "
             f"{md(', '.join(code(cap) for cap in new_caps) if new_caps else '`None`')} | "
             f"{md(', '.join(code(cap) for cap in modified_caps) if modified_caps else '`None`')} | "
-            f"{functional_points} | entry=1; fact=1; projection=1 | `{failure_count(items)}` | "
+            f"{functional_points} | 由 source-window profile 审阅 | `{failure_count(items)}` | "
             f"{md(evidence_types(items))} | {md(surface_families)} | "
             f"`{gate}` | `{budget_status(items)}` | {md(decision)} |\n"
         )
@@ -962,7 +1067,7 @@ def render_complexity_review(
     split_analyses = optional_list(config, "split_analyses")
     if split_analyses:
         lines.append("\n## 必需的拆分分析\n\n")
-        lines.append("| Change | Trigger | Candidate Split | Atoms / Capabilities Moved | New Closed-loop Outcome | Verification Surface | Decision | Reason |\n")
+        lines.append("| Change | Trigger | Candidate Split | Atoms / Capabilities Moved | Resulting Intent/Outcome | Acceptance Evidence | Decision | Reason |\n")
         lines.append("| --- | --- | --- | --- | --- | --- | --- | --- |\n")
         for item in split_analyses:
             lines.append(
@@ -1026,7 +1131,7 @@ def render_source_window_refit_trace(config: Dict[str, object], changes: Sequenc
                 f"{md(ids_for(items, 8))} | `{change.slug}` / direct capabilities in packet | "
                 "按 reviewed `atom-plan-mapping.md` 落位 direct owner。 | "
                 "context/dependency/evidence/non-goal 见 mapping relation。 | "
-                f"{md(change.outcome)} 形成可实现、可验证、可归档的工程交付闭环。 |\n"
+                f"{md(change.outcome)} 形成可实现、可验证、可归档的工程交付单元。 |\n"
             )
     lines.append("\n## 语言自检\n\n本文解释内容已按 Artifact Language Gate 检查为简体中文。\n")
     return "".join(lines)
@@ -1067,7 +1172,8 @@ def render_packet(
     lines = [
         f"# Change packet：`{change.slug}`\n\n",
         f"- Change 名称：`{change.slug}`\n",
-        f"- 闭环结果：{md(change.outcome)}\n",
+        f"- 单一 intent：{md(change.intent)}\n",
+        f"- source-backed outcome：{md(change.outcome)}\n",
         "- global atom index：`openspec/orchestrate/change-capability-anchors/obligation-atom-index.md`\n",
         "- source-window grounding：`openspec/orchestrate/phase-works/phase-4/source-window-dossiers/`；语义画像见 `openspec/orchestrate/phase-works/phase-4/source-window-semantic-profile-review.md`。\n",
         f"- source-window refit trace：`{work_dir.as_posix()}/source-window-refit-trace.md`\n",
@@ -1121,7 +1227,7 @@ def render_packet(
     lines.append("\n## 显式非目标\n\n")
     lines.append("不实现 prototype-only scene、fixture、mock asset、未列入 MVP 的页面/对象、协作、团队权限、版本树、多图画布或完整科研设计平台。\n")
     lines.append("\n## 证据负担\n\n")
-    lines.append("证据必须覆盖 direct atom 表中的成功、失败、guard、设计和验证义务；横切 viewport/object/state 证据按 Phase 5 mapping 作为 evidence burden 分散到相关业务闭环。\n")
+    lines.append("证据必须覆盖 direct atom 表中的成功、失败、guard、设计和验证义务；横切 viewport/object/state 证据按 Phase 5 mapping 作为 evidence burden 分散到相关业务 outcome。\n")
     lines.append("\n## 语言自检\n\n本文解释内容已按 Artifact Language Gate 检查为简体中文。\n")
     return "".join(lines)
 
@@ -1195,7 +1301,7 @@ def render_human_plan(
     lines = [
         "# Change Capability 人工可读计划\n\n",
         "本文件是便于人工阅读的 Phase 5 结果摘要；source of truth 仍是 global atom index、Phase 5 mapping 和 final change packets。\n\n",
-        "| Change | Closed-loop Outcome | Direct Atom Groups | Complexity Budget | Contextual Atoms / Future Constraints | Upstream Realized Baseline | Downstream Constraints | Non-Goals | Evidence Burden | Ledger Links |\n",
+        "| Change | Intent / Outcome | Direct Atom Groups | Complexity Budget | Contextual Atoms / Future Constraints | Upstream Realized Baseline | Downstream Constraints | Non-Goals | Evidence Burden | Ledger Links |\n",
         "| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |\n",
     ]
     for pos, change in enumerate(changes):
@@ -1203,7 +1309,7 @@ def render_human_plan(
         baseline = "、".join(code(slug) for slug in previous[-2:]) if previous else "`None`"
         items = by_change[change.slug]
         lines.append(
-            f"| `{change.slug}` | {md(change.outcome)} | {md(atom_groups(items))} | `{budget_status(items)}`，direct=`{len(items)}` | "
+            f"| `{change.slug}` | {md(change.intent)}；{md(change.outcome)} | {md(atom_groups(items))} | `{budget_status(items)}`，direct=`{len(items)}` | "
             f"`{len(by_context[change.slug])}` 个上下文/非直接 row，详见 packet。 | {md(baseline)} | "
             f"后续只消费已归档 baseline，不反向吸收未来 direct scope。 | prototype-only、非 MVP 页面/对象和全局 scope creep 均排除。 | "
             f"{md(evidence_types(items))} | `change-capability-anchors/{change.slug}/{change.slug}.md` |\n"
@@ -1212,8 +1318,8 @@ def render_human_plan(
     if not progression_capabilities:
         lines.append("本计划没有业务 Capability delta；Change 仍按其 direct design/verification atoms 完整交付。\n")
     else:
-        lines.append("| Capability | Baseline Change | Refinement / Hardening / Extension Changes | Atom Progression Summary | Human Review Notes |\n")
-        lines.append("| --- | --- | --- | --- | --- |\n")
+        lines.append("| Capability | Repository Baseline | First Advancement | Source-backed Later Advancements | Atom Progression Summary | Human Review Notes |\n")
+        lines.append("| --- | --- | --- | --- | --- | --- |\n")
     for cap in progression_capabilities:
         if cap.slug == FOUNDATION_CAPABILITY:
             owners = sorted({
@@ -1227,9 +1333,10 @@ def render_human_plan(
         first = owners[0] if owners else "None"
         later = owners[1:]
         lines.append(
-            f"| `{cap.slug}` | `{first}` | {md(', '.join(code(owner) for owner in later) if later else '`None`')} | "
-            f"{md(cap.boundary)} direct atom 按 roadmap 顺序推进，首个 direct owner 与所有 Phase 5 surface 一致。 | "
-            "dependency、context、evidence-only 和 non-goal 未计入 New/Modified。 |\n"
+            f"| `{cap.slug}` | `{cap.baseline_status}` | `{first}` | "
+            f"{md(', '.join(code(owner) for owner in later) if later else '无已知 source-backed later delta')} | "
+            f"{md(cap.boundary)} direct atom 按 repository baseline 与 roadmap 顺序推进。 | "
+            "dependency、context、evidence-only 和 non-goal 未计入 New/Modified；baseline evidence 见 reconciliation。 |\n"
         )
     lines.append("\n## 语言自检\n\n本文解释内容已按 Artifact Language Gate 检查为简体中文。\n")
     return "".join(lines)
@@ -1250,8 +1357,8 @@ def render_alignment_report(
     else:
         lines.extend(
             [
-                "| Capability | Capability Map First Change | First Direct Owner From Packets | First Matrix Cell | First Roadmap `New` | First Anchor Index Occurrence | Later Direct Owners | Result | Repair If Failed |\n",
-                "| --- | --- | --- | --- | --- | --- | --- | --- | --- |\n",
+                "| Capability | Repository Baseline | Capability Map First Advancement | First Direct Owner From Packets | First Matrix Cell | First Roadmap Impact | First Anchor Index Occurrence | Later Direct Owners | Result | Repair If Failed |\n",
+                "| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |\n",
             ]
         )
     for cap in progression_capabilities:
@@ -1261,18 +1368,22 @@ def render_alignment_report(
             first = foundation_owners[0] if foundation_owners else "None"
             later = ", ".join(code(owner) for owner in foundation_owners[1:]) if len(foundation_owners) > 1 else "`None`"
             lines.append(
-                f"| `{cap.slug}` | `{first}` | `{first}` | `foundation-substrate` | `None` | `{first}` | {later} | `foundation-substrate` | 不计入业务 New/Modified。 |\n"
+                f"| `{cap.slug}` | `not-applicable` | `{first}` | `{first}` | `foundation-substrate` | `None` | `{first}` | {later} | `foundation-substrate` | 不计入业务 New/Modified。 |\n"
             )
             continue
         first = owners[0] if owners else "None"
         later = ", ".join(code(owner) for owner in owners[1:]) if len(owners) > 1 else "`None`"
-        lines.append(f"| `{cap.slug}` | `{first}` | `{first}` | `{first}` | `{first}` | `{first}` | {later} | `ok` | 不需要修复。 |\n")
+        first_impact = "modified" if cap.baseline_status == "existing" else "new"
+        lines.append(
+            f"| `{cap.slug}` | `{cap.baseline_status}` | `{first}` | `{first}` | `{first}` | "
+            f"`{first_impact}` | `{first}` | {later} | `ok` | 不需要修复。 |\n"
+        )
     lines.append("\n## direct ownership 检查\n\n")
     lines.append(f"- executable direct atom：`{len(direct_items)}` 个。每个 executable direct atom 在 mapping 中只有一个 final owner Change。\n")
     lines.append("- Final direct projections 仅使用 `spec-requirement`、`spec-guard`、`design-obligation`、`verification-obligation`。\n")
     lines.append("- `design-obligation` 和 `verification-obligation` 使用 `impact=none`、`target=none`，仍由 Change 直接拥有。\n")
     lines.append("- `related-capabilities` 只保留 source-explicit 非拥有型关联，不进入 progression 或 capability views。\n")
-    lines.append("- Final matrix 避免了一对一 capability roadmap；多个 capability 可在多个业务闭环中重复演进。\n")
+    lines.append("- Final matrix 只作为 derived diagnostic；一对一或多对多形状都必须回到 intent、Capability Purpose 与 source evidence 审阅。\n")
     lines.append("- Foundation candidate 如存在，已输出为第一位 executable foundation change packet；`runtime-substrate-foundation` 可出现在 packet/capability view，但不计入业务 capability progression。\n")
     lines.append("- 是否需要 Phase 3 recheck：`No`。\n")
     lines.append("\n## 语言自检\n\n本文解释内容已按 Artifact Language Gate 检查为简体中文。\n")
@@ -1311,7 +1422,7 @@ def render_phase5_report(
         confirmations = [
             "Phase 5 已读取 Phase 4 source-window dossiers 和语义画像，refit 决策不只依赖 atom count 或摘要。",
             "atom-driven planning graph 已覆盖全部 global atom rows，并记录最终 owner、projection、relation 和中文理由。",
-            "capability progression 已从 final spec capability impact/target 重算。",
+            "capability progression 已从 final spec target 与只读 repository baseline reconciliation 重算。",
             "final direct atom 均有 exactly one final owner change，且没有 direct atom 使用 `contextual-only` projection。",
             "是否需要 Phase 3 recheck：`No`。",
         ]
@@ -1330,6 +1441,8 @@ def render_phase5_report(
         "openspec/orchestrate/phase-works/phase-5/change-plan.md",
         "openspec/orchestrate/phase-works/phase-5/atom-plan-mapping.md",
         "openspec/orchestrate/phase-works/phase-5/atom-plan-mapping.json",
+        "openspec/orchestrate/phase-works/phase-5/capability-baseline-reconciliation.md",
+        "openspec/orchestrate/phase-works/phase-5/capability-baseline-reconciliation.json",
         "openspec/orchestrate/phase-works/phase-5/final-packet-index.json",
         "openspec/orchestrate/trace/phase-5.trace.json",
         "openspec/orchestrate/phase-works/phase-5/capability-progression-review.md",
@@ -1390,6 +1503,19 @@ def write_outputs(
 
     change_plan = render_change_plan(config, executable_plan, capabilities, by_change, cap_changes, rel_work_dir)
     write_text(work_dir / "change-plan.md", change_plan)
+
+    baseline_json = work_dir / "capability-baseline-reconciliation.json"
+    baseline_data = build_capability_baseline_data(
+        orchestrate_dir,
+        executable_plan,
+        capabilities,
+        by_change,
+    )
+    write_json(baseline_json, baseline_data)
+    write_text(
+        work_dir / "capability-baseline-reconciliation.md",
+        render_capability_baseline(output_orchestrate_dir, baseline_json),
+    )
 
     write_text(
         work_dir / "capability-progression-review.md",
@@ -1453,6 +1579,8 @@ def write_outputs(
             "status": status,
             "atom-plan-mapping-path": orchestrate_rel(output_orchestrate_dir, output_mapping_json),
             "final-packet-index-path": orchestrate_rel(output_orchestrate_dir, final_packet_index),
+            "capability-baseline-reconciliation-path": orchestrate_rel(output_orchestrate_dir, baseline_json),
+            "capability-baseline-reconciliation-sha256": sha256_file(baseline_json),
             "complexity-summaries": [],
             "capability-progression-summaries": [],
             "validator-gate-outcomes": [],
@@ -1554,13 +1682,22 @@ def print_config_template(final_atoms: Sequence[FinalAtom]) -> None:
             {
                 "slug": slug,
                 "title": slug,
-                "outcome": f"TODO：补充 `{slug}` 的中文闭环结果。",
+                "intent": f"TODO：补充 `{slug}` 的中文单一 intent。",
+                "outcome": f"TODO：补充 `{slug}` 的中文 source-backed outcome。",
                 "kind": "foundation" if slug in foundation_slugs or "foundation" in slug else "business",
             }
             for slug in changes
         ],
         "capabilities": [
-            {"slug": slug, "boundary": f"TODO：补充 `{slug}` 的中文长期行为边界。"}
+            {
+                "slug": slug,
+                "boundary": f"TODO：补充 `{slug}` 的中文长期行为边界。",
+                "purpose": f"TODO：补充 `{slug}` 的 Purpose。",
+                "owns": f"TODO：补充 `{slug}` 拥有的行为。",
+                "excludes": f"TODO：补充 `{slug}` 不拥有的行为。",
+                "baseline_status": "TODO-existing-or-absent",
+                "baseline_evidence": f"TODO：只读检查 `openspec/specs/{slug}/spec.md`。",
+            }
             for slug in caps
         ],
         "decisions": [],
@@ -1626,7 +1763,7 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
     capabilities = parse_capabilities(config)
     mapping = normalize_mapping(mapping, changes)
     final_atoms = join_atoms(atoms, mapping)
-    warnings = validate(final_atoms, changes, capabilities)
+    warnings = validate(final_atoms, changes, capabilities, orchestrate_dir.parent / "specs")
 
     if args.write:
         write_outputs(
@@ -1666,7 +1803,7 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
     foundation_count = sum(
         1
         for item in final_atoms
-        if is_executable_direct(item) and changes_by_slug.get(item.mapping.final_change, ChangeDef("", "", "", "")).kind == FOUNDATION_CHANGE_KIND
+        if is_executable_direct(item) and changes_by_slug.get(item.mapping.final_change, ChangeDef("", "", "", "", "")).kind == FOUNDATION_CHANGE_KIND
     )
     print(
         f"Phase 5 检查通过：atoms={len(final_atoms)} executable-direct={direct_count} "

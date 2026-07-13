@@ -13,6 +13,7 @@ from typing import Dict, Iterable, List, Set, Tuple
 
 from source_aligned_trace_lib import (
     ATOM_PLAN_MAPPING_SCHEMA,
+    CAPABILITY_BASELINE_SCHEMA,
     DIRECT_PROJECTIONS,
     FINAL_PACKET_INDEX_SCHEMA,
     GLOBAL_ATOM_ID_RE,
@@ -46,6 +47,7 @@ from source_aligned_trace_lib import (
 )
 from render_source_aligned_orchestrate import (
     render_atom_plan_mapping,
+    render_capability_baseline,
     render_global_index,
     render_phase2_source_atoms,
     render_remainder_review,
@@ -326,10 +328,11 @@ def validate_phase1_plan_structure(path: Path, reporter: IssueReporter) -> None:
     lines = text.splitlines()
     required_headings = [
         "## 输入",
-        "## 切分原则",
+        "## Source Semantic Landscape",
         "## Capability Map",
-        "## Capability Progression Matrix",
+        "## Change 切分原则",
         "## Change Roadmap",
+        "## Change-Capability Overlay",
         "## Phase 1 风险检查",
         "## Phase 1 语言自检",
     ]
@@ -349,35 +352,52 @@ def validate_phase1_plan_structure(path: Path, reporter: IssueReporter) -> None:
     roadmap = "\n".join(lines[roadmap_start:risk_start])
     required_roadmap_patterns = {
         "Change 名称": r"(?m)^- Change 名称[：:]",
-        "闭环结果": r"(?m)^- 闭环结果[：:]",
+        "单一 intent": r"(?m)^- 单一 intent[：:]",
+        "source-backed outcome": r"(?m)^- source-backed outcome[：:]",
         "来源 evidence hint": r"(?m)^- 来源 evidence hint[：:]",
-        "Capability 变更": r"(?m)^- Capability 变更[：:]",
-        "New": r"(?m)^\s+- New[：:]",
-        "Modified": r"(?m)^\s+- Modified[：:]",
         "范围内": r"(?m)^- 范围内[：:]",
         "范围外": r"(?m)^- 范围外[：:]",
-        "vertical slice": r"(?m)^- vertical slice[：:]",
-        "入口": r"(?m)^\s+- 入口[：:]",
-        "事实": r"(?m)^\s+- 事实[：:]",
-        "projection": r"(?m)^\s+- projection[：:]",
-        "失败": r"(?m)^\s+- 失败[：:]",
-        "验证": r"(?m)^\s+- 验证[：:]",
+        "behavior completeness profile": r"(?m)^- behavior completeness profile[：:]",
+        "trigger/context": r"(?m)^\s+- trigger/context[：:]",
+        "normative behavior": r"(?m)^\s+- normative behavior[：:]",
+        "observable outcome / invariant": r"(?m)^\s+- observable outcome / invariant[：:]",
+        "important exception / error semantics": r"(?m)^\s+- important exception / error semantics[：:]",
+        "acceptance evidence": r"(?m)^\s+- acceptance evidence[：:]",
         "硬依赖": r"(?m)^- 硬依赖[：:]",
-        "归档就绪性": r"(?m)^- 归档就绪性[：:]",
+        "排序理由": r"(?m)^- 排序理由[：:]",
+        "独立完成与归档": r"(?m)^- 独立完成与归档[：:]",
+        "拆分/合并判断": r"(?m)^- 拆分/合并判断[：:]",
     }
     for label, pattern in required_roadmap_patterns.items():
         if not re.search(pattern, roadmap):
             reporter.error("phase1-plan-roadmap", path, f"Change Roadmap 缺少字段：{label}")
+    if re.search(r"(?m)^\s*-\s*(?:New|Modified)[：:]", roadmap):
+        reporter.error(
+            "phase1-plan-baseline-relation",
+            path,
+            "Phase 1 Change Roadmap 不得输出 OpenSpec New/Modified；使用 overlay 的 first-advancement/later-advancement",
+        )
+
+    overlay_rows = table_rows(path, ["Change", "Candidate Capability", "Roadmap Role"])
+    allowed_roles = {"first-advancement", "later-advancement"}
+    for row in overlay_rows:
+        role = normalize_code(cell(row, "Roadmap Role"))
+        if role not in allowed_roles:
+            reporter.error(
+                "phase1-plan-overlay-role",
+                path,
+                f"Change-Capability Overlay 的 Roadmap Role 非法：{role}",
+            )
 
     risk_end = lines.index("## Phase 1 语言自检") if "## Phase 1 语言自检" in lines else len(lines)
     risk_lines = lines[risk_start + 1 : risk_end]
     risk_numbers = [
         int(match.group(1))
         for line in risk_lines
-        if (match := re.match(r"^([1-8])[.)]\s+", line.strip()))
+        if (match := re.match(r"^(1[01]|[1-9])[.)]\s+", line.strip()))
     ]
-    if risk_numbers != list(range(1, 9)):
-        reporter.error("phase1-plan-risk-checks", path, "Phase 1 风险检查必须按 1–8 顺序包含八个编号门禁")
+    if risk_numbers != list(range(1, 12)):
+        reporter.error("phase1-plan-risk-checks", path, "Phase 1 风险检查必须按 1–11 顺序包含十一个编号门禁")
 
 
 def check_ranges(
@@ -473,6 +493,11 @@ def expected_manifest_artifacts(orchestrate_dir: Path, repo_root: Path) -> Dict[
         (
             orchestrate_dir / "phase-works/phase-5/atom-plan-mapping.json",
             ATOM_PLAN_MAPPING_SCHEMA,
+            "phase-5",
+        ),
+        (
+            orchestrate_dir / "phase-works/phase-5/capability-baseline-reconciliation.json",
+            CAPABILITY_BASELINE_SCHEMA,
             "phase-5",
         ),
         (
@@ -1382,6 +1407,95 @@ def validate_mapping_mirror(orchestrate_dir: Path, reporter: IssueReporter) -> N
     )
 
 
+def load_capability_baselines(
+    orchestrate_dir: Path,
+    repo_root: Path,
+    reporter: IssueReporter,
+) -> Dict[str, Dict[str, object]]:
+    json_path = orchestrate_dir / "phase-works/phase-5/capability-baseline-reconciliation.json"
+    md_path = json_path.with_suffix(".md")
+    data = json_obj(json_path, reporter, CAPABILITY_BASELINE_SCHEMA)
+    if data and normalize_code(data.get("repository-specs-root")) != "openspec/specs":
+        reporter.error(
+            "phase5-capability-baseline-root",
+            json_path,
+            "repository-specs-root 必须是 openspec/specs",
+        )
+    if json_path.exists():
+        validate_rendered_markdown(
+            orchestrate_dir,
+            json_path,
+            md_path,
+            render_capability_baseline,
+            reporter,
+            "phase5-capability-baseline",
+        )
+    rows = data.get("capabilities")
+    result: Dict[str, Dict[str, object]] = {}
+    if not isinstance(rows, list):
+        reporter.error("phase5-capability-baseline-rows", json_path, "capabilities 必须是 array")
+        return result
+    for row in rows:
+        if not isinstance(row, dict):
+            reporter.error("phase5-capability-baseline-row", json_path, "capabilities item 必须是 object")
+            continue
+        required_keys = {
+            "capability",
+            "baseline-status",
+            "spec-path",
+            "spec-sha256",
+            "baseline-evidence",
+            "first-planned-advancement",
+            "required-first-relation",
+            "later-relation-rule",
+        }
+        missing_keys = sorted(required_keys - set(row))
+        if missing_keys:
+            reporter.error(
+                "phase5-capability-baseline-fields",
+                json_path,
+                f"baseline row 缺少字段：{', '.join(missing_keys)}",
+            )
+        capability = normalize_code(row.get("capability"))
+        if not KEBAB_CASE_RE.match(capability):
+            reporter.error("phase5-capability-baseline-id", json_path, f"Capability ID 非法：{capability}")
+            continue
+        if capability in result:
+            reporter.error("phase5-capability-baseline-duplicate", json_path, f"Capability baseline 重复：{capability}")
+            continue
+        status = normalize_code(row.get("baseline-status"))
+        if status not in {"existing", "absent"}:
+            reporter.error("phase5-capability-baseline-status", json_path, f"{capability} baseline-status 非法：{status}")
+        expected_rel = f"openspec/specs/{capability}/spec.md"
+        spec_rel = normalize_code(row.get("spec-path"))
+        if spec_rel != expected_rel:
+            reporter.error("phase5-capability-baseline-path", json_path, f"{capability} spec-path 必须是 {expected_rel}")
+        spec_path = repo_root / expected_rel
+        actual_status = "existing" if spec_path.is_file() else "absent"
+        if status != actual_status:
+            reporter.error(
+                "phase5-capability-baseline-filesystem",
+                json_path,
+                f"{capability} 声明 {status}，实际 repository baseline 为 {actual_status}",
+            )
+        expected_sha = sha256_file(spec_path) if spec_path.is_file() else None
+        if row.get("spec-sha256") != expected_sha:
+            reporter.error("phase5-capability-baseline-sha", json_path, f"{capability} spec-sha256 与 repository baseline 不一致")
+        if not squash(row.get("baseline-evidence")):
+            reporter.error("phase5-capability-baseline-evidence", json_path, f"{capability} 缺少 baseline-evidence")
+        expected_first_relation = "modified" if status == "existing" else "new"
+        if normalize_code(row.get("required-first-relation")) != expected_first_relation:
+            reporter.error(
+                "phase5-capability-baseline-relation",
+                json_path,
+                f"{capability} required-first-relation 应为 {expected_first_relation}",
+            )
+        if normalize_code(row.get("later-relation-rule")) != "modified":
+            reporter.error("phase5-capability-baseline-relation", json_path, f"{capability} later-relation-rule 必须为 modified")
+        result[capability] = row
+    return result
+
+
 def validate_final_packets(orchestrate_dir: Path, repo_root: Path, reporter: IssueReporter, mapping: Dict[str, Dict[str, object]]) -> None:
     index_path = orchestrate_dir / "phase-works/phase-5/final-packet-index.json"
     data = json_obj(index_path, reporter, FINAL_PACKET_INDEX_SCHEMA)
@@ -1606,7 +1720,28 @@ def validate_final_packets(orchestrate_dir: Path, repo_root: Path, reporter: Iss
         if change in packet_changes and (change, cap_slug) not in capability_views_by_owner:
             reporter.error("phase5-capability-view-missing-owner", index_path, f"{change}/{cap_slug} 有 capability delta atom，但没有 capability view")
 
-    seen_capabilities: Set[str] = set()
+    baselines = load_capability_baselines(orchestrate_dir, repo_root, reporter)
+    active_capabilities = {
+        normalize_code(row.get("final-target-capability"))
+        for row in mapping.values()
+        if normalize_code(row.get("final-capability-impact")) in BUSINESS_CAPABILITY_IMPACTS
+    }
+    missing_baselines = active_capabilities - set(baselines)
+    extra_baselines = set(baselines) - active_capabilities
+    if missing_baselines:
+        reporter.error(
+            "phase5-capability-baseline-missing",
+            index_path,
+            f"缺少 active Capability baseline：{', '.join(sorted(missing_baselines))}",
+        )
+    if extra_baselines:
+        reporter.error(
+            "phase5-capability-baseline-extra",
+            index_path,
+            f"baseline reconciliation 包含未被 final spec atom 推进的 Capability：{', '.join(sorted(extra_baselines))}",
+        )
+
+    advancement_index: Dict[str, int] = {}
     for change in packet_order:
         impacts_by_target: Dict[str, Set[str]] = {}
         for row in mapping.values():
@@ -1619,10 +1754,23 @@ def validate_final_packets(orchestrate_dir: Path, repo_root: Path, reporter: Iss
                 reporter.error("phase5-capability-impact-mixed", index_path, f"{change}/{target} 混用了 impact：{sorted(impacts)}")
                 continue
             impact = next(iter(impacts))
-            expected = "modified" if target in seen_capabilities else "new"
+            baseline = baselines.get(target, {})
+            status = normalize_code(baseline.get("baseline-status"))
+            position = advancement_index.get(target, 0)
+            expected = "modified" if status == "existing" or position > 0 else "new"
             if impact != expected:
-                reporter.error("phase5-capability-impact-order", index_path, f"{change}/{target} 期望 {expected}，实际为 {impact}")
-            seen_capabilities.add(target)
+                reporter.error(
+                    "phase5-capability-impact-baseline",
+                    index_path,
+                    f"{change}/{target} baseline={status}，期望 {expected}，实际为 {impact}",
+                )
+            if position == 0 and normalize_code(baseline.get("first-planned-advancement")) != change:
+                reporter.error(
+                    "phase5-capability-baseline-first-advancement",
+                    index_path,
+                    f"{target} first-planned-advancement 与 packet order 不一致",
+                )
+            advancement_index[target] = position + 1
 
     for atom_id, row in mapping.items():
         change = str(row.get("final-owner-change", ""))
@@ -1647,6 +1795,8 @@ def validate_phase_5(orchestrate_dir: Path, repo_root: Path, reporter: IssueRepo
             orchestrate_dir / "phase-works/phase-5/change-plan.md",
             orchestrate_dir / "phase-works/phase-5/atom-plan-mapping.md",
             orchestrate_dir / "phase-works/phase-5/atom-plan-mapping.json",
+            orchestrate_dir / "phase-works/phase-5/capability-baseline-reconciliation.md",
+            orchestrate_dir / "phase-works/phase-5/capability-baseline-reconciliation.json",
             orchestrate_dir / "phase-works/phase-5/final-packet-index.json",
             orchestrate_dir / "phase-works/phase-5/capability-progression-review.md",
             orchestrate_dir / "phase-works/phase-5/change-complexity-review.md",
@@ -1706,6 +1856,9 @@ def validate_phase_5(orchestrate_dir: Path, repo_root: Path, reporter: IssueRepo
         )
         require_file(orchestrate_dir / "phase-works/phase-5/atom-plan-mapping.md", reporter, "phase5-interface-artifact", "缺少 Phase 5 atom-plan-mapping.md")
         require_file(orchestrate_dir / "phase-works/phase-5/atom-plan-mapping.json", reporter, "phase5-interface-artifact", "缺少 Phase 5 atom-plan-mapping.json")
+        baseline_json_path = orchestrate_dir / "phase-works/phase-5/capability-baseline-reconciliation.json"
+        require_file(baseline_json_path, reporter, "phase5-interface-artifact", "缺少 Capability baseline reconciliation JSON")
+        require_file(orchestrate_dir / "phase-works/phase-5/capability-baseline-reconciliation.md", reporter, "phase5-interface-artifact", "缺少 Capability baseline reconciliation Markdown")
         require_file(orchestrate_dir / "phase-works/phase-5/final-packet-index.json", reporter, "phase5-interface-artifact", "缺少 Phase 5 final-packet-index.json")
         require_file(orchestrate_dir / "phase-works/phase-5/capability-progression-review.md", reporter, "phase5-interface-artifact", "缺少 Phase 5 capability progression review")
         require_file(orchestrate_dir / "phase-works/phase-5/change-complexity-review.md", reporter, "phase5-interface-artifact", "缺少 Phase 5 change complexity review")
@@ -1713,6 +1866,16 @@ def validate_phase_5(orchestrate_dir: Path, repo_root: Path, reporter: IssueRepo
         require_file(orchestrate_dir / "phase-works/phase-5/alignment-final-report.md", reporter, "phase5-interface-artifact", "缺少 Phase 5 alignment final report")
         require_file(orchestrate_dir / "phase-works/phase-5/change-capability-human-plan.md", reporter, "phase5-interface-artifact", "缺少 Phase 5 human plan")
         require_file(orchestrate_dir / "change-capability-anchors/index.md", reporter, "phase5-interface-artifact", "缺少 final change-capability anchor index")
+        trace_baseline_path = str(trace.get("capability-baseline-reconciliation-path", ""))
+        expected_baseline_rel = rel(baseline_json_path, repo_root)
+        if trace_baseline_path != expected_baseline_rel:
+            reporter.error(
+                "phase5-capability-baseline-trace-path",
+                trace_path,
+                f"baseline reconciliation path 应为 {expected_baseline_rel}",
+            )
+        if baseline_json_path.exists() and trace.get("capability-baseline-reconciliation-sha256") != sha256_file(baseline_json_path):
+            reporter.error("phase5-capability-baseline-trace-sha", trace_path, "baseline reconciliation digest 与 trace 不一致")
     global_atoms = load_global_atoms(orchestrate_dir, reporter)
     mapping = load_mapping(orchestrate_dir, reporter)
     missing = sorted(set(global_atoms) - set(mapping))

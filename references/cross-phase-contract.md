@@ -32,6 +32,16 @@
 - Phase 2 只记录 candidate metadata，Phase 3 负责规范化，Phase 5 负责 final determination。不得把较早 Phase 的 candidate owner、projection 或 Capability impact 当作 final authority。
 - Phase 5 返回 `accepted` 或 `adjusted` 前必须解决所有 direct atom 的 final owner、final projection 和 unresolved Capability impact/target。
 
+## Capability、Change 与 Phase 1 边界
+
+- Capability 是跨 Change 持续存在的 logical spec/domain boundary；Change 是围绕一个 source-backed intent、可独立决策与归档的 delivery/evolution slice。两者是多对多关系，任何 Phase 都不得从一方机械生成另一方。
+- Phase 1 必须先建立 coarse candidate Capability topology，再独立按 outcome、cohesion、indivisibility、acceptance 和 hard dependency 形成 Change roadmap；Capability 列数、名称或矩阵外观不得决定 Change boundary。
+- Phase 1 不执行 obligation extraction、atom ID、line-level coverage、unique obligation ownership、requirement operation 或 completeness claim。coarse semantic landscape、Purpose、Owns/Excludes、intent、outcome 和 source hint 不得被解释为 obligation ledger。
+- Phase 1 的 Change–Capability edge 只使用 `first-advancement` / `later-advancement` 表达 roadmap progression hypothesis。OpenSpec Capability relation `New` / `Modified` 取决于 repository spec baseline，不得从 roadmap 首次出现位置推断。
+- Phase 2/3 的 capability impact 是 candidate/normalized planning metadata；在没有 repository baseline evidence 时，direct spec atom 应保持 `unresolved`，由 Phase 5 reconciliation。较早 Phase 的 `new` / `modified` 不能替代 Phase 5 baseline check。
+- Phase 5 必须将 source-backed final target 与只读 `openspec/specs/<capability>/spec.md` baseline 对齐：existing target 的所有 planned delta 为 `modified`；absent target 的首次 planned delta 为 `new`，其后按明确 roadmap/archive 顺序为 `modified`。现有 spec 只提供 identity/existence/comparison evidence，不成为 production obligation authority。
+- Capability-level `New` / `Modified` 与 requirement-level `ADDED` / `MODIFIED` / `REMOVED` / `RENAMED` 是两层语义。向 existing Capability 新增 requirement 仍是 Capability-level `Modified` + requirement-level `ADDED`；任何 Phase 都不得把 requirement operation 反推为 Capability existence。
+
 ## Artifact Language Gate
 
 - agent 编写的解释、判断、理由、风险、proof/evidence description、report 和 handoff 必须使用简体中文。
