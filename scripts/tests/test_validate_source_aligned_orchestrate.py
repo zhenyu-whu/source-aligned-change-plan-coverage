@@ -75,7 +75,6 @@ class SourceAlignedValidatorTest(unittest.TestCase):
             "phase-2 source atoms are rendered from JSON\n",
         )
         self._write("openspec/orchestrate/phase-works/phase-2/source-obligation-atoms/index.md", "index\n")
-        self._write("openspec/orchestrate/phase-works/phase-2/source-obligation-review/index.html", "<!doctype html>\n")
         self._write("openspec/orchestrate/phase-works/phase-2/phase-2-agent-report.md", "ok\n")
         self._write(
             "openspec/orchestrate/phase-works/phase-3/source-doc-manifest.md",
@@ -102,7 +101,6 @@ class SourceAlignedValidatorTest(unittest.TestCase):
             "| L9-L20 | full-source remainder audit | formatting/background | false | no production obligation |\n",
         )
         self._write("openspec/orchestrate/phase-works/phase-3/coverage-review.md", "Decision: coverage-complete\n")
-        self._write("openspec/orchestrate/phase-works/phase-3/coverage-review-app/index.html", "<!doctype html>\n")
         self._write("openspec/orchestrate/phase-works/phase-3/phase-3-agent-report.md", "ok\n")
         self._write("openspec/orchestrate/phase-works/phase-3/phase-3-trace/duplicate-ownership-review.md", "ok\n")
         self._write("openspec/orchestrate/phase-works/phase-3/phase-3-trace/atom-normalization-decision-log.md", "ok\n")

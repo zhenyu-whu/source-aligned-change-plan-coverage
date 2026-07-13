@@ -39,7 +39,6 @@ Write current copies only:
 - `openspec/orchestrate/phase-works/phase-3/phase-3-trace/source-remainder-review.json`
 - `openspec/orchestrate/phase-works/phase-3/phase-3-trace/duplicate-ownership-review.md`
 - `openspec/orchestrate/phase-works/phase-3/phase-3-trace/atom-normalization-decision-log.md`
-- `openspec/orchestrate/phase-works/phase-3/coverage-review-app/index.html`
 - `openspec/orchestrate/phase-works/phase-3/coverage-review.md`
 - `openspec/orchestrate/phase-works/phase-3/phase-3-agent-report.md`
 - `openspec/orchestrate/trace/phase-3.trace.json`
@@ -49,8 +48,6 @@ Use a single-level filename for per-source files. Derive it from the source docu
 Phase 3 may add precise missing source-backed atoms to canonical `obligation-atom-index.json`, then render `obligation-atom-index.md` from that JSON. It must not edit Phase 2 source atom files. If missing obligations are too broad or require rereading many documents beyond targeted semantic review, return `Decision: blocked` and state whether a full Phase 2 rerun is required.
 
 `phase-works/phase-3/phase-3-trace/` records the current Phase 3 intermediate audit trail. JSON files are canonical; renderer-backed Markdown mirrors are review aids, not source of truth. They must be overwritten on each fresh Phase 3 run and must be consistent with canonical `obligation-atom-index.json`, per-source coverage files, and `phase-works/phase-3/coverage-review.md`.
-
-After the Phase 3 semantic outputs exist, generate `phase-works/phase-3/coverage-review-app/index.html` as the deterministic static human review app defined below. It may render source bodies and Phase 3 outputs, but must not add atoms, change atom IDs, reinterpret coverage, decide duplicate/ownership issues, or write Phase 4/Phase 5 artifacts.
 
 After the writer finishes, Phase 3 must pass the reviewer/repair loop from `references/reviewer-repair-loop.md`: the main agent runs the phase validator, spawns a fresh independent coverage reviewer subagent, spawns a fresh independent Phase 3 repair-writer subagent if artifact changes are needed, reruns validator, spawns a fresh independent reviewer again after repair, then continues only after pass.
 
@@ -167,36 +164,8 @@ Evaluate in this order:
 18. Build compact global statistics across source documents, global atoms, meaningful missing atoms, duplicate findings, broad-atom split findings, non-coverage classifications, Change-ownership ambiguities, capability-impact/target uncertainties, gaps, and conflicts.
 19. Write `trace/phase-3.trace.json` according to `references/trace-sidecar-contract.md`, including the canonical source remainder review path.
 20. Run `scripts/render_source_aligned_orchestrate.py --artifact phase3-global-index --write`, `--artifact phase3-source-map --write`, and `--artifact phase3-remainder-review --write` or `--artifact all-supported --write` so all JSON-backed Markdown mirrors are current.
-21. Generate `phase-works/phase-3/coverage-review-app/index.html` from the source documents and Phase 3 JSON artifacts. Prefer the bundled helper `scripts/phase3_coverage_review_app.py` unless a project-specific equivalent already exists.
-22. The main orchestrating agent refreshes `trace/manifest.json`, runs `validate_source_aligned_orchestrate.py --phase phase-3`, then runs the Phase 3 reviewer/repair loop with independent reviewer and repair-writer subagents. If validator reports `rendered-markdown-drift`, repair JSON or rerender; do not hand-edit Markdown.
-23. Decide whether coverage normalization is complete or blocked.
-
-## Phase 3 Human Review App
-
-The review app is a deterministic visualization layer over Phase 3 artifacts. It must help a human reviewer answer four questions:
-
-- For each source document, which source sections are covered, classified as safe non-atom ranges, or handed off?
-- For each Phase 2 source atom row, what normalized global atom, relation, non-direct status, or blocker did Phase 3 assign?
-- Which duplicate, broad-atom, overlap, Change-ownership ambiguity, capability-impact/target uncertainty, projection uncertainty, blocker, and Phase 5 refit handoff items deserve focused review?
-- Is the global `GA-####` registry internally searchable by source, status, projection, owner Change, capability impact/target/related capabilities, relation, and evidence burden?
-
-The app must include:
-
-- `Source Coverage` view: source document tree, original source content with line numbers, effective `GA-####` annotations, per-document coverage judgment, section coverage, non-atom range review, and duplicate/ownership review.
-- `Source -> Global` view: searchable/filterable table over canonical `phase-3-trace/source-to-global-atom-map.json`, with the Markdown mirror available for reviewer reading.
-- `Risk Queue` view: focused duplicate/broad/Change-ownership/capability-impact/Phase 5 refit handoff queue, sorted by review risk rather than source order.
-- `Global Registry` view: searchable/filterable table over canonical `change-capability-anchors/obligation-atom-index.json`, with the Markdown mirror available for reviewer reading.
-- Visible warning count when any source file, coverage file, trace table, global index, or line range cannot be parsed mechanically.
-
-Prefer generating a self-contained HTML file that can be opened directly from disk, so Phase 3 review does not require a dev server. The bundled helper can be run from the repository root:
-
-```bash
-python3 .codex/skills/source-aligned-change-plan-coverage/scripts/phase3_coverage_review_app.py \
-  --repo-root . \
-  --orchestrate-dir openspec/orchestrate
-```
-
-The helper reads source document bodies, `phase-works/phase-3/source-doc-manifest.md`, all per-source `.coverage.md` files, all Phase 3 trace files, preferably `change-capability-anchors/obligation-atom-index.json` and `phase-3-trace/source-to-global-atom-map.json`, and `phase-works/phase-3/coverage-review.md`, then writes `phase-works/phase-3/coverage-review-app/index.html`. It falls back to Markdown trace with a warning during migration. Its output is reviewer-facing only and must not be treated as the source of truth for Phase 4 or Phase 5.
+21. The main orchestrating agent refreshes `trace/manifest.json`, runs `validate_source_aligned_orchestrate.py --phase phase-3`, then runs the Phase 3 reviewer/repair loop with independent reviewer and repair-writer subagents. If validator reports `rendered-markdown-drift`, repair JSON or rerender; do not hand-edit Markdown.
+22. Decide whether coverage normalization is complete or blocked.
 
 ## Required Tables
 
@@ -299,9 +268,9 @@ And a Phase 5 refit handoff table:
 
 Use `coverage-complete` only when every source document under the specified roots is manifest-classified, every production-meaningful source obligation has exactly one global atom or justified non-coverage status, every source range without atoms is classified as production-safe non-atom content in `source-remainder-review.json`, there are no unclassified atoms, no unresolved duplicate obligations, no broad atom compression findings left unsplit or justified, no blocking conflicts, and every Phase 5 placement question is explicitly handed off. Every global row must also satisfy the v2 capability field structure: direct spec rows use `new` / `modified` or rationale-backed `unresolved`, direct design/verification rows use `none` / `none`, and related capability arrays are unique, source-explicit, declared, and non-owning.
 
-Additionally, use `coverage-complete` only when every source document listed in `phase-works/phase-3/source-doc-manifest.md` has a matching `phase-works/phase-3/source-doc-coverage/<source>.coverage.md` file, all Phase 3 trace files including `source-remainder-review.json` exist and reconcile with the final review, and `phase-works/phase-3/coverage-review-app/index.html` exists as a review aid over the final Phase 3 outputs.
+Additionally, use `coverage-complete` only when every source document listed in `phase-works/phase-3/source-doc-manifest.md` has a matching `phase-works/phase-3/source-doc-coverage/<source>.coverage.md` file and all Phase 3 trace files including `source-remainder-review.json` exist and reconcile with the final review.
 
-`coverage-review-app/index.html`, `coverage-review.md`, and `phase-3-agent-report.md` are required interface artifacts. JSON sidecars remain the canonical validator input; Markdown files and the review app are reviewer-facing mirrors and must not be used as a replacement for canonical JSON.
+`coverage-review.md` and `phase-3-agent-report.md` are required interface artifacts. JSON sidecars remain the canonical validator input; Markdown files are reviewer-facing mirrors and must not be used as a replacement for canonical JSON.
 
 Use `blocked` when source documents conflict, source roots are incomplete, source atom files are missing, atom evidence is too broad to normalize, or the user must decide a boundary before coverage can close.
 
@@ -325,7 +294,6 @@ Use `blocked` when source documents conflict, source roots are incomplete, sourc
 - confirmation that every production-meaningful obligation under the specified roots is covered by exactly one global atom or justified
 - confirmation that no raw helper output was used as a gate
 - confirmation that any line-range helper output, if used, was treated only as mechanical candidate input
-- Phase 3 review app path, source document count, global atom count, risk item count, warning count, and confirmation that the app is only a deterministic visualization of Phase 3 artifacts
 - confirmation that every Phase 3 artifact passed the Artifact Language Gate
 
 The final agent reply should be short and in Chinese. Include the decision, changed files, missing atoms, duplicate/ownership findings, language-gate result, remaining blockers, and whether Phase 4 source-window grounding may proceed.

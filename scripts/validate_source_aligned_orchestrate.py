@@ -536,7 +536,6 @@ def validate_phase_2(orchestrate_dir: Path, repo_root: Path, reporter: IssueRepo
         validate_trace_status(trace, trace_path, reporter, "phase-2", "phase2-status")
     require_file(orchestrate_dir / "phase-works/phase-2/source-obligation-atoms/work-queue.md", reporter, "phase2-interface-artifact", "Phase 2 work queue is missing")
     require_file(orchestrate_dir / "phase-works/phase-2/source-obligation-atoms/index.md", reporter, "phase2-interface-artifact", "Phase 2 atom index is missing")
-    require_file(orchestrate_dir / "phase-works/phase-2/source-obligation-review/index.html", reporter, "phase2-interface-artifact", "Phase 2 review app is missing")
     require_file(orchestrate_dir / "phase-works/phase-2/phase-2-agent-report.md", reporter, "phase2-interface-artifact", "Phase 2 agent report is missing")
     sources = phase1_sources(orchestrate_dir, repo_root)
     queue_counts = work_queue_counts(orchestrate_dir)
@@ -905,7 +904,6 @@ def validate_phase_3(orchestrate_dir: Path, repo_root: Path, reporter: IssueRepo
             "phase-3",
             "phase3-status",
         )
-    require_file(orchestrate_dir / "phase-works/phase-3/coverage-review-app/index.html", reporter, "phase3-interface-artifact", "Phase 3 coverage review app is missing")
     require_file(orchestrate_dir / "phase-works/phase-3/coverage-review.md", reporter, "phase3-interface-artifact", "Phase 3 coverage review is missing")
     require_file(orchestrate_dir / "phase-works/phase-3/phase-3-agent-report.md", reporter, "phase3-interface-artifact", "Phase 3 agent report is missing")
     require_file(orchestrate_dir / "phase-works/phase-3/phase-3-trace/duplicate-ownership-review.md", reporter, "phase3-interface-artifact", "Phase 3 duplicate ownership review is missing")

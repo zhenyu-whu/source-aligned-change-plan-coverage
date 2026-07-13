@@ -19,7 +19,6 @@ Write Phase 2 artifacts only:
 - `openspec/orchestrate/phase-works/phase-2/source-obligation-atoms/<source-relative-path-without-extension>.atoms.json` for every manifest source document with `Read Status: read-full`
 - `openspec/orchestrate/phase-works/phase-2/source-obligation-atoms/<source-relative-path-without-extension>.atoms.md` rendered from the matching JSON for every manifest source document with `Read Status: read-full`
 - `openspec/orchestrate/trace/phase-2.trace.json`
-- `openspec/orchestrate/phase-works/phase-2/source-obligation-review/index.html`
 - `openspec/orchestrate/phase-works/phase-2/phase-2-agent-report.md`
 
 Use single-level filenames under `phase-works/phase-2/source-obligation-atoms/`: derive the name from the source document path as listed in the manifest, remove the extension, replace path separators with `--`, and add `.atoms.md` plus `.atoms.json`.
@@ -30,7 +29,7 @@ After the writer finishes, Phase 2 must pass the reviewer/repair loop from `refe
 
 ## Output Ownership
 
-Phase 2 output responsibility is split across orchestration, source extraction, aggregation, and deterministic review-app generation:
+Phase 2 output responsibility is split across orchestration, source extraction, and aggregation:
 
 - The main orchestrating agent may write `phase-works/phase-2/source-obligation-atoms/work-queue.md` during Phase 2A, because this is lightweight scheduling rather than source obligation extraction.
 - Source-extraction subagents write only their assigned canonical `phase-works/phase-2/source-obligation-atoms/<source>.atoms.json` sidecars. The main orchestrating agent or writer then runs `scripts/render_source_aligned_orchestrate.py --artifact phase2-source-atoms --write` to generate the matching `.atoms.md` mirrors.
@@ -38,9 +37,7 @@ Phase 2 output responsibility is split across orchestration, source extraction, 
 - The Phase 2 index/report subagent may read `change-plan.md`, `phase-works/phase-1/source-doc-manifest.md`, `phase-works/phase-2/source-obligation-atoms/work-queue.md`, and all generated `phase-works/phase-2/source-obligation-atoms/*.atoms.json` files. It may inspect rendered `.atoms.md` mirrors for reviewer readability, but counts, status distributions, required sections, line-range formats, and missing outputs must be derived from JSON.
 - The Phase 2 index/report subagent must not extract new atoms, edit source atom files, reread source bodies to create new evidence, perform global duplicate resolution, decide final atom ownership, close semantic coverage, or read Phase 3/Phase 4/Phase 5 outputs.
 - If the aggregation pass finds missing, malformed, or incomplete extraction outputs, it must record blockers in `phase-works/phase-2/phase-2-agent-report.md` and still keep the aggregate strictly Phase 2-scoped.
-- After the index/report subagent has written the aggregate outputs, the main orchestrating agent may run the deterministic review app generator to write `phase-works/phase-2/source-obligation-review/index.html`. This generator may read source document bodies only to render original line-numbered content for human review. It must not extract new atoms, edit source atom files, reinterpret candidate Change ownership or capability-impact metadata, perform duplicate resolution, close coverage, or write Phase 3/Phase 4/Phase 5 artifacts.
-
-`phase-works/phase-2/source-obligation-atoms/index.md`, `phase-works/phase-2/phase-2-agent-report.md`, and `phase-works/phase-2/source-obligation-review/index.html` are Phase 2 summaries/review aids only. They must not become the normalized global atom index or final plan ownership map.
+`phase-works/phase-2/source-obligation-atoms/index.md` and `phase-works/phase-2/phase-2-agent-report.md` are Phase 2 summaries/review aids only. They must not become the normalized global atom index or final plan ownership map.
 
 ## Artifact Language Gate
 
@@ -172,9 +169,8 @@ Phase 2 must be reviewable as a set of source document extractions.
 9. After all source-extraction subagents finish, run the fresh Phase 2 index/report subagent described in Output Ownership.
 10. The index/report subagent may report blockers for missing or malformed files, but it must not repair, reinterpret, or extend atom content.
 11. Confirm each source-extraction owner wrote the source atom JSON sidecar, then have the Phase 2 index/report subagent write `trace/phase-2.trace.json` according to `references/trace-sidecar-contract.md`.
-12. After the aggregate exists, generate the Phase 2C review app. Prefer the bundled helper `scripts/phase2_obligation_review_app.py` unless a project-specific equivalent already exists.
-13. The main orchestrating agent refreshes `trace/manifest.json`, runs `validate_source_aligned_orchestrate.py --phase phase-2`, then runs the Phase 2 reviewer/repair loop with independent reviewer and repair-writer subagents before freezing Phase 2.
-14. Do not read Phase 3, Phase 4, or Phase 5 outputs while performing Phase 2 extraction, aggregation, or review app generation.
+12. The main orchestrating agent refreshes `trace/manifest.json`, runs `validate_source_aligned_orchestrate.py --phase phase-2`, then runs the Phase 2 reviewer/repair loop with independent reviewer and repair-writer subagents before freezing Phase 2.
+13. Do not read Phase 3, Phase 4, or Phase 5 outputs while performing Phase 2 extraction or aggregation.
 
 Use deterministic source filenames:
 
@@ -255,32 +251,6 @@ Each source atom file must also include supporting source anchors:
 
 Source anchors may support one or more source atom ids. Anchor titles are primarily for human navigation. Prefer concise semantic titles; do not use local numbering prefixes such as `A01`.
 
-## Phase 2C: Human Review App
-
-After the Phase 2 source atom files and aggregate index/report exist, generate `phase-works/phase-2/source-obligation-review/index.html`.
-
-The review app is a deterministic visualization layer over Phase 2 evidence. It must help a human reviewer answer: "For this original source document, which obligation atoms were extracted, what exact line range do they cover, and what is the atom summary?" It is not a semantic reviewer, global atom registry, coverage closure tool, duplicate resolver, or final ownership map.
-
-The app must include:
-
-- A left navigation area that renders the original source document set as a path/tree view and lets reviewers choose a source document.
-- A source document outline or section navigation derived from original Markdown headings when available.
-- The selected source document's original content with stable line numbers.
-- Annotation cards, margin notes, or an equivalent right-side review rail for every parsed `Obligation Atom Candidate Ledger` row in that document.
-- For each annotation: `Source Atom ID`, `Lines`, `Atom Type`, `Candidate Status`, `Candidate Artifact Projection`, `Candidate Owner Change`, `Candidate Capability Impact`, `Candidate Target Capability`, `Candidate Related Capabilities`, and `Source Fact` as the summary.
-- A click or focus interaction that lets reviewers jump from an annotation to its covered line range and from a line tag back to the annotation.
-- A visible warning count or warning area when source files, atom files, ledgers, or line ranges cannot be parsed mechanically.
-
-Prefer generating a self-contained HTML file that can be opened directly from disk, so Phase 2 review does not require a dev server. The bundled helper can be run from the repository root:
-
-```bash
-python3 .codex/skills/source-aligned-change-plan-coverage/scripts/phase2_obligation_review_app.py \
-  --repo-root . \
-  --orchestrate-dir openspec/orchestrate
-```
-
-The helper reads `phase-works/phase-1/source-doc-manifest.md`, source document bodies, and preferably `phase-works/phase-2/source-obligation-atoms/*.atoms.json`; it falls back to `.atoms.md` with a warning only for legacy/debug migration. It then writes `phase-works/phase-2/source-obligation-review/index.html`. Its output is reviewer-facing only and must not be treated as the source of truth for Phase 3.
-
 ## Mapping Roles
 
 For each atom mapping, record one or more roles:
@@ -313,8 +283,6 @@ This section is owned by the fresh Phase 2 index/report subagent after all sourc
 
 A short `Index/Report Generation` section naming the fresh aggregation subagent, the inputs it read, the read-only checks it ran, outputs it wrote, and any blockers.
 
-A short `Review App Generation` section naming the generator or equivalent command, the output path, source document count, parsed atom annotation count, warning count, and any blockers. This section must explicitly state that the review app is a deterministic visualization of Phase 2 evidence, not a Phase 3 coverage decision.
-
 | Batch | Source Documents | Line Counts | Extraction Mode | Canonical Owner | Work Queue Rationale | Extraction Status |
 | --- | --- | --- | --- | --- | --- | --- |
 
@@ -334,9 +302,6 @@ Before finishing Phase 2:
 - Confirm every source document has exactly one canonical extraction owner named in the work queue and Phase 2 report.
 - Confirm `phase-works/phase-2/source-obligation-atoms/index.md` and `phase-works/phase-2/phase-2-agent-report.md` were generated by a fresh Phase 2 index/report subagent after extraction subagents finished.
 - Confirm the Phase 2 index/report subagent did not edit source atom files, extract new atoms, perform global duplicate resolution, decide final ownership, close semantic coverage, or read Phase 3/Phase 4/Phase 5 outputs.
-- Confirm `phase-works/phase-2/source-obligation-review/index.html` exists after aggregation and is directly openable from disk.
-- Confirm the review app includes every manifest source document with `Read Status: read-full`, shows source document path/tree navigation, renders original source content with line numbers, and renders obligation atom annotations with line ranges and summaries from the Phase 2 ledger.
-- Confirm the review app generation did not edit source atom files, create new atoms, reinterpret candidate Change ownership or capability-impact metadata, perform duplicate resolution, close semantic coverage, or read Phase 3/Phase 4/Phase 5 outputs.
 - Confirm every source atom file states that the source document was read in full.
 - Confirm every source atom file includes the source section inventory, obligation atom candidate ledger, source anchor table, ownership ambiguity notes, candidate missing plan boundaries, and blockers.
 - Confirm every source atom ledger row has non-empty `Candidate Artifact Projection`, and no direct candidate is assumed to be `spec-requirement` solely because it is direct.
@@ -351,4 +316,4 @@ Before finishing Phase 2:
 - Confirm Phase 2 generated or rewrote only current Phase 2 outputs.
 - Confirm every Phase 2 artifact passed the Artifact Language Gate.
 
-Final reply should be a short Chinese report: work queue batches, source documents extracted, source atom files written, Phase 2 index/report subagent status, review app path/status, atom candidates found, unassigned atoms, candidate new boundaries, duplicate risks, unresolved conflicts, language-gate result, and blockers.
+Final reply should be a short Chinese report: work queue batches, source documents extracted, source atom files written, Phase 2 index/report subagent status, atom candidates found, unassigned atoms, candidate new boundaries, duplicate risks, unresolved conflicts, language-gate result, and blockers.
