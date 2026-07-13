@@ -2,6 +2,8 @@
 
 Phase 3 返回 `Decision: coverage-complete` 且 Phase 4 返回 `Phase 4 Status: grounded` 后运行 Phase 5。此时 obligation atom granularity 已稳定，初始 Change/Capability framework 背后的原始 source window 已复制到 Phase 4 reviewer-facing dossier。Phase 5 不得仅根据 atom summary 作出 plan-refit judgment：必须消费 Phase 4 source-window dossier 和 semantic profile，将其作为每项 split、merge、reorder、rename、ownership move、relation change 和 complexity decision 的 grounding evidence。
 
+执行本 Phase 前，writer 必须直接完整读取 `references/cross-phase-contract.md`；prompt 摘要、转述或继承上下文不能替代直接读取。
+
 Phase 5 根据规范化 global atom index 和 Phase 4 source-window semantic dossier 重整计划。它使用具体的 source-backed atom group 及其原始 source context，而不是初始 slicing hypothesis，评估 Change order、spec Capability progression、dependency、artifact projection 和 Change complexity。它可以接受 Phase 1 framework，也可以重构 Change/Capability。每项 decision 都必须保持 atom-level traceability，为每个 executable direct atom 分配且只分配一个 owner Change，并确保每个 final direct atom 具有下游 artifact projection。Capability impact 是正交 metadata，不是 co-ownership。
 
 Phase 5 必须由 fresh independent subagent 执行。不得重新运行 Phase 2 extraction，也不得发明新的 source obligation。如果 Phase 5 发现 missing 或 over-broad source obligation，必须返回 `needs-coverage-recheck`，而不是在 Phase 3 之外静默创建新 atom。
@@ -56,7 +58,7 @@ status 为 `needs-coverage-recheck` 或 `blocked` 时，不得伪造 terminal ma
 
 `phase-works/phase-2/source-obligation-atoms/`、canonical `change-capability-anchors/obligation-atom-index.json` 及其 Markdown mirror、`phase-works/phase-4/source-window-dossiers/` 都是 upstream evidence。Phase 5 不得编辑。
 
-writer 完成后，Phase 5 必须通过 `references/reviewer-repair-loop.md` 定义的 reviewer/repair loop：main agent 刷新 `trace/manifest.json`、运行 Phase validator、启动 fresh independent refit reviewer subagent；如果需要修改 artifact，则启动 fresh independent Phase 5 repair-writer subagent；刷新 manifest 后重新运行 validator，repair 后再次启动 fresh independent reviewer；handoff 给 `openspec-propose` 前，再启动 fresh independent final integration reviewer。
+writer 完成后返回 main agent，由 main agent 完整执行 `references/reviewer-repair-loop.md`。Phase 5 writer 不得自行 reviewer、repair 或 handoff。
 
 Phase 4 source-window dossier 和 semantic profile 是 Phase 5 的 source-grounding input。`source-window-refit-trace.md` 是 Phase 5 decision trace，用于说明这些 input source-window profile 如何转换为 final Change/Capability：哪些原始 atom 保持同组、移动、拆分、合并或变为 contextual/dependency/evidence/non-goal，以及 adjusted unit 为何仍是真实的 engineering delivery slice。
 
@@ -95,23 +97,11 @@ python3 .codex/skills/source-aligned-change-plan-coverage/scripts/phase5_plan_re
 
 覆盖 active orchestration output 前 review 生成 file 时，使用 `--output-orchestrate-dir /tmp/phase5-check/openspec/orchestrate` 在临时 tree 中执行 dry render。只有 subagent 已 review config 且 main-agent gate 通过，helper output 才有效。如果 validation 失败，repair mapping/config 或返回 `needs-coverage-recheck`/`blocked`；不得削弱 script 中的 check。
 
-helper render 后运行：
-
-```bash
-python3 .codex/skills/source-aligned-change-plan-coverage/scripts/validate_source_aligned_orchestrate.py \
-  --orchestrate-dir openspec/orchestrate \
-  --phase phase-5 \
-  --complete \
-  --json
-```
+helper render 后，按 `references/trace-sidecar-contract.md` 运行 Phase 5 validator；不得在本文件复制或分叉 validator 命令契约。
 
 ## Artifact 语言门禁
 
-对每项 Phase 5 output 应用 skill-level Artifact Language Gate。按需保留固定 table header、field name、enum/status value、atom ID、path、行范围、Capability ID、Change slug、relation token 和精确 source phrase，但所有 agent 编写的 explanatory content 都必须使用简体中文。
-
-尤其是 closed-loop outcome、behavior-boundary description、roadmap value、Capability progression narrative、complexity decision、split/defer analysis、context handling、blocker、plan-decision reason、evidence-burden description、human review note 和 report summary 都必须使用中文；只有整个值仅包含固定 enum、ID、path、command、relation token、proof-type token 或精确 source term 时例外。
-
-每次写入 Phase 5 artifact 后，执行 skill gate 中的 language self-check。忽略 ID、path、command、code、固定 enum/status value、relation token、proof-type token 和精确 source phrase 后，如果仍存在英文主导的 explanation sentence，必须在 Phase 5 结束前改写。
+继承 `references/cross-phase-contract.md` 的 Artifact Language Gate。Phase 5 的 closed-loop outcome、behavior boundary、roadmap value、Capability progression、complexity decision、split/defer analysis、context handling、blocker、plan-decision reason、evidence burden、human review note 和 report summary 必须使用简体中文。
 
 ## Scope 规则
 
@@ -667,6 +657,6 @@ Phase 5 结束时，`phase-works/phase-5/phase-5-agent-report.md` 必须且只�
 
 如果 adjustment 需要 Phase 5 无权执行的 source boundary、product decision 或广泛 reanalysis，使用 `blocked`。
 
-达到 `accepted` 或 `adjusted` 后，运行 `validate_source_aligned_orchestrate.py --phase all --complete --json`；只有随后才能从 final Change packet 启动 `openspec-propose`。出现 `needs-coverage-recheck` 后，main agent 必须启动 fresh Phase 3 review subagent，再启动 fresh Phase 4 grounding 和 Phase 5 refit subagent。不得从 `needs-coverage-recheck` 或 `blocked` 直接启动 `openspec-propose`。
+达到 `accepted` 或 `adjusted` 后，按 `references/trace-sidecar-contract.md` 执行 all-phase complete validation，并按 `references/reviewer-repair-loop.md` 执行 final integration review；只有两者通过后才能从 final Change packet 启动 `openspec-propose`。出现 `needs-coverage-recheck` 后，main agent 必须启动 fresh Phase 3 review subagent，再启动 fresh Phase 4 grounding 和 Phase 5 refit subagent。不得从 `needs-coverage-recheck` 或 `blocked` 直接启动 `openspec-propose`。
 
 handoff 给 `openspec-propose` 时，将 final Phase 5 decision 同时写入 `trace/phase-5.trace.json.status` 和 `trace/manifest.json` 的 `phase-statuses.phase-5`。两个值必须完全匹配。`phase-statuses.phase-5` 是 Phase 5 final handoff decision，不是 validator/reviewer/repair-loop workflow state。

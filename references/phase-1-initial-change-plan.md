@@ -1,6 +1,8 @@
 # Phase 1：初始 source-aligned Change 计划
 
-Phase 1 在完整阅读用户指定的 source document 后，创建初始顶层 OpenSpec Change/Capability framework。该 framework 是由 source 支撑的 slicing hypothesis；obligation atom 完成规范化且 Phase 4 source-window grounding 完成后，Phase 5 可以对其 refit。Phase 1 不得创建具体 OpenSpec Change、proposal、spec、design、task、acceptance artifact、obligation atom ledger、line-range anchor、coverage status，也不得建立等待 Phase 2 处理的 evidence item backlog。
+Phase 1 在完整阅读用户指定的 source document 后，创建初始顶层 OpenSpec Change/Capability framework。该 framework 是由 source 支撑的 slicing hypothesis；obligation atom 完成规范化且 Phase 4 source-window grounding 完成后，Phase 5 可以对其 refit。用户明确提供现有 Change 计划时，将其作为 non-source candidate input，而不是 Phase 1 完成证据或 source authority。Phase 1 不得创建具体 OpenSpec Change、proposal、spec、design、task、acceptance artifact、obligation atom ledger、line-range anchor、coverage status，也不得建立等待 Phase 2 处理的 evidence item backlog。
+
+执行本 Phase 前，writer 必须直接完整读取 `references/cross-phase-contract.md`；prompt 摘要、转述或继承上下文不能替代直接读取。
 
 将 Phase 1 plan snapshot 写入：
 
@@ -32,13 +34,11 @@ openspec/orchestrate/phase-works/phase-1/phase-1-agent-report.md
 openspec/orchestrate/trace/phase-1.trace.json
 ```
 
-writer 完成后，Phase 1 必须通过 `references/reviewer-repair-loop.md` 定义的 reviewer/repair loop：main agent 运行 Phase validator、启动 fresh independent Phase 1 reviewer subagent；如果需要修改 artifact，则启动 fresh independent Phase 1 repair-writer subagent；重新运行 validator，repair 后再次启动 fresh independent reviewer；只有通过后才能继续。
+writer 完成后返回 main agent，由 main agent 完整执行 `references/reviewer-repair-loop.md`。Phase 1 writer 不得自行 reviewer、repair 或推进 Phase 2。
 
 ## Artifact 语言门禁
 
-对每项 Phase 1 output 应用 skill-level Artifact Language Gate。按需保留固定 heading、table header、field label、Capability ID、Change slug、path、command 和精确 source term，但所有 agent 编写的 explanation 都必须使用简体中文。这包括 assumption、conflict、behavior-boundary description、Capability increment cell、roadmap field value、risk-check answer、source-evidence hint explanation、archive-readiness note 和 Phase 1 report。
-
-每次写入 Phase 1 artifact 后，执行 skill gate 中的 language self-check。忽略 ID、path、command、code 和固定 term 后，如果仍存在英文主导的 explanation sentence，必须在 Phase 1 结束前改写。
+继承 `references/cross-phase-contract.md` 的 Artifact Language Gate。Phase 1 的 assumption、conflict、behavior-boundary description、Capability increment、roadmap value、risk-check answer、source-evidence hint、archive-readiness note 和 report 都属于必须使用简体中文的解释性内容。
 
 ## 目标
 
@@ -46,7 +46,7 @@ writer 完成后，Phase 1 必须通过 `references/reviewer-repair-loop.md` 定
 
 每个 Change 都应表示可 review、可实现、可验证、可 archive 的系统行为变化。不得按 technical module、database table、页面、component、SDK、queue 或 prototype scenario 机械拆分。
 
-只使用用户指定的文档或目录。生成初始 framework 前，枚举并阅读每份 source document 的正文。除非用户明确将其纳入 input，否则不得读取或依赖当前 `openspec/` 目录、现有 spec、现有 Change、archive history 或 custom artifact。
+只使用用户指定的文档或目录作为 source authority。生成初始 framework 前，枚举并阅读每份 source document 的正文。用户明确提供现有 Change 计划时，只能在 full-source read 后将其作为 candidate framework 读取和校准；不得把它当作 source evidence，也不得因此跳过 source manifest、Phase 1 snapshot、trace 或 reviewer loop。除非用户明确将其他内容纳入 input，否则不得读取或依赖当前 `openspec/` 目录、现有 spec、现有 Change、archive history 或 custom artifact。
 
 如果指定 source set 过大，无法安全完整阅读，则返回 blocker，不得抽样。Phase 1 framework 只有在基于 full-source read 时才有效。
 
@@ -176,19 +176,20 @@ Phase 1 不得承诺 foundation candidate 会成为 executable final Change，�
 
 1. 枚举用户指定根目录或精确 path 下的每份 source document。
 2. 阅读每份已枚举 source document 的正文。不得抽样、只浏览 filename，也不得把完整阅读推迟到 Phase 2。
-3. 写入 `phase-works/phase-1/source-doc-manifest.md`，列出每份 source document、read status、high-level source role 和 coarse topic/path hint。
-4. 从完整 source 阅读结果中提取核心 user/system path、长期 normative behavior、constraint 和 architecture decision。
-5. 将每条 path 表达为：entry -> behavior -> system fact -> visible result -> failure recovery。
-6. 先识别稳定的 spec Capability，并使用英文 kebab-case ID。每个 Capability 都必须证明存在持久的 `openspec/specs/<capability>/spec.md` boundary，在多个 Change 后仍有价值；拒绝 module、storage、deployment、provider、component 或 verification-only label。
-7. 从 user/system loop 生成 candidate vertical Change，不得从 Capability list 生成。
-8. 使用 Closed-loop Test、Change Complexity Calibration、Split Challenge、Capability Shape Challenge 和 anti one-to-one mapping rule 过滤、合并或重新切分 candidate。
-9. 按 behavior maturity 和真实 engineering dependency 排序 Change；优先最早的 minimal runnable loop，而不是未来 prerequisite availability。
-10. 将每个已排序 Change 投影到 Capability map：把每个实际 spec delta 分类为 `New` 或 `Modified`；如果 Change 仅包含 architecture/design/verification 工作，则两者均使用 `None`。
-11. 建立只显示这些 `New` / `Modified` spec delta 的 Capability progression matrix。
-12. 标记 input document 中的关键 scenario、non-goal、risk、conflict 和 deferred content。
-13. 仅为证明计划切分合理性而添加简洁的 `Source evidence` hint。hint 可以列出 source path、heading、section number、decision ID、route/page/object name、API、command、DTO、entity、table、job、event、asset、environment 或 verification anchor。
-14. Phase 1 evidence hint 保持简短且 non-canonical。不得提取或枚举每项 source-backed requirement，不得创建 obligation atom ledger、行范围、anchor table、coverage status、"pending Phase 2" evidence list 或 evidence count。Phase 2 负责 source-first atom extraction，Phase 3 负责 coverage normalization，Phase 4 负责 source-window grounding，Phase 5 负责 final plan refit。
-15. 按照 `references/trace-sidecar-contract.md` 写入 `trace/phase-1.trace.json`。writer 完成后，由 main orchestrating agent 刷新 `trace/manifest.json` 并运行 `validate_source_aligned_orchestrate.py --phase phase-1`。
+3. 如果用户明确提供现有 Change 计划，在完成 full-source read 后读取它，只作为 candidate framework；记录被保留、修订或拒绝的 assumption，不将其视为 source evidence。
+4. 写入 `phase-works/phase-1/source-doc-manifest.md`，列出每份 source document、read status、high-level source role 和 coarse topic/path hint。
+5. 从完整 source 阅读结果中提取核心 user/system path、长期 normative behavior、constraint 和 architecture decision。
+6. 将每条 path 表达为：entry -> behavior -> system fact -> visible result -> failure recovery。
+7. 先识别稳定的 spec Capability，并使用英文 kebab-case ID。每个 Capability 都必须证明存在持久的 `openspec/specs/<capability>/spec.md` boundary，在多个 Change 后仍有价值；拒绝 module、storage、deployment、provider、component 或 verification-only label。
+8. 从 user/system loop 生成 candidate vertical Change，不得从 Capability list 生成。
+9. 使用 Closed-loop Test、Change Complexity Calibration、Split Challenge、Capability Shape Challenge 和 anti one-to-one mapping rule 过滤、合并或重新切分 candidate。
+10. 按 behavior maturity 和真实 engineering dependency 排序 Change；优先最早的 minimal runnable loop，而不是未来 prerequisite availability。
+11. 将每个已排序 Change 投影到 Capability map：把每个实际 spec delta 分类为 `New` 或 `Modified`；如果 Change 仅包含 architecture/design/verification 工作，则两者均使用 `None`。
+12. 建立只显示这些 `New` / `Modified` spec delta 的 Capability progression matrix。
+13. 标记 input document 中的关键 scenario、non-goal、risk、conflict 和 deferred content。
+14. 仅为证明计划切分合理性而添加简洁的 `Source evidence` hint。hint 可以列出 source path、heading、section number、decision ID、route/page/object name、API、command、DTO、entity、table、job、event、asset、environment 或 verification anchor。
+15. Phase 1 evidence hint 保持简短且 non-canonical。不得提取或枚举每项 source-backed requirement，不得创建 obligation atom ledger、行范围、anchor table、coverage status、"pending Phase 2" evidence list 或 evidence count。Phase 2 负责 source-first atom extraction，Phase 3 负责 coverage normalization，Phase 4 负责 source-window grounding，Phase 5 负责 final plan refit。
+16. 按照 `references/trace-sidecar-contract.md` 写入 `trace/phase-1.trace.json`，然后返回 main agent；validator 和 reviewer/repair 顺序统一由共享契约执行。
 
 ## 输出
 

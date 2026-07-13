@@ -2,6 +2,8 @@
 
 Phase 3 返回 `Decision: coverage-complete` 后运行 Phase 4。它是独立的 source-grounding Phase，不是 plan-refit Phase。
 
+执行本 Phase 前，writer 必须直接完整读取 `references/cross-phase-contract.md`；prompt 摘要、转述或继承上下文不能替代直接读取。
+
 设置 Phase 4 的原因是：Phase 2/3 atom 行足以支持 coverage 和 traceability，但对于工程交付判断往往过于压缩。本 Phase 以 Phase 2/3 atom 行范围为索引，将原始 source window 复制到面向 reviewer 的 dossier，并按 input Change 和稳定的 input spec Capability 分组。随后编写 semantic profile，保留 Phase 5 plan refit 和人工 reviewer 所需的实际 source 含义。Capability dossier 只是辅助 semantic view，绝不是 ownership surface。
 
 Phase 4 必须由 fresh independent subagent 执行。不得重新运行 Phase 2 extraction、规范化 atom、决定 final ownership、拆分/合并/重排 Change，也不得发明 source obligation。如果 source window 暴露出既有 Phase 3 atom 无法解释的 missing、conflicting 或 over-broad obligation，Phase 4 必须返回 `needs-coverage-recheck`。
@@ -38,11 +40,11 @@ Phase 4 必须由 fresh independent subagent 执行。不得重新运行 Phase 2
 
 以下 scope rule 明确 authority boundary：`phase-works/phase-4/source-window-dossiers/` 是复制得到的 review evidence，不能替代原始 source document、source atom ledger、global atom index 或 Phase 5 final packet。
 
-writer 完成后，Phase 4 必须通过 `references/reviewer-repair-loop.md` 定义的 reviewer/repair loop：main agent 刷新 `trace/manifest.json`、运行 Phase validator、启动 fresh independent grounding reviewer subagent；如果需要修改 artifact，则启动 fresh independent Phase 4 repair-writer subagent；刷新 manifest 后重新运行 validator，repair 后再次启动 fresh independent reviewer；只有通过后才能继续。
+writer 完成后返回 main agent，由 main agent 完整执行 `references/reviewer-repair-loop.md`。Phase 4 writer 不得自行 reviewer、repair 或推进 Phase 5。
 
 ## Artifact 语言门禁
 
-对每项 Phase 4 output 应用 skill-level Artifact Language Gate。按需保留固定 heading、table header、enum/status value、atom ID、source path、行范围、Capability ID、Change slug、code symbol 和精确 source quote。agent 编写的 semantic note、judgment、rationale、issue description 和 report summary 必须使用简体中文。
+继承 `references/cross-phase-contract.md` 的 Artifact Language Gate。Phase 4 的 semantic note、judgment、rationale、issue description 和 report summary 必须使用简体中文。
 
 ## Scope 规则
 

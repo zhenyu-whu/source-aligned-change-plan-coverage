@@ -2,6 +2,8 @@
 
 本文件定义每个 Phase 的 validator/reviewer/repair 闭环。进入 workflow 前必须读取。
 
+每个 Phase reviewer 和 repair-writer 在开始任务前，必须直接完整读取 `references/cross-phase-contract.md` 和当前 Phase reference。final integration reviewer 必须直接完整读取 cross-phase contract 以及 Phase 3、Phase 4、Phase 5 reference。main agent prompt 摘要、转述或继承上下文不能替代直接读取。
+
 ## 必需顺序
 
 每个 Phase 完成顺序固定为：
@@ -18,16 +20,28 @@ Phase writer subagent
 
 如果 reviewer 判定无修复项，可以跳过 repair-writer subagent，但必须在 reviewer report 和 phase trace 中记录 `repair-not-needed`。一旦需要修改任何 artifact，repair 必须由 fresh independent repair-writer subagent 执行，不能由 writer、reviewer 或主 agent 直接补写。
 
+Phase 5 返回 `accepted` 或 `adjusted` 后，在 handoff 给 `openspec-propose` 前追加固定 terminal 顺序：
+
+```text
+main agent 运行 all-phase complete validator
+-> fresh independent final integration reviewer subagent
+-> integration pass 后 handoff
+```
+
+complete validator 或 final integration reviewer 未通过时不得 handoff；根据 finding 进入 Phase 5 repair loop、返回 `needs-coverage-recheck`，或报告 `blocked`。
+
 ## 独立性规则
 
 - Reviewer 和 repair-writer 都必须由主 agent 单独 spawn fresh subagent，且必须使用 `model=GPT-5.5` 和 `reasoningEffort=xhigh`。
 - Reviewer subagent 必须与 phase writer subagent 不同；repair-writer subagent 必须与 phase writer subagent、所有 reviewer subagent 都不同。
+- Final integration reviewer 必须是 fresh leaf subagent，使用相同 runtime，且不同于 Phase 5 writer、Phase 5 reviewer 和 Phase 5 repair-writer。
 - Writer subagent 的自检、最终回复、agent report、trace 字段或 “reviewer passed” 文案不满足 reviewer 步骤。
 - Validator 通过不满足 reviewer 步骤；validator 只提供 reviewer 输入之一。
 - Reviewer subagent 对被审 artifact 只读，只能写入或追加本 Phase 的 reviewer report，不得修改被审 artifact，不得执行 repair，不得推进下一 Phase。
 - Repair-writer subagent 只能根据 validator issues 和 reviewer report 修改本 Phase 允许的 artifact，并写入或追加本 Phase 的 repair report；不得重新解释上游 frozen evidence，不得推进下一 Phase。
 - Reviewer 和 repair-writer 都是 leaf worker，不得 spawn、调用、委派任何嵌套 AI subagent、`codex exec`、multi-agent worker 或其他 agentic reasoning 子进程。
 - 每次 repair 后必须重新运行 validator，并重新 spawn fresh independent reviewer subagent。不得复用同一个 reviewer subagent 通过 `send_input` 进行复审。
+- Final integration reviewer 对 Phase 3/4/5 和 final handoff surface 只读，只能在 `phase-works/phase-5/phase-5-reviewer-report.md` 中追加 integration review 记录；不得修改 artifact 或执行 repair。
 
 ## 必需证据
 
@@ -37,6 +51,7 @@ Phase writer subagent
 - `phase-works/phase-<n>/phase-<n>-repair-report.md`：仅当发生 artifact 修改时必需。每次 repair run 必须保留 repair subagent identity、被消费的 validator/reviewer findings、修改文件、保留的不变量、未修复项和 blockers。
 - `trace/phase-<n>.trace.json` 应记录 reviewer/repair loop 摘要，但 trace 摘要不能替代 reviewer report 或 repair report。
 - `trace/manifest.json` 可以在 validator 前创建或刷新，用于提供当前 trace sidecar digest。只有 validator 和 independent reviewer 均通过后，才可以在 reviewer report、phase trace summary 和 manifest canonical phase decision 中记录该 Phase 可进入下一阶段。
+- Phase 5 handoff 前，`phase-works/phase-5/phase-5-reviewer-report.md` 还必须记录 final integration reviewer identity、all-phase complete validator status、跨 artifact 检查范围、finding、accepted warning 和 pass/block decision。
 
 ## 权威性规则
 

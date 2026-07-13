@@ -2,6 +2,8 @@
 
 Phase 3 消费 source-first Phase 2 atom file，并生成规范化 global obligation atom index。它负责闭合 source coverage 和 atom identity，不负责重整 final Change plan。Phase 4 对 candidate Change/Capability framework 背后的 source window 执行 grounding；Phase 3 稳定 atom granularity 后，Phase 5 再决定 plan sequence 和 granularity。
 
+执行本 Phase 前，writer 必须直接完整读取 `references/cross-phase-contract.md`；prompt 摘要、转述或继承上下文不能替代直接读取。
+
 Phase 3 不是新的 propose-writing pass，不得在没有 source evidence 时发明 production requirement。它回答：
 
 1. 每项具有生产意义的 source obligation 是否都有 atom？
@@ -49,15 +51,11 @@ Phase 3 可以向 canonical `obligation-atom-index.json` 添加精确的 missing
 
 `phase-works/phase-3/phase-3-trace/` 记录当前 Phase 3 intermediate audit trail。JSON file 是 canonical；renderer-backed Markdown mirror 只是 review aid，不是 source of truth。每次 fresh Phase 3 run 都必须覆盖这些文件，并确保它们与 canonical `obligation-atom-index.json`、per-source coverage file 和 `phase-works/phase-3/coverage-review.md` 一致。
 
-writer 完成后，Phase 3 必须通过 `references/reviewer-repair-loop.md` 定义的 reviewer/repair loop：main agent 运行 Phase validator、启动 fresh independent coverage reviewer subagent；如果需要修改 artifact，则启动 fresh independent Phase 3 repair-writer subagent；重新运行 validator，repair 后再次启动 fresh independent reviewer；只有通过后才能继续。
+writer 完成后返回 main agent，由 main agent 完整执行 `references/reviewer-repair-loop.md`。Phase 3 writer 不得自行 reviewer、repair 或推进 Phase 4。
 
 ## Artifact 语言门禁
 
-对每项 Phase 3 output 应用 skill-level Artifact Language Gate。按需保留固定 table header、field name、enum/status value、atom ID、path、行范围、Capability ID、Change slug、relation token 和精确 source phrase，但所有 agent 编写的 explanatory content 都必须使用简体中文。
-
-尤其是 `Source Fact`、`Review Judgment`、`Reason`、`Interpretation`、非固定 enum value 的 semantic classification、duplicate/ownership resolution、non-atom range reason、handoff explanation、metric interpretation 和 report summary 都必须使用中文；只有整个值仅包含固定 enum、ID、path、command、relation token 或精确 source term 时例外。
-
-每次写入 Phase 3 artifact 后，执行 skill gate 中的 language self-check。忽略 ID、path、command、code、固定 enum/status value、relation token 和精确 source phrase 后，如果仍存在英文主导的 explanation sentence，必须在 Phase 3 结束前改写。
+继承 `references/cross-phase-contract.md` 的 Artifact Language Gate。Phase 3 的 `Source Fact`、`Review Judgment`、`Reason`、`Interpretation`、semantic classification、duplicate/ownership resolution、non-atom range reason、handoff、metric interpretation 和 report summary 必须使用简体中文。
 
 ## global atom 索引
 
@@ -164,7 +162,7 @@ coverage status：
 18. 建立紧凑 global statistic，覆盖 source document、global atom、有意义的 missing atom、duplicate finding、broad-atom split finding、non-coverage classification、Change-ownership ambiguity、capability-impact/target uncertainty、gap 和 conflict。
 19. 按照 `references/trace-sidecar-contract.md` 写入 `trace/phase-3.trace.json`，其中包含 canonical source remainder review path。
 20. 运行 `scripts/render_source_aligned_orchestrate.py --artifact phase3-global-index --write`、`--artifact phase3-source-map --write` 和 `--artifact phase3-remainder-review --write`，或运行 `--artifact all-supported --write`，确保所有 JSON-backed Markdown mirror 为最新版本。
-21. main orchestrating agent 刷新 `trace/manifest.json`、运行 `validate_source_aligned_orchestrate.py --phase phase-3`，再使用 independent reviewer 和 repair-writer subagent 运行 Phase 3 reviewer/repair loop。如果 validator 报告 `rendered-markdown-drift`，repair JSON 或重新渲染；不得手工编辑 Markdown。
+21. 返回 main agent，由其按 trace contract 和 reviewer/repair loop 验证 Phase 3；`rendered-markdown-drift` 只能通过修复 JSON 或重新渲染解决。
 22. 决定 coverage normalization 已完成还是 blocked。
 
 ## 必需表格

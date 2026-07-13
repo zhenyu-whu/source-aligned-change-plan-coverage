@@ -2,6 +2,8 @@
 
 Phase 2 直接从 source document 提取 source-backed obligation atom candidate。analysis unit 是 source document，不是 planned Change。Phase 1 framework 提供 candidate Change context 和 candidate stable-Capability map；它不得妨碍发现 unassigned、cross-cutting，或为 new/refit Change 或 spec Capability 提供 evidence 的 atom。
 
+执行本 Phase 前，每个 extraction writer 和 index/report writer 都必须直接完整读取 `references/cross-phase-contract.md`；prompt 摘要、转述或继承上下文不能替代直接读取。
+
 Phase 2 生成不可变 raw extraction evidence 和独立的 Phase 2 aggregate inventory。Phase 3 负责 normalization、missing-atom gap closure、duplicate resolution、candidate Change ownership 和规范化 capability-impact metadata。Phase 4 负责 input Change/Capability 的 source-window grounding。Phase 5 负责 final Change ownership、spec-Capability impact、plan refit 和 per-Change packet generation。
 
 ## 输入
@@ -25,7 +27,7 @@ Phase 2 生成不可变 raw extraction evidence 和独立的 Phase 2 aggregate i
 
 Phase 2 完成后，`.atoms.json` file 不可修改。其 `.atoms.md` file 是 renderer mirror，只能从 JSON 刷新。如果后续 Phase 发现 missing atom、duplicate fact、source-window grounding issue 或 ownership change，应将其记录在 Phase 3 global atom index、Phase 4 grounding artifact 和 Phase 5 refit artifact 中；不得改写原始 Phase 2 source atom JSON。
 
-writer 完成后，Phase 2 必须通过 `references/reviewer-repair-loop.md` 定义的 reviewer/repair loop：main agent 运行 Phase validator、启动 fresh independent source extraction reviewer subagent；如果需要修改 artifact，则启动 fresh independent Phase 2 repair-writer subagent；重新运行 validator，repair 后再次启动 fresh independent reviewer；只有通过后才能冻结 raw `.atoms.json` evidence 及其 rendered `.atoms.md` mirror。如果 validator 报告 `rendered-markdown-drift`，repair 必须重新渲染或修复 JSON；不得手工编辑 Markdown。
+所有 extraction writer 和 index/report writer 完成后返回 main agent，由 main agent 完整执行 `references/reviewer-repair-loop.md`。通过后冻结 raw `.atoms.json` evidence 及其 rendered `.atoms.md` mirror；`rendered-markdown-drift` 只能通过修复 JSON 或重新渲染解决。
 
 ## 输出所有权
 
@@ -41,11 +43,7 @@ Phase 2 output responsibility 分为 orchestration、source extraction 和 aggre
 
 ## Artifact 语言门禁
 
-对每项 Phase 2 output 应用 skill-level Artifact Language Gate。按需保留固定 table header、field name、enum/status value、atom ID、path、行范围、Capability ID、Change slug、proof-type token 和精确 source phrase，但所有 agent 编写的 explanatory content 都必须使用简体中文。
-
-尤其是 `Source Fact`、`Rationale`、`Propose Use`、`Reason`、ownership ambiguity note、candidate missing boundary note、blocker、report summary 和 table cell 中的任何 explanation 都必须使用中文；只有整个值仅包含固定 enum、ID、path、command、proof-type token 或精确 source term 时例外。`Source Phrase` 可以保留原始措辞。
-
-每次写入 Phase 2 artifact 后，执行 skill gate 中的 language self-check。忽略 ID、path、command、code、固定 enum/status value 和精确 source phrase 后，如果仍存在英文主导的 explanation sentence，必须在 Phase 2 结束前改写。
+继承 `references/cross-phase-contract.md` 的 Artifact Language Gate。Phase 2 的 `Source Fact`、`Rationale`、`Propose Use`、`Reason`、ownership ambiguity、candidate missing boundary、blocker、report summary 和解释性 table cell 必须使用简体中文；`Source Phrase` 可以保留原文。
 
 ## Obligation Atom 模型
 
@@ -169,7 +167,7 @@ Phase 2 必须能够作为一组 source document extraction 接受 review。
 9. 所有 source-extraction subagent 完成后，运行 Output Ownership 中说明的 fresh Phase 2 index/report subagent。
 10. index/report subagent 可以针对缺失或格式错误的 file 报告 blocker，但不得 repair、重新解释或扩展 atom content。
 11. 确认每个 source-extraction owner 已写入 source atom JSON sidecar，再让 Phase 2 index/report subagent 按 `references/trace-sidecar-contract.md` 写入 `trace/phase-2.trace.json`。
-12. main orchestrating agent 刷新 `trace/manifest.json`、运行 `validate_source_aligned_orchestrate.py --phase phase-2`，随后使用 independent reviewer 和 repair-writer subagent 运行 Phase 2 reviewer/repair loop，再冻结 Phase 2。
+12. 返回 main agent，由其按 trace contract 和 reviewer/repair loop 验证 Phase 2；通过后再冻结 Phase 2。
 13. 执行 Phase 2 extraction 或 aggregation 时，不得读取 Phase 3、Phase 4 或 Phase 5 output。
 
 使用确定性的 source filename：
