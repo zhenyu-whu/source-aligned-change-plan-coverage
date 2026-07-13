@@ -6,6 +6,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import re
 import sys
 from pathlib import Path
 from typing import Dict, Iterable, List, Set
@@ -16,6 +17,7 @@ from source_aligned_trace_lib import (
     FINAL_PACKET_INDEX_SCHEMA,
     GLOBAL_ATOM_ID_RE,
     GLOBAL_ATOM_INDEX_SCHEMA,
+    KEBAB_CASE_RE,
     MANIFEST_SCHEMA,
     PHASE_TRACE_SCHEMAS,
     SOURCE_ATOMS_SCHEMA,
@@ -53,8 +55,44 @@ from render_source_aligned_orchestrate import (
 NO_OWNER_VALUES = {"", "None", "none", "null", "NULL"}
 FOUNDATION_CHANGE_KIND = "foundation"
 BUSINESS_CHANGE_KIND = "business"
+EXECUTABLE_OWNER_TYPE = "executable-change"
 FOUNDATION_CAPABILITY = "runtime-substrate-foundation"
-FOUNDATION_ADVANCEMENT = "foundation-substrate"
+FOUNDATION_IMPACT = "foundation-substrate"
+SPEC_PROJECTIONS = {"spec-requirement", "spec-guard"}
+CHANGE_ONLY_PROJECTIONS = {"design-obligation", "verification-obligation"}
+NON_TERMINAL_CAPABILITY_IMPACTS = {"new", "modified", "none", "unresolved"}
+TERMINAL_CAPABILITY_IMPACTS = {"new", "modified", "none", FOUNDATION_IMPACT}
+BUSINESS_CAPABILITY_IMPACTS = {"new", "modified"}
+PHASE2_DIRECT_CANDIDATE_STATUSES = {
+    "direct-candidate",
+    "candidate-new-change",
+    "candidate-new-capability",
+    "unassigned",
+}
+PHASE2_NON_DIRECT_STATUSES = {
+    "contextual-candidate",
+    "reference-only",
+    "prototype-only-not-production",
+    "superseded",
+    "duplicate-candidate",
+    "no-product-or-system-impact",
+}
+PHASE3_DIRECT_STATUSES = {"direct", "direct-candidate"}
+LEGACY_CAPABILITY_FIELDS = {
+    "candidate-owner-capability",
+    "owner-capability",
+    "final-owner-capability",
+    "capability-advancement",
+}
+RESERVED_CAPABILITY_MARKERS = {
+    "none",
+    "unresolved",
+    "candidate-new-capability",
+    "unassigned",
+    "candidate-new-change",
+    "contextual",
+    "non-direct",
+}
 PHASE_NAMES = ("phase-1", "phase-2", "phase-3", "phase-4", "phase-5")
 FINAL_PHASE5_STATUSES = {"accepted", "adjusted"}
 NON_FINAL_PHASE4_STATUSES = {"needs-coverage-recheck", "blocked"}
@@ -93,6 +131,127 @@ def is_no_owner(value: object) -> bool:
 
 def is_executable_direct_row(row: Dict[str, object]) -> bool:
     return row.get("final-relation") == "direct"
+
+
+def is_capability_view_row(row: Dict[str, object]) -> bool:
+    return is_executable_direct_row(row) and row.get("final-capability-impact") in {
+        *BUSINESS_CAPABILITY_IMPACTS,
+        FOUNDATION_IMPACT,
+    }
+
+
+def reject_legacy_capability_fields(
+    row: Dict[str, object],
+    path: Path,
+    reporter: IssueReporter,
+    context: str,
+) -> None:
+    present = sorted(LEGACY_CAPABILITY_FIELDS.intersection(row))
+    if present:
+        reporter.error(
+            "legacy-capability-field",
+            path,
+            f"{context} mixes v1 capability fields into the v2 contract: {', '.join(present)}",
+        )
+
+
+def markdown_capability_list(value: object) -> List[str]:
+    text = str(value or "").strip()
+    code_values = [normalize_code(item) for item in re.findall(r"`([^`]+)`", text)]
+    raw_values = code_values or [normalize_code(item) for item in re.split(r"\s*[,;]\s*", text)]
+    return [value for value in raw_values if value and value.lower() not in {"none", "none/change-only"}]
+
+
+def markdown_target(value: object) -> str:
+    target = normalize_code(value)
+    return "none" if target.lower() in {"none", "none/change-only"} else target
+
+
+def validate_related_capabilities(
+    row: Dict[str, object],
+    field: str,
+    target: str,
+    path: Path,
+    reporter: IssueReporter,
+    context: str,
+) -> List[str]:
+    raw = row.get(field)
+    if not isinstance(raw, list):
+        reporter.error("capability-related-array", path, f"{context} {field} must be an array")
+        return []
+    values = [normalize_code(item) for item in raw]
+    if len(values) != len(set(values)):
+        reporter.error("capability-related-duplicate", path, f"{context} {field} contains duplicates")
+    for value in values:
+        if not KEBAB_CASE_RE.match(value):
+            reporter.error("capability-related-format", path, f"{context} related capability is not kebab-case: {value}")
+        elif value in RESERVED_CAPABILITY_MARKERS:
+            reporter.error("capability-related-reserved", path, f"{context} related capability uses a reserved marker: {value}")
+        if value == target:
+            reporter.error("capability-related-target", path, f"{context} related capability must not equal target: {value}")
+    return values
+
+
+def validate_capability_contract(
+    row: Dict[str, object],
+    *,
+    impact_field: str,
+    target_field: str,
+    related_field: str,
+    projection_field: str,
+    allowed_impacts: Set[str],
+    path: Path,
+    reporter: IssueReporter,
+    context: str,
+    rationale_field: str = "",
+) -> None:
+    impact = normalize_code(row.get(impact_field))
+    target = normalize_code(row.get(target_field))
+    projection = normalize_code(row.get(projection_field))
+    related = validate_related_capabilities(row, related_field, target, path, reporter, context)
+    if impact not in allowed_impacts:
+        reporter.error("capability-impact", path, f"{context} invalid {impact_field}: {impact}")
+        return
+    if impact in BUSINESS_CAPABILITY_IMPACTS:
+        if projection not in SPEC_PROJECTIONS:
+            reporter.error("capability-impact-projection", path, f"{context} new/modified requires spec projection")
+        if is_no_owner(target) or target == "unresolved" or not KEBAB_CASE_RE.match(target):
+            reporter.error("capability-target", path, f"{context} new/modified requires a concrete target capability")
+    elif impact == "none":
+        if target != "none":
+            reporter.error("capability-target", path, f"{context} impact=none requires target=none")
+    elif impact == "unresolved":
+        rationale = squash(row.get(rationale_field)) if rationale_field else ""
+        if not rationale:
+            reporter.error("capability-unresolved-rationale", path, f"{context} unresolved impact requires rationale")
+        if target != "unresolved" and (is_no_owner(target) or not KEBAB_CASE_RE.match(target)):
+            reporter.error("capability-target", path, f"{context} unresolved target must be a known kebab-case capability or unresolved")
+    if projection in CHANGE_ONLY_PROJECTIONS and impact != "none":
+        reporter.error("capability-change-only", path, f"{context} {projection} must use impact=none")
+
+
+def validate_phase2_capability_status(
+    row: Dict[str, object],
+    path: Path,
+    reporter: IssueReporter,
+    context: str,
+) -> None:
+    status = normalize_code(row.get("candidate-status"))
+    projection = normalize_code(row.get("candidate-artifact-projection"))
+    impact = normalize_code(row.get("candidate-capability-impact"))
+    target = normalize_code(row.get("candidate-target-capability"))
+    if status in PHASE2_NON_DIRECT_STATUSES and (impact != "none" or target != "none"):
+        reporter.error("phase2-non-direct-capability", path, f"{context} non-direct/contextual row must use impact=none, target=none")
+    if status in PHASE2_DIRECT_CANDIDATE_STATUSES and projection in SPEC_PROJECTIONS:
+        if impact not in {*BUSINESS_CAPABILITY_IMPACTS, "unresolved"}:
+            reporter.error("phase2-direct-spec-impact", path, f"{context} direct spec candidate must use new, modified, or unresolved")
+    if status == "candidate-new-capability" and impact != "new":
+        reporter.error("phase2-new-capability-impact", path, f"{context} candidate-new-capability requires impact=new")
+    if target == "candidate-new-capability":
+        if impact != "new":
+            reporter.error("phase2-new-capability-impact", path, f"{context} candidate-new-capability target requires impact=new")
+        if projection not in SPEC_PROJECTIONS:
+            reporter.error("phase2-new-capability-projection", path, f"{context} candidate-new-capability target requires spec projection")
 
 
 def trace_decision_status(path: Path) -> str:
@@ -406,6 +565,7 @@ def validate_phase_2(orchestrate_dir: Path, repo_root: Path, reporter: IssueRepo
                 reporter.error("phase2-source-atom-row", sidecar, "source-atoms item must be object")
                 continue
             context = str(row.get("source-atom-id", ""))
+            reject_legacy_capability_fields(row, sidecar, reporter, context or "source atom")
             if not context:
                 reporter.error("phase2-source-atom-id", sidecar, "source-atom-id is required")
             check_ranges(sidecar, reporter, row.get("line-ranges"), source_document, repo_root, context)
@@ -415,6 +575,27 @@ def validate_phase_2(orchestrate_dir: Path, repo_root: Path, reporter: IssueRepo
                 reporter.error("phase2-projection", sidecar, f"{context} has empty candidate-artifact-projection")
             if status == "direct-candidate" and projection == "contextual-only":
                 reporter.error("phase2-direct-contextual-only", sidecar, f"{context} is direct-candidate but uses contextual-only")
+            if status == "direct-candidate" and is_no_owner(row.get("candidate-owner-change")):
+                reporter.error("phase2-direct-change-owner", sidecar, f"{context} direct-candidate requires candidate owner change or unassigned marker")
+            validate_capability_contract(
+                row,
+                impact_field="candidate-capability-impact",
+                target_field="candidate-target-capability",
+                related_field="candidate-related-capabilities",
+                projection_field="candidate-artifact-projection",
+                allowed_impacts=NON_TERMINAL_CAPABILITY_IMPACTS,
+                path=sidecar,
+                reporter=reporter,
+                context=context,
+                rationale_field="rationale",
+            )
+            validate_phase2_capability_status(row, sidecar, reporter, context)
+            if status == "candidate-new-capability" and projection not in SPEC_PROJECTIONS:
+                reporter.error(
+                    "phase2-new-capability-projection",
+                    sidecar,
+                    f"{context} candidate-new-capability requires spec projection",
+                )
     validate_phase2_mirror(orchestrate_dir, reporter)
 
 
@@ -733,6 +914,7 @@ def validate_phase_3(orchestrate_dir: Path, repo_root: Path, reporter: IssueRepo
     global_atoms = load_global_atoms(orchestrate_dir, reporter)
     index_path = orchestrate_dir / "change-capability-anchors/obligation-atom-index.json"
     for atom_id, row in global_atoms.items():
+        reject_legacy_capability_fields(row, index_path, reporter, atom_id)
         source_document = str(row.get("source-document", ""))
         check_ranges(index_path, reporter, row.get("line-ranges"), source_document, repo_root, atom_id)
         projection = str(row.get("artifact-projection", ""))
@@ -741,9 +923,45 @@ def validate_phase_3(orchestrate_dir: Path, repo_root: Path, reporter: IssueRepo
             reporter.error("phase3-projection", index_path, f"{atom_id} has empty artifact-projection")
         if status in {"direct", "direct-candidate"} and projection == "contextual-only":
             reporter.error("phase3-direct-contextual-only", index_path, f"{atom_id} is direct but uses contextual-only")
+        if status in {"direct", "direct-candidate"} and is_no_owner(row.get("owner-change")):
+            reporter.error("phase3-direct-change-owner", index_path, f"{atom_id} direct atom requires owner-change or phase-5-refit-required")
+        validate_capability_contract(
+            row,
+            impact_field="capability-impact",
+            target_field="target-capability",
+            related_field="related-capabilities",
+            projection_field="artifact-projection",
+            allowed_impacts=NON_TERMINAL_CAPABILITY_IMPACTS,
+            path=index_path,
+            reporter=reporter,
+            context=atom_id,
+            rationale_field="review-judgment",
+        )
+        impact = normalize_code(row.get("capability-impact"))
+        target = normalize_code(row.get("target-capability"))
+        if target == "candidate-new-capability":
+            reporter.error(
+                "phase3-capability-target-placeholder",
+                index_path,
+                f"{atom_id} Phase 3 target must resolve candidate-new-capability to a concrete capability or unresolved",
+            )
+        if status not in PHASE3_DIRECT_STATUSES and (impact != "none" or target != "none"):
+            reporter.error(
+                "phase3-non-direct-capability",
+                index_path,
+                f"{atom_id} non-direct/contextual row must use impact=none, target=none",
+            )
+        if status in PHASE3_DIRECT_STATUSES and projection in SPEC_PROJECTIONS:
+            if impact not in {*BUSINESS_CAPABILITY_IMPACTS, "unresolved"}:
+                reporter.error(
+                    "phase3-direct-spec-impact",
+                    index_path,
+                    f"{atom_id} direct spec atom must use new, modified, or unresolved",
+                )
 
     map_path = orchestrate_dir / "phase-works/phase-3/phase-3-trace/source-to-global-atom-map.json"
     data = json_obj(map_path, reporter, SOURCE_TO_GLOBAL_MAP_SCHEMA)
+    phase2_atoms = load_phase2_atoms(orchestrate_dir, reporter)
     mapped_keys: Set[str] = set()
     rows = data.get("rows")
     if not isinstance(rows, list):
@@ -755,7 +973,25 @@ def validate_phase_3(orchestrate_dir: Path, repo_root: Path, reporter: IssueRepo
             continue
         source_document = str(row.get("source-document", ""))
         atom_id = str(row.get("source-atom-id", ""))
-        mapped_keys.add(f"{source_document}::{atom_id}")
+        reject_legacy_capability_fields(row, map_path, reporter, f"{source_document}::{atom_id}")
+        source_key = f"{source_document}::{atom_id}"
+        mapped_keys.add(source_key)
+        phase2_row = phase2_atoms.get(source_key)
+        if phase2_row:
+            for field in (
+                "candidate-status",
+                "candidate-artifact-projection",
+                "candidate-owner-change",
+                "candidate-capability-impact",
+                "candidate-target-capability",
+                "candidate-related-capabilities",
+            ):
+                if row.get(field) != phase2_row.get(field):
+                    reporter.error(
+                        "phase3-map-candidate-drift",
+                        map_path,
+                        f"{source_key} {field} differs from immutable Phase 2 evidence",
+                    )
         populated = [
             key
             for key in ("global-atom-id", "global-relation", "non-coverage-status", "blocker")
@@ -765,9 +1001,42 @@ def validate_phase_3(orchestrate_dir: Path, repo_root: Path, reporter: IssueRepo
             reporter.error("phase3-map-exclusive", map_path, f"{source_document}::{atom_id} must set exactly one mapping outcome")
         if row.get("global-atom-id") and row.get("global-atom-id") not in global_atoms:
             reporter.error("phase3-map-unknown-ga", map_path, f"{atom_id} maps to unknown {row.get('global-atom-id')}")
+        validate_capability_contract(
+            row,
+            impact_field="candidate-capability-impact",
+            target_field="candidate-target-capability",
+            related_field="candidate-related-capabilities",
+            projection_field="candidate-artifact-projection",
+            allowed_impacts=NON_TERMINAL_CAPABILITY_IMPACTS,
+            path=map_path,
+            reporter=reporter,
+            context=f"{source_document}::{atom_id}",
+            rationale_field="reason",
+        )
+        validate_phase2_capability_status(
+            row,
+            map_path,
+            reporter,
+            f"{source_document}::{atom_id}",
+        )
+        global_atom_id = str(row.get("global-atom-id", ""))
+        if global_atom_id in global_atoms:
+            global_row = global_atoms[global_atom_id]
+            expected = {
+                "global-capability-impact": global_row.get("capability-impact"),
+                "global-target-capability": global_row.get("target-capability"),
+                "global-related-capabilities": global_row.get("related-capabilities"),
+            }
+            for field, value in expected.items():
+                if row.get(field) != value:
+                    reporter.error(
+                        "phase3-map-capability-drift",
+                        map_path,
+                        f"{source_document}::{atom_id} {field} differs from {global_atom_id}",
+                    )
         check_ranges(map_path, reporter, row.get("line-ranges"), source_document, repo_root, atom_id)
 
-    for key in load_phase2_atoms(orchestrate_dir, reporter):
+    for key in phase2_atoms:
         if key not in mapped_keys:
             reporter.error("phase3-map-coverage", map_path, f"source-to-global map missing Phase 2 atom/context row: {key}")
     validate_global_index_mirror(orchestrate_dir, reporter)
@@ -873,20 +1142,27 @@ def validate_final_packets(orchestrate_dir: Path, repo_root: Path, reporter: Iss
         reporter.error("phase5-final-packet-index", index_path, "packets must be an array")
         return
 
-    direct_by_owner: Dict[tuple[str, str], Set[str]] = {}
+    direct_by_view: Dict[tuple[str, str], Set[str]] = {}
     direct_by_change: Dict[str, Set[str]] = {}
+    non_direct_by_change: Dict[str, Set[str]] = {}
     for atom_id, row in mapping.items():
         if is_executable_direct_row(row):
             change = str(row.get("final-owner-change", ""))
-            capability = str(row.get("final-owner-capability", ""))
-            key = (change, capability)
-            direct_by_owner.setdefault(key, set()).add(atom_id)
             direct_by_change.setdefault(change, set()).add(atom_id)
+            if is_capability_view_row(row):
+                capability = str(row.get("final-target-capability", ""))
+                direct_by_view.setdefault((change, capability), set()).add(atom_id)
+        else:
+            change = str(row.get("final-owner-change", ""))
+            if not is_no_owner(change):
+                non_direct_by_change.setdefault(change, set()).add(atom_id)
 
     packet_changes: Set[str] = set()
     packet_direct_by_change: Dict[str, Set[str]] = {}
+    packet_non_direct_by_change: Dict[str, Set[str]] = {}
     capability_views_by_owner: Set[tuple[str, str]] = set()
     packet_change_kinds: Dict[str, str] = {}
+    packet_order: List[str] = []
     foundation_packet_count = 0
     for packet_index, packet in enumerate(packets):
         if not isinstance(packet, dict):
@@ -906,6 +1182,7 @@ def validate_final_packets(orchestrate_dir: Path, repo_root: Path, reporter: Iss
             if packet_index != 0:
                 reporter.error("phase5-foundation-order", index_path, f"{change} foundation packet must be the first packet")
         packet_change_kinds[change] = change_kind
+        packet_order.append(change)
         packet_changes.add(change)
         packet_rel = packet.get("packet-path")
         if not isinstance(packet_rel, str) or not packet_rel:
@@ -916,26 +1193,87 @@ def validate_final_packets(orchestrate_dir: Path, repo_root: Path, reporter: Iss
             reporter.error("phase5-final-packet-path", index_path, f"{change} packet missing: {packet_rel}")
             continue
         text = packet_path.read_text(encoding="utf-8")
+        if packet.get("packet-digest") != sha256_file(packet_path):
+            reporter.error("phase5-final-packet-digest", index_path, f"{change} packet-digest drift")
         direct_ids = set(packet.get("direct-atom-ids") if isinstance(packet.get("direct-atom-ids"), list) else [])
+        if change_kind == FOUNDATION_CHANGE_KIND and not direct_ids:
+            reporter.error(
+                "phase5-foundation-empty",
+                index_path,
+                f"{change} foundation packet must contain at least one direct foundation atom",
+            )
         for atom_id in direct_ids:
             row = mapping.get(str(atom_id))
             if not row:
+                reporter.error("phase5-final-direct-packet-index", index_path, f"{change} packet lists unknown direct atom {atom_id}")
                 continue
-            cap = str(row.get("final-owner-capability", ""))
-            advancement = str(row.get("capability-advancement", ""))
+            if row.get("final-relation") != "direct" or row.get("final-owner-change") != change:
+                reporter.error(
+                    "phase5-final-direct-packet-owner",
+                    index_path,
+                    f"{change} packet lists {atom_id} as direct but mapping does not directly assign it to that change",
+                )
+            cap = str(row.get("final-target-capability", ""))
+            impact = str(row.get("final-capability-impact", ""))
             if change_kind == FOUNDATION_CHANGE_KIND:
                 if cap != FOUNDATION_CAPABILITY:
-                    reporter.error("phase5-foundation-capability", index_path, f"{change}/{atom_id} foundation direct atom must use {FOUNDATION_CAPABILITY}")
-                if advancement != FOUNDATION_ADVANCEMENT:
-                    reporter.error("phase5-foundation-advancement", index_path, f"{change}/{atom_id} foundation direct atom must use {FOUNDATION_ADVANCEMENT}")
+                    reporter.error("phase5-foundation-capability", index_path, f"{change}/{atom_id} foundation direct atom must target {FOUNDATION_CAPABILITY}")
+                if impact != FOUNDATION_IMPACT:
+                    reporter.error("phase5-foundation-impact", index_path, f"{change}/{atom_id} foundation direct atom must use {FOUNDATION_IMPACT}")
             elif cap == FOUNDATION_CAPABILITY:
-                reporter.error("phase5-foundation-capability", index_path, f"{change}/{atom_id} business packet must not own {FOUNDATION_CAPABILITY}")
+                reporter.error("phase5-foundation-capability", index_path, f"{change}/{atom_id} business packet must not target {FOUNDATION_CAPABILITY}")
         packet_direct_by_change.setdefault(change, set()).update(str(atom_id) for atom_id in direct_ids)
         non_direct_ids = set(
             packet.get("owner-scoped-non-direct-atom-ids")
             if isinstance(packet.get("owner-scoped-non-direct-atom-ids"), list)
             else []
         )
+        packet_non_direct_by_change.setdefault(change, set()).update(str(atom_id) for atom_id in non_direct_ids)
+        for atom_id in non_direct_ids:
+            row = mapping.get(str(atom_id))
+            if not row:
+                reporter.error("phase5-final-non-direct-packet", index_path, f"{change} packet lists unknown non-direct atom {atom_id}")
+            elif row.get("final-relation") == "direct" or row.get("final-owner-change") != change:
+                reporter.error(
+                    "phase5-final-non-direct-packet-owner",
+                    index_path,
+                    f"{change} packet lists {atom_id} as non-direct but mapping does not scope it to that change",
+                )
+        direct_table_rows = table_rows(
+            packet_path,
+            ["Global Atom ID", "Capability Impact", "Target Capability", "Related Capabilities"],
+        )
+        direct_table = {
+            normalize_code(cell(row, "Global Atom ID")): row
+            for row in direct_table_rows
+            if normalize_code(cell(row, "Global Atom ID"))
+        }
+        if direct_ids and not direct_table:
+            reporter.error(
+                "phase5-final-direct-table-contract",
+                packet_path,
+                "final direct table must expose Capability Impact, Target Capability, and Related Capabilities",
+            )
+        for atom_id in direct_ids:
+            mapping_row = mapping.get(str(atom_id))
+            table_row = direct_table.get(str(atom_id))
+            if table_row is None:
+                reporter.error("phase5-final-direct-table-row", packet_path, f"direct atom {atom_id} missing from v2 direct table")
+                continue
+            if not mapping_row:
+                continue
+            displayed_impact = normalize_code(cell(table_row, "Capability Impact"))
+            displayed_target = markdown_target(cell(table_row, "Target Capability"))
+            displayed_related = sorted(markdown_capability_list(cell(table_row, "Related Capabilities")))
+            expected_related = sorted(str(value) for value in mapping_row.get("related-capabilities", []))
+            if displayed_impact != normalize_code(mapping_row.get("final-capability-impact")):
+                reporter.error("phase5-final-direct-table-drift", packet_path, f"{atom_id} Capability Impact differs from mapping")
+            if displayed_target != normalize_code(mapping_row.get("final-target-capability")):
+                reporter.error("phase5-final-direct-table-drift", packet_path, f"{atom_id} Target Capability differs from mapping")
+            if displayed_related != expected_related:
+                reporter.error("phase5-final-direct-table-drift", packet_path, f"{atom_id} Related Capabilities differs from mapping")
+        for atom_id in set(direct_table) - {str(value) for value in direct_ids}:
+            reporter.error("phase5-final-direct-table-extra", packet_path, f"v2 direct table contains unindexed direct atom {atom_id}")
         for atom_id in direct_ids:
             if atom_id not in text:
                 reporter.error("phase5-final-direct-packet", packet_path, f"direct atom {atom_id} missing from final packet")
@@ -947,12 +1285,32 @@ def validate_final_packets(orchestrate_dir: Path, repo_root: Path, reporter: Iss
         if not isinstance(capability_paths, list):
             reporter.error("phase5-capability-view-paths", index_path, f"{change} capability-view-paths must be array")
             continue
-        for cap_rel in capability_paths:
-            if not isinstance(cap_rel, str):
-                continue
-            cap_path = repo_root / cap_rel
+        declared_cap_paths = {
+            (repo_root / cap_rel).resolve()
+            for cap_rel in capability_paths
+            if isinstance(cap_rel, str) and cap_rel
+        }
+        actual_cap_dir = packet_path.parent / "capability-anchors"
+        actual_cap_paths = {
+            path.resolve()
+            for path in actual_cap_dir.glob("*.md")
+        } if actual_cap_dir.exists() else set()
+        for cap_path in sorted(actual_cap_paths - declared_cap_paths):
+            reporter.error(
+                "phase5-capability-view-unindexed",
+                cap_path,
+                f"{change} has an unindexed capability view",
+            )
+        for cap_path in sorted(declared_cap_paths - actual_cap_paths):
+            if cap_path.exists():
+                reporter.error(
+                    "phase5-capability-view-location",
+                    cap_path,
+                    f"{change} declared capability view is outside its canonical capability-anchors directory",
+                )
+        for cap_path in sorted(declared_cap_paths | actual_cap_paths):
             if not cap_path.exists():
-                reporter.error("phase5-capability-view-path", index_path, f"capability view missing: {cap_rel}")
+                reporter.error("phase5-capability-view-path", index_path, f"capability view missing: {cap_path}")
                 continue
             cap_slug = cap_path.stem
             capability_views_by_owner.add((change, cap_slug))
@@ -961,12 +1319,16 @@ def validate_final_packets(orchestrate_dir: Path, repo_root: Path, reporter: Iss
                 reporter.error("phase5-foundation-capability", cap_path, f"foundation packet capability view must be {FOUNDATION_CAPABILITY}")
             if change_kind == BUSINESS_CHANGE_KIND and cap_slug == FOUNDATION_CAPABILITY:
                 reporter.error("phase5-foundation-capability", cap_path, f"business packet must not render {FOUNDATION_CAPABILITY} capability view")
-            expected_ids = direct_by_owner.get((change, cap_slug), set())
+            expected_ids = direct_by_view.get((change, cap_slug), set())
+            if not expected_ids:
+                reporter.error("phase5-capability-view-extra", cap_path, f"{change}/{cap_slug} has no spec capability delta")
             for atom_id in text_ids:
                 row = mapping.get(atom_id)
                 if not row or row.get("final-relation") != "direct":
                     reporter.error("phase5-capability-view-non-direct", cap_path, f"capability view contains non-direct or unknown atom {atom_id}")
-                elif row.get("final-owner-change") != change or row.get("final-owner-capability") != cap_slug:
+                elif not is_capability_view_row(row):
+                    reporter.error("phase5-capability-view-non-advancing", cap_path, f"capability view contains non-advancing or unknown atom {atom_id}")
+                elif row.get("final-owner-change") != change or row.get("final-target-capability") != cap_slug:
                     reporter.error("phase5-capability-view-owner", cap_path, f"{atom_id} does not belong to {change}/{cap_slug}")
             missing = expected_ids - text_ids
             if missing:
@@ -980,9 +1342,39 @@ def validate_final_packets(orchestrate_dir: Path, repo_root: Path, reporter: Iss
         if missing_direct:
             reporter.error("phase5-final-direct-packet-index", index_path, f"{change} final packet index missing direct atoms: {', '.join(sorted(missing_direct)[:12])}")
 
-    for change, cap_slug in direct_by_owner:
+    for change, atom_ids in non_direct_by_change.items():
+        if change not in packet_changes:
+            reporter.error("phase5-final-non-direct-owner", index_path, f"non-direct owner change {change} has no final packet")
+            continue
+        missing_non_direct = atom_ids - packet_non_direct_by_change.get(change, set())
+        if missing_non_direct:
+            reporter.error(
+                "phase5-final-non-direct-packet-index",
+                index_path,
+                f"{change} final packet index missing owner-scoped non-direct atoms: {', '.join(sorted(missing_non_direct)[:12])}",
+            )
+
+    for change, cap_slug in direct_by_view:
         if change in packet_changes and (change, cap_slug) not in capability_views_by_owner:
-            reporter.error("phase5-capability-view-missing-owner", index_path, f"{change}/{cap_slug} has direct atoms but no capability view")
+            reporter.error("phase5-capability-view-missing-owner", index_path, f"{change}/{cap_slug} has capability delta atoms but no capability view")
+
+    seen_capabilities: Set[str] = set()
+    for change in packet_order:
+        impacts_by_target: Dict[str, Set[str]] = {}
+        for row in mapping.values():
+            if row.get("final-owner-change") != change or row.get("final-capability-impact") not in BUSINESS_CAPABILITY_IMPACTS:
+                continue
+            target = str(row.get("final-target-capability", ""))
+            impacts_by_target.setdefault(target, set()).add(str(row.get("final-capability-impact", "")))
+        for target, impacts in impacts_by_target.items():
+            if len(impacts) != 1:
+                reporter.error("phase5-capability-impact-mixed", index_path, f"{change}/{target} mixes impacts: {sorted(impacts)}")
+                continue
+            impact = next(iter(impacts))
+            expected = "modified" if target in seen_capabilities else "new"
+            if impact != expected:
+                reporter.error("phase5-capability-impact-order", index_path, f"{change}/{target} expected {expected}, got {impact}")
+            seen_capabilities.add(target)
 
     for atom_id, row in mapping.items():
         change = str(row.get("final-owner-change", ""))
@@ -1026,10 +1418,32 @@ def validate_phase_5(orchestrate_dir: Path, repo_root: Path, reporter: IssueRepo
     if extra:
         reporter.error("phase5-mapping-extra", orchestrate_dir / "phase-works/phase-5/atom-plan-mapping.json", f"mapping contains unknown global atoms: {', '.join(extra[:12])}")
     for atom_id, row in mapping.items():
+        reject_legacy_capability_fields(
+            row,
+            orchestrate_dir / "phase-works/phase-5/atom-plan-mapping.json",
+            reporter,
+            atom_id,
+        )
         source_document = str(row.get("source-document", ""))
         check_ranges(orchestrate_dir / "phase-works/phase-5/atom-plan-mapping.json", reporter, row.get("line-ranges"), source_document, repo_root, atom_id)
         relation = str(row.get("final-relation", ""))
         projection = str(row.get("final-artifact-projection", ""))
+        impact = normalize_code(row.get("final-capability-impact"))
+        target = normalize_code(row.get("final-target-capability"))
+        related = validate_related_capabilities(
+            row,
+            "related-capabilities",
+            target,
+            orchestrate_dir / "phase-works/phase-5/atom-plan-mapping.json",
+            reporter,
+            atom_id,
+        )
+        if impact not in TERMINAL_CAPABILITY_IMPACTS:
+            reporter.error(
+                "phase5-capability-impact",
+                orchestrate_dir / "phase-works/phase-5/atom-plan-mapping.json",
+                f"{atom_id} terminal capability impact is invalid or unresolved: {impact}",
+            )
         if row.get("final-owner-type") == "foundation-reference" or relation == "foundation-reference":
             reporter.error("phase5-foundation-reference-deprecated", orchestrate_dir / "phase-works/phase-5/atom-plan-mapping.json", f"{atom_id} must not use foundation-reference owner/relation")
         if row.get("foundation-reference-id") not in {None, "", "None"}:
@@ -1037,10 +1451,34 @@ def validate_phase_5(orchestrate_dir: Path, repo_root: Path, reporter: IssueRepo
         if relation == "direct":
             if projection not in DIRECT_PROJECTIONS:
                 reporter.error("phase5-direct-projection", orchestrate_dir / "phase-works/phase-5/atom-plan-mapping.json", f"{atom_id} direct uses invalid projection {projection}")
-            if not row.get("final-owner-change") or row.get("final-owner-change") == "None":
+            if row.get("final-owner-type") != EXECUTABLE_OWNER_TYPE:
+                reporter.error(
+                    "phase5-direct-owner-type",
+                    orchestrate_dir / "phase-works/phase-5/atom-plan-mapping.json",
+                    f"{atom_id} direct final-owner-type must be {EXECUTABLE_OWNER_TYPE}",
+                )
+            if is_no_owner(row.get("final-owner-change")):
                 reporter.error("phase5-direct-owner", orchestrate_dir / "phase-works/phase-5/atom-plan-mapping.json", f"{atom_id} direct missing final owner change")
-            if not row.get("final-owner-capability") or row.get("final-owner-capability") == "None":
-                reporter.error("phase5-direct-owner", orchestrate_dir / "phase-works/phase-5/atom-plan-mapping.json", f"{atom_id} direct missing final owner capability")
+            if impact in BUSINESS_CAPABILITY_IMPACTS:
+                if projection not in SPEC_PROJECTIONS:
+                    reporter.error("phase5-capability-projection", orchestrate_dir / "phase-works/phase-5/atom-plan-mapping.json", f"{atom_id} new/modified requires spec projection")
+                if is_no_owner(target) or target == "unresolved" or not KEBAB_CASE_RE.match(target):
+                    reporter.error("phase5-capability-target", orchestrate_dir / "phase-works/phase-5/atom-plan-mapping.json", f"{atom_id} new/modified requires target capability")
+                elif target == "candidate-new-capability":
+                    reporter.error("phase5-capability-target", orchestrate_dir / "phase-works/phase-5/atom-plan-mapping.json", f"{atom_id} must resolve candidate-new-capability before terminal output")
+            elif impact == "none":
+                if target != "none":
+                    reporter.error("phase5-capability-target", orchestrate_dir / "phase-works/phase-5/atom-plan-mapping.json", f"{atom_id} impact=none requires target=none")
+                if projection in SPEC_PROJECTIONS:
+                    reporter.error("phase5-spec-impact", orchestrate_dir / "phase-works/phase-5/atom-plan-mapping.json", f"{atom_id} direct spec atom must use new/modified")
+            elif impact == FOUNDATION_IMPACT:
+                if target != FOUNDATION_CAPABILITY:
+                    reporter.error("phase5-foundation-impact", orchestrate_dir / "phase-works/phase-5/atom-plan-mapping.json", f"{atom_id} foundation-substrate requires runtime target")
+            if projection in CHANGE_ONLY_PROJECTIONS and impact not in {"none", FOUNDATION_IMPACT}:
+                reporter.error("phase5-change-only-impact", orchestrate_dir / "phase-works/phase-5/atom-plan-mapping.json", f"{atom_id} {projection} must be change-only")
+        else:
+            if impact != "none" or target != "none":
+                reporter.error("phase5-non-direct-capability", orchestrate_dir / "phase-works/phase-5/atom-plan-mapping.json", f"{atom_id} non-direct row must use impact=none, target=none")
     validate_mapping_mirror(orchestrate_dir, reporter)
     validate_final_packets(orchestrate_dir, repo_root, reporter, mapping)
     if (orchestrate_dir / "foundation-reference").exists():
@@ -1060,7 +1498,7 @@ def validate_phase_5(orchestrate_dir: Path, repo_root: Path, reporter: IssueRepo
             reporter.error("phase5-complete-packets", anchors_index, "final change-capability anchor index is missing")
 
 
-def validate(orchestrate_dir: Path, repo_root: Path, phase: str, complete: bool, legacy_tolerant: bool) -> Dict[str, object]:
+def validate(orchestrate_dir: Path, repo_root: Path, phase: str, complete: bool) -> Dict[str, object]:
     reporter = IssueReporter()
     if not orchestrate_dir.exists():
         reporter.error("orchestrate-dir", orchestrate_dir, "orchestrate directory does not exist")
@@ -1079,10 +1517,7 @@ def validate(orchestrate_dir: Path, repo_root: Path, phase: str, complete: bool,
     if "phase-5" in phases:
         validate_phase_5(orchestrate_dir, repo_root, reporter, complete=complete)
 
-    result = reporter.result()
-    if legacy_tolerant:
-        result["legacy-tolerant"] = True
-    return result
+    return reporter.result()
 
 
 def main() -> int:
@@ -1093,10 +1528,9 @@ def main() -> int:
     parser.add_argument("--complete", action="store_true")
     parser.add_argument("--json", action="store_true")
     parser.add_argument("--strict-warnings", action="store_true")
-    parser.add_argument("--legacy-tolerant", action="store_true")
     args = parser.parse_args()
 
-    result = validate(args.orchestrate_dir, args.workspace_root, args.phase, args.complete, args.legacy_tolerant)
+    result = validate(args.orchestrate_dir, args.workspace_root, args.phase, args.complete)
     if args.json:
         print(json.dumps(result, ensure_ascii=False, indent=2))
     else:

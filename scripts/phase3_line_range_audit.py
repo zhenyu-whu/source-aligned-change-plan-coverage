@@ -15,7 +15,12 @@ from dataclasses import asdict, dataclass
 from pathlib import Path
 from typing import Dict, Iterable, List, Optional, Tuple
 
-from source_aligned_trace_lib import merge_line_ranges, uncovered_line_ranges
+from source_aligned_trace_lib import (
+    SOURCE_ATOMS_SCHEMA,
+    TRACE_CONTRACT_VERSION,
+    merge_line_ranges,
+    uncovered_line_ranges,
+)
 
 
 TABLE_SEPARATOR_RE = re.compile(r"^:?-{3,}:?$")
@@ -35,7 +40,9 @@ class EvidenceRow:
     source_fact: str
     status: str
     candidate_owner_change: str
-    candidate_owner_capability: str
+    candidate_capability_impact: str
+    candidate_target_capability: str
+    candidate_related_capabilities: List[str]
     roles: str
 
 
@@ -59,6 +66,16 @@ def normalize_cell(value: str) -> str:
 
 def normalize_spacing(value: str) -> str:
     return re.sub(r"\s+", " ", value).strip()
+
+
+def stable_identifier_list(value: object) -> List[str]:
+    """Normalize identifier arrays for deterministic mechanical audit output."""
+    if isinstance(value, list):
+        items = [normalize_cell(str(item)) for item in value]
+    else:
+        text = str(value or "").replace("`", "")
+        items = [normalize_cell(item) for item in re.split(r"[,;]", text)]
+    return sorted({item for item in items if item and item.lower() != "none"})
 
 
 def index_header(header: List[str]) -> Dict[str, int]:
@@ -91,6 +108,12 @@ def parse_source_rows(markdown_path: Path) -> List[EvidenceRow]:
         has_anchor = "anchor" in index and "source atom ids" in index
         if not has_atom_id and not has_anchor:
             continue
+        if has_atom_id and not {
+            "candidate capability impact",
+            "candidate target capability",
+            "candidate related capabilities",
+        }.issubset(index):
+            raise ValueError(f"{markdown_path} obligation atom ledger must use the v2 capability fields")
 
         origin = "atom" if has_atom_id else "anchor"
         for j in range(i + 2, len(lines)):
@@ -109,15 +132,21 @@ def parse_source_rows(markdown_path: Path) -> List[EvidenceRow]:
             if has_atom_id:
                 row_id = normalize_cell(get_cell(cells, index, "source atom id"))
                 source_fact = get_cell(cells, index, "source fact")
-                status = get_cell(cells, index, "candidate status", "coverage status")
-                owner_change = get_cell(cells, index, "candidate owner change", "owner change")
-                owner_capability = get_cell(cells, index, "candidate owner capability", "owner capability")
+                status = get_cell(cells, index, "candidate status")
+                owner_change = get_cell(cells, index, "candidate owner change")
+                capability_impact = get_cell(cells, index, "candidate capability impact")
+                target_capability = get_cell(cells, index, "candidate target capability")
+                related_capabilities = stable_identifier_list(
+                    get_cell(cells, index, "candidate related capabilities")
+                )
             else:
                 row_id = normalize_cell(get_cell(cells, index, "source atom ids", "atom ids", "anchor"))
                 source_fact = get_cell(cells, index, "source phrase")
-                status = get_cell(cells, index, "candidate status", "coverage status")
-                owner_change = get_cell(cells, index, "candidate owners", "owner change")
-                owner_capability = ""
+                status = get_cell(cells, index, "candidate status")
+                owner_change = get_cell(cells, index, "candidate owners")
+                capability_impact = ""
+                target_capability = ""
+                related_capabilities = []
 
             if not row_id:
                 continue
@@ -134,7 +163,9 @@ def parse_source_rows(markdown_path: Path) -> List[EvidenceRow]:
                     source_fact=source_fact,
                     status=status,
                     candidate_owner_change=owner_change,
-                    candidate_owner_capability=owner_capability,
+                    candidate_capability_impact=capability_impact,
+                    candidate_target_capability=target_capability,
+                    candidate_related_capabilities=related_capabilities,
                     roles=get_cell(cells, index, "roles"),
                 )
             )
@@ -143,6 +174,10 @@ def parse_source_rows(markdown_path: Path) -> List[EvidenceRow]:
 
 def parse_source_rows_from_trace(json_path: Path) -> List[EvidenceRow]:
     data = json.loads(json_path.read_text(encoding="utf-8"))
+    if data.get("trace-schema") != SOURCE_ATOMS_SCHEMA or data.get("trace-contract-version") != TRACE_CONTRACT_VERSION:
+        raise ValueError(
+            f"{json_path} must use {SOURCE_ATOMS_SCHEMA} / {TRACE_CONTRACT_VERSION}"
+        )
     rows: List[EvidenceRow] = []
     for index, raw in enumerate(data.get("source-atoms", []), start=1):
         if not isinstance(raw, dict):
@@ -164,7 +199,11 @@ def parse_source_rows_from_trace(json_path: Path) -> List[EvidenceRow]:
                 source_fact=str(raw.get("source-fact", "")),
                 status=str(raw.get("candidate-status", "")),
                 candidate_owner_change=str(raw.get("candidate-owner-change", "")),
-                candidate_owner_capability=str(raw.get("candidate-owner-capability", "")),
+                candidate_capability_impact=str(raw.get("candidate-capability-impact", "")),
+                candidate_target_capability=str(raw.get("candidate-target-capability", "")),
+                candidate_related_capabilities=stable_identifier_list(
+                    raw.get("candidate-related-capabilities", [])
+                ),
                 roles=str(raw.get("roles", "")),
             )
         )
@@ -187,8 +226,10 @@ def parse_source_rows_from_trace(json_path: Path) -> List[EvidenceRow]:
                 raw_lines=line_spec,
                 source_fact=str(raw.get("source-phrase", "")),
                 status=str(raw.get("candidate-status", "")),
-                candidate_owner_change=str(raw.get("candidate-owners", raw.get("owner-change", ""))),
-                candidate_owner_capability="",
+                candidate_owner_change=str(raw.get("candidate-owners", "")),
+                candidate_capability_impact="",
+                candidate_target_capability="",
+                candidate_related_capabilities=[],
                 roles=str(raw.get("roles", "")),
             )
         )
@@ -290,7 +331,9 @@ def overlap_groups(ranges: List[ParsedRange]) -> List[Dict[str, object]]:
                             "lines": [item.start, item.end],
                             "status": item.row.status,
                             "candidate_owner_change": item.row.candidate_owner_change,
-                            "candidate_owner_capability": item.row.candidate_owner_capability,
+                            "candidate_capability_impact": item.row.candidate_capability_impact,
+                            "candidate_target_capability": item.row.candidate_target_capability,
+                            "candidate_related_capabilities": item.row.candidate_related_capabilities,
                         }
                         for item in (current, other)
                     ],
@@ -312,7 +355,7 @@ def main() -> int:
     parser.add_argument("--workspace-root", default=".")
     parser.add_argument("--pretty", action="store_true")
     parser.add_argument("--from-trace", dest="from_trace", action="store_true", default=True, help="Read Phase 2 .atoms.json sidecars. This is the default.")
-    parser.add_argument("--from-markdown", dest="from_trace", action="store_false", help="Read legacy Phase 2 .atoms.md files instead of JSON trace.")
+    parser.add_argument("--from-markdown", dest="from_trace", action="store_false", help="Read rendered v2 Phase 2 .atoms.md files instead of JSON trace.")
     args = parser.parse_args()
 
     orchestrate_dir = Path(args.orchestrate_dir)
@@ -358,7 +401,9 @@ def main() -> int:
                     "row_id": item.row.row_id,
                     "status": item.row.status,
                     "candidate_owner_change": item.row.candidate_owner_change,
-                    "candidate_owner_capability": item.row.candidate_owner_capability,
+                    "candidate_capability_impact": item.row.candidate_capability_impact,
+                    "candidate_target_capability": item.row.candidate_target_capability,
+                    "candidate_related_capabilities": item.row.candidate_related_capabilities,
                 }
                 for item in sorted(parsed_ranges, key=lambda value: (value.start, value.end))
             ],

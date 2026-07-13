@@ -16,7 +16,7 @@ from pathlib import Path
 from typing import Dict, Iterable, List, Optional, Sequence, Tuple
 
 
-TRACE_CONTRACT_VERSION = "source-aligned-trace-v1"
+TRACE_CONTRACT_VERSION = "source-aligned-trace-v2"
 MANIFEST_SCHEMA = "source-aligned-orchestrate-manifest-v1"
 PHASE_TRACE_SCHEMAS = {
     "phase-1": "source-aligned-phase-1-trace-v1",
@@ -25,13 +25,13 @@ PHASE_TRACE_SCHEMAS = {
     "phase-4": "source-aligned-phase-4-trace-v1",
     "phase-5": "source-aligned-phase-5-trace-v1",
 }
-SOURCE_ATOMS_SCHEMA = "source-aligned-source-atoms-v1"
-GLOBAL_ATOM_INDEX_SCHEMA = "source-aligned-global-atom-index-v1"
-SOURCE_TO_GLOBAL_MAP_SCHEMA = "source-aligned-source-to-global-map-v1"
+SOURCE_ATOMS_SCHEMA = "source-aligned-source-atoms-v2"
+GLOBAL_ATOM_INDEX_SCHEMA = "source-aligned-global-atom-index-v2"
+SOURCE_TO_GLOBAL_MAP_SCHEMA = "source-aligned-source-to-global-map-v2"
 SOURCE_REMAINDER_REVIEW_SCHEMA = "source-aligned-source-remainder-review-v1"
 SOURCE_WINDOW_INDEX_SCHEMA = "source-aligned-source-window-index-v1"
-ATOM_PLAN_MAPPING_SCHEMA = "source-aligned-atom-plan-mapping-v1"
-FINAL_PACKET_INDEX_SCHEMA = "source-aligned-final-packet-index-v1"
+ATOM_PLAN_MAPPING_SCHEMA = "source-aligned-atom-plan-mapping-v2"
+FINAL_PACKET_INDEX_SCHEMA = "source-aligned-final-packet-index-v2"
 
 GLOBAL_ATOM_ID_RE = re.compile(r"^GA-\d{4}$")
 GLOBAL_ATOM_ID_FIND_RE = re.compile(r"GA-\d{4}")

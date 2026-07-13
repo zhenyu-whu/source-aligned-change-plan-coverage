@@ -2,7 +2,7 @@
 
 Phase 5 runs after Phase 3 returns `Decision: coverage-complete` and Phase 4 returns `Phase 4 Status: grounded`. At this point the obligation atom granularity is stable and the original source windows behind the initial change/capability framework have been copied into Phase 4 reviewer-facing dossiers. Phase 5 must not make plan-refit judgments from atom summaries alone: it must consume the Phase 4 source-window dossiers and semantic profiles as the grounding evidence for every split, merge, reorder, rename, ownership move, relation change, and complexity decision.
 
-Phase 5 exists to refit the plan from the normalized global atom index and Phase 4 source-window semantic dossiers. It evaluates change order, capability progression, dependencies, artifact projection, and change complexity using concrete source-backed atom groups and their original source context rather than the initial slicing hypothesis. It may accept the Phase 1 framework or restructure changes/capabilities. Every decision must preserve atom-level traceability and ensure each final direct atom has a downstream artifact projection.
+Phase 5 exists to refit the plan from the normalized global atom index and Phase 4 source-window semantic dossiers. It evaluates change order, spec capability progression, dependencies, artifact projection, and change complexity using concrete source-backed atom groups and their original source context rather than the initial slicing hypothesis. It may accept the Phase 1 framework or restructure changes/capabilities. Every decision must preserve atom-level traceability, give each executable direct atom exactly one owner Change, and ensure each final direct atom has a downstream artifact projection. Capability impact is orthogonal metadata, not co-ownership.
 
 Phase 5 MUST be performed by a fresh independent subagent. It must not rerun Phase 2 extraction and must not invent new source obligations. If Phase 5 discovers a missing or over-broad source obligation, it must return `needs-coverage-recheck` instead of silently creating new atoms outside Phase 3.
 
@@ -75,7 +75,7 @@ python3 .codex/skills/source-aligned-change-plan-coverage/scripts/phase5_plan_re
   --print-config-template > openspec/orchestrate/phase-works/phase-5/phase5-refit.config.json
 ```
 
-Then edit `phase5-refit.config.json` so every final change has the reviewed Chinese title/outcome/kind, every capability has the reviewed Chinese behavior boundary, and the reviewed decisions/split analyses/adjustments/report findings are recorded. After that, run:
+Then edit `phase5-refit.config.json` so every final change has the reviewed Chinese title/outcome/kind, every capability has the reviewed Chinese behavior boundary, and the reviewed decisions/split analyses/adjustments/report findings are recorded. `capabilities` may be `[]` when no business spec delta exists; in that case the generated Capability Map and Matrix must retain their headings and state `无业务 Capability delta` without malformed empty tables. After that, run:
 
 ```bash
 python3 -m py_compile .codex/skills/source-aligned-change-plan-coverage/scripts/phase5_plan_refit.py
@@ -121,7 +121,8 @@ Phase 5 may:
 - add, remove, split, merge, reorder, or rename changes when atom groups and dependencies require it
 - emit one qualifying pre-business foundation candidate as the first executable foundation change
 - add, remove, split, merge, or rename capabilities when atoms reveal a durable behavior boundary gap
-- move a global atom to a different owner change/capability when Phase 3 left placement to refit or when sequencing proves the initial candidate owner was wrong
+- move a global atom to a different owner Change when Phase 3 left placement to refit or when sequencing proves the initial candidate Change was wrong
+- assign or revise `final-capability-impact`, `final-target-capability`, and source-explicit `related-capabilities[]` when source windows prove the Phase 3 metadata was unresolved or incorrect
 - reclassify a global atom as contextual future-compatibility, dependency, preserve, reference, later-change, or explicit non-goal when it constrains design but is not current direct scope
 - resolve final owner placement for atoms marked `phase-5-refit-required`
 - adjust final artifact projection when Phase 3's projection is too broad, too narrow, or no longer matches final change packet use
@@ -142,10 +143,13 @@ Phase 5 must not:
 - use raw uncovered line counts as a plan-adjustment driver without semantic review
 - treat Phase 4 source-window dossiers as permission to extract, rewrite, merge, split, or invent new obligation atoms outside Phase 3
 - decide change splits, merges, reorders, capability boundaries, or foundation executable handling from atom counts or summaries alone when the corresponding Phase 4 source windows are available
-- leave any executable direct global atom without exactly one final owner change/capability, unless it is non-direct, non-coverage, or blocked
+- leave any executable direct global atom without exactly one final owner Change, unless it is non-direct, non-coverage, or blocked
 - leave any direct global atom without final artifact projection
 - leave any final direct global atom with `contextual-only`; contextual-only atoms must be moved to the context table, non-direct handling, or blocker status
 - force a `design-obligation` or `verification-obligation` atom into specs as a `spec-requirement` merely because it is direct
+- give an ordinary `design-obligation` or `verification-obligation` anything other than `final-capability-impact: none` and `final-target-capability: none`; such atoms remain direct and Change-owned
+- return `accepted` or `adjusted` while any row has `final-capability-impact: unresolved`
+- use `related-capabilities[]` as a target substitute, ownership surface, progression input, capability-view input, or advanced-capability complexity input
 - leave duplicated direct ownership unresolved
 - create one capability per page, table, SDK, queue, external service, component, or source document section
 - hide future obligations inside early changes unless they affect current design as contextual or preserve constraints
@@ -162,7 +166,7 @@ Phase 5 refit is not atom-count-based splitting. Atom count is a later complexit
 Phase 4 source-window dossiers and semantic profiles
 -> engineering delivery judgment for input changes/capabilities
 -> final change order and capability boundary decisions
--> GA-#### final ownership/projection/relation mapping
+-> GA-#### final Change ownership/projection/relation/capability-impact mapping
 -> atom-count and complexity budget review
 ```
 
@@ -208,9 +212,12 @@ For the initial change plan, answer:
 Only after these questions are answered may Phase 5 map `GA-####` rows to final ownership. At that point each relevant global atom must be assigned:
 
 - final owner type
-- final executable change and capability
+- exactly one final executable Change when the row is executable/direct
 - final artifact projection
 - final relation: `direct`, contextual, dependency, evidence-burden, preserve/reference, explicit non-goal, later-change, or blocker
+- `final-capability-impact`: `new`, `modified`, `none`, or foundation-only `foundation-substrate`
+- `final-target-capability`: a concrete declared capability for `new` / `modified`, `none` for `none`, or `runtime-substrate-foundation` for `foundation-substrate`
+- `related-capabilities[]`: unique declared, source-explicit, non-owning supporting associations; default `[]` and exclude the target capability
 
 Every final change must pass this reviewer-facing gate:
 
@@ -225,7 +232,7 @@ Every final change must pass this reviewer-facing gate:
 
 If a final change cannot answer all gate questions, Phase 5 must split, merge, reorder, rename, reclassify atoms, return `needs-coverage-recheck`, or return `blocked`. A final change must not be accepted merely because its atom count falls within the target budget.
 
-After final refit decisions, write `source-window-refit-trace.md` using the table defined in Required Mapping Tables. The trace must make it clear which Phase 4 source-window-backed atoms were reconstructed into each adjusted final change/capability. Any split, merge, reorder, rename, moved atom, contextual downgrade, dependency classification, evidence-burden classification, or non-goal classification must cite the relevant Phase 4 source-window dossier.
+After final refit decisions, write `source-window-refit-trace.md` using the table defined in Required Mapping Tables. The trace must make it clear which Phase 4 source-window-backed atoms were reconstructed into each adjusted final Change and, for spec deltas, target capability. Any split, merge, reorder, rename, moved atom, contextual downgrade, dependency classification, evidence-burden classification, or non-goal classification must cite the relevant Phase 4 source-window dossier.
 
 ### Behavior Maturity Ordering Gate
 
@@ -241,8 +248,8 @@ If a change is ordered early mainly because later changes will need it, move its
 
 After source-window profile intake, build an atom-driven planning graph:
 
-| Global Atom ID | Source Obligation | Current Candidate Owner Change | Current Candidate Owner Capability | Current Artifact Projection | Dependency Atoms | Candidate Final Change | Candidate Final Capability | Candidate Final Artifact Projection | Sequence Impact | Complexity Impact | Decision |
-| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| Global Atom ID | Source Obligation | Current Candidate Owner Change | Current Capability Impact | Current Target Capability | Current Related Capabilities | Current Artifact Projection | Dependency Atoms | Candidate Final Change | Candidate Final Capability Impact | Candidate Final Target Capability | Candidate Final Related Capabilities | Candidate Final Artifact Projection | Sequence Impact | Complexity Impact | Decision |
+| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
 
 Use these rules:
 
@@ -261,20 +268,26 @@ Use these rules:
 - Represent staged maturity as distinct atoms. Do not repeat the same atom across changes to simulate progression.
 - Treat earlier changes as realized baseline providers, not global-context catchalls.
 - Treat future domain behavior as contextual or downstream constraints until the first business change that directly implements it. Do not make a foundation or early technical change own direct atoms simply because later changes depend on their contracts.
-- Preserve artifact projection independently from final owner placement. A direct atom can be implementation-owned by a change while projecting to design, tasks/proof, or spec guard rather than becoming a spec requirement; it cannot remain `contextual-only` in the final direct table.
+- Preserve artifact projection independently from final owner Change placement. A direct atom can be implementation-owned by a Change while projecting to design, tasks/proof, or spec guard rather than becoming a spec requirement; it cannot remain `contextual-only` in the final direct table.
+- Assign `new` / `modified` only to direct `spec-requirement` / `spec-guard` rows with a concrete target capability. Assign `none` / `none` to ordinary direct design/verification rows and all non-direct rows without downgrading their Change ownership.
+- Keep `related-capabilities[]` only when the cited source window explicitly associates the atom with those stable capability ids. Related ids never affect Change ownership, progression, capability views, or complexity counts.
 - Prefer staged slices such as input preparation -> confirmed domain fact -> async execution -> external integration -> result projection -> hardening/delivery/operations when each slice can be verified truthfully.
 - Preserve directly necessary cross-capability increments inside the same change when they share the same entry, fact, projection, failure path, and verification truth. Do not move identity, privacy, realtime state, versioning, entitlement, export, failure recovery, or observability atoms into artificial standalone changes solely to narrow the matrix row.
 - Apply the Capability Relation Invariants below when rebuilding `New`/`Modified` labels and capability advancement surfaces.
 
 ### Capability Relation Invariants
 
-After final refit, discard Phase 1 `New`/`Modified` labels and recompute capability advancement from final direct atom ownership.
+After final refit, discard Phase 1 `New`/`Modified` labels and rebuild capability advancement from explicit Phase 5 `final-capability-impact` plus `final-target-capability` values. Do not infer impact from Change ownership, artifact counts, related capabilities, or renderer order.
 
-- The first final change in roadmap order that directly owns at least one non-contextual global atom for a capability is that capability's `New` baseline.
-- Later final changes are `Modified` only when they directly own additional source-backed deltas for that capability.
+- Business progression consumes only direct `spec-requirement` / `spec-guard` rows whose impact is `new` or `modified` and whose target is a concrete declared business capability.
+- For each `(final-owner-change, final-target-capability)` pair, all contributing rows must use the same impact. Mixed `new` / `modified` values for one pair are invalid.
+- In roadmap order, the first Change with a spec delta for a target capability must explicitly use `new`; every later Change with an additional source-backed spec delta for the same target must explicitly use `modified`.
+- A renderer or reviewer must validate these explicit values, not derive or repair them silently from first occurrence.
 - Dependency-only, preserve-only, upstream-baseline, downstream-constraint, contextual, evidence-burden, reference, later-change, and non-goal relations do not count as capability advancement.
-- Capability Map `First change`, the first non-empty matrix cell, the first roadmap `New` entry, final packet capability ownership, the first anchor-index occurrence, capability views, and the human plan must all agree.
-- If stale labels are the only problem, repair the Phase 5 artifacts. If the mismatch reflects ambiguous final direct atom ownership, return `needs-coverage-recheck` or `blocked`.
+- Ordinary direct `design-obligation` / `verification-obligation` rows use `none` / `none`; source-explicit `related-capabilities[]` remain non-owning and do not count as advancement.
+- `foundation-substrate` with target `runtime-substrate-foundation` is the only non-spec special case. It receives its dedicated foundation view but stays outside business `New` / `Modified` progression.
+- Capability Map `First change`, the first non-empty matrix cell, the first roadmap `New` entry, final packet target/impact metadata, the first anchor-index occurrence, capability views, and the human plan must all agree.
+- If stale labels are the only problem, repair the Phase 5 canonical mapping/config and rerender. If the mismatch reflects ambiguous final Change ownership or capability target/impact, return `needs-coverage-recheck` or `blocked`.
 
 ## Capability Progression Review
 
@@ -290,9 +303,9 @@ Rules:
 - Later changes may refine or harden prior atoms only with a source-backed delta.
 - Later changes that only preserve or depend on prior atoms must not list that capability as advanced.
 - If a capability has multiple unrelated atom families, split the capability only when they are durable behavior boundaries rather than temporary implementation areas.
-- `Current Change Sequence` must be computed from final direct ownership in roadmap order: include every final change whose packet directly owns at least one atom for the capability, and exclude dependency-only or contextual mentions.
+- `Current Change Sequence` must be computed from explicit final `new` / `modified` target-capability pairs in roadmap order. Exclude change-only design/verification rows, related-only mentions, dependency-only rows, and contextual mentions.
 - `Required Order` must apply the Capability Relation Invariants and identify the baseline direct owner.
-- If plan surfaces disagree, repair stale labels before returning `accepted` or `adjusted`; if final direct ownership is unclear, return `needs-coverage-recheck` or `blocked`.
+- If plan surfaces disagree, repair the canonical mapping/config and rerender before returning `accepted` or `adjusted`; if final Change ownership or spec target/impact is unclear, return `needs-coverage-recheck` or `blocked`.
 
 ## Change Complexity Review
 
@@ -306,6 +319,7 @@ Use direct atom count as a complexity signal, not as a source coverage goal. Fin
 Rules:
 
 - Target budget: 20-60 direct atoms, one primary functional point, directly necessary capability deltas only, at most two primary surface families, and a compact evidence burden. More than one new or modified capability is acceptable when those deltas are required for the same truthful loop.
+- Count `New Capabilities`, `Modified Capabilities`, and unrelated capability over-budget triggers only from distinct explicit `new` / `modified` target capabilities. Exclude `none`, `foundation-substrate`, and every `related-capabilities[]` entry.
 - Over-budget trigger: any change with more than 80 direct atoms, more than 4 unrelated directly advanced capabilities, an incoherent artifact projection mix, more than 12 failure/recovery atoms, more than 2 primary entry points, more than 2 fact families, more than 2 projection families, more than 3 evidence types, or more than 3 surface families must be split, deferred, or justified with concrete indivisibility evidence. Related cross-cutting capability deltas are not an over-budget trigger by count alone.
 - Hard split/blocker trigger: any change with more than 120 direct atoms or more than 6 unrelated directly advanced capabilities that do not share the same entry/fact/projection/failure truth must not be marked `accepted` or `adjusted` as-is. Phase 5 must split it, move atoms to later changes/context, or return `blocked` for a user slicing decision.
 - A `Keep` decision for an over-budget change must list rejected split candidates and explain why each would break truthfulness. "One coherent loop", "shared infrastructure", or "packet-level evidence grouping" is not sufficient.
@@ -327,7 +341,8 @@ Foundation candidates are valid only as minimal enabling scaffolds and may be em
 
 - A terminal Phase 5 plan may have at most one foundation candidate. If it qualifies, Phase 5 writes it as the first final packet and the first `final-packet-index.json` row with `change-kind: foundation`.
 - Business changes use `change-kind: business`. The technical foundation capability `runtime-substrate-foundation` may appear in the foundation packet and capability view, but it must not count as business capability `New` / `Modified` progression.
-- Foundation direct rows in `atom-plan-mapping.json` must use `final-owner-type: executable-change`, `final-owner-change: <foundation-change-slug>`, `final-owner-capability: runtime-substrate-foundation`, `final-relation: direct`, and `capability-advancement: foundation-substrate`.
+- Foundation direct rows in `atom-plan-mapping.json` must use `final-owner-type: executable-change`, `final-owner-change: <foundation-change-slug>`, `final-capability-impact: foundation-substrate`, `final-target-capability: runtime-substrate-foundation`, and `final-relation: direct`. Their `related-capabilities[]` follows the same source-explicit, non-owning structural rule as all other rows.
+- `foundation-substrate` is the sole exception that allows `design-obligation` / `verification-obligation` rows to receive a non-`none` capability impact. It exists only to derive the dedicated foundation view and never enters business progression or advanced-capability counts.
 - A foundation change may include only zero-domain engineering substrate: repository/package skeleton, package/app boundaries, root scripts, lint/typecheck/test harnesses, configuration loading, local dependency manifests, migration tooling without business schema, empty adapter seams, empty web/worker smoke entrypoints, environment/deploy conventions, and smoke/conformance proof expectations.
 - Foundation atoms keep their original source trace and artifact projection, often `design-obligation`, `verification-obligation`, or `spec-guard`. Later proposal artifacts may generate specs, runtime acceptance, verification, and tasks only when those artifacts express current observable engineering substrate facts for the foundation change.
 - Direct domain behavior, business table creation, user-facing API contracts, worker or async business semantics, identity/authorization/tenancy mappings, entitlement/accounting/delivery/export concepts, lifecycle/versioning rules, operational observability, privacy workflows, recovery behavior, responsive behavior, visual quality, or design-system behavior must move to the first business change that directly needs them.
@@ -399,6 +414,7 @@ Rules:
 - Behavior boundary explains durable behavior, not implementation module.
 - `First change` and `Later expansion` must follow the Capability Relation Invariants and be backed by direct global atoms.
 - Capability ids must not merely paraphrase final change slugs. When a capability has only one final direct change, record why it is a durable terminal boundary or refit it.
+- A plan with no business spec delta may use `capabilities: []`. Keep the `Capability Map` heading and write `无业务 Capability delta`; do not emit a malformed empty table or invent a technical capability. A qualifying foundation remains the separate special case.
 
 ### Capability Progression Matrix
 
@@ -414,6 +430,7 @@ Rules:
 - Each non-empty cell must be backed by one or more global atom ids.
 - First and later non-empty cells must follow the Capability Relation Invariants and match roadmap relation labels plus final packet ownership.
 - The matrix must pass the Change/Capability Coupling Gate. A mostly diagonal matrix requires source-backed exceptions, not silence.
+- When `capabilities: []`, keep the `Capability Progression Matrix` heading and write `无业务 Capability delta`; do not emit capability columns or infer progression from change-only rows.
 
 ### Change Roadmap
 
@@ -459,7 +476,7 @@ For each final change:
 
 Roadmap relation rules:
 
-- `New` and `Modified` lists must follow the Capability Relation Invariants and match final packet capability ownership plus `change-capability-anchors/index.md`.
+- `New` and `Modified` lists must be derived from explicit `final-capability-impact` / `final-target-capability` pairs, follow the Capability Relation Invariants, and match final packets plus `change-capability-anchors/index.md`.
 - When Phase 5 splits, merges, renames, reorders, or remaps atom ownership, it must regenerate all roadmap relation labels after final packets are derived. Do not carry forward Phase 1 labels.
 - Every final change must cite the input source-window dossiers and refit trace rows that justify its closed-loop outcome and ordering. A final change with only atom-count or capability-count rationale is incomplete.
 
@@ -471,7 +488,7 @@ Each `change-capability-anchors/<change-slug>/<change-slug>.md` final packet mus
 - closed-loop outcome
 - source-window grounding links and semantic profile summary
 - Source Window Semantic Grounding Gate answer summary
-- final direct owner atoms grouped by capability
+- final direct owner atoms grouped by spec target capability or change-only artifact projection
 - final artifact projection for every direct atom
 - contextual atoms and future constraints that affect current design
 - upstream realized baseline atoms from earlier changes
@@ -485,12 +502,14 @@ Each `change-capability-anchors/<change-slug>/<change-slug>.md` final packet mus
 
 Direct atom table:
 
-| Global Atom ID | Source Document | Lines | Atom Type | Source Fact | Normativity | Artifact Projection | Projection Rationale | Owner Capability | Atom Relation | Roles | Propose Use | Evidence Need |
-| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| Global Atom ID | Source Document | Lines | Atom Type | Source Fact | Normativity | Artifact Projection | Projection Rationale | Capability Impact | Target Capability | Related Capabilities | Atom Relation | Roles | Propose Use | Evidence Need |
+| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
 
 All final packet `Global Atom ID` values must preserve the exact `GA-####` IDs from `change-capability-anchors/obligation-atom-index.md`; Phase 5 must not rewrite them to another global prefix or source-local atom id.
 
 Direct table rows must use `spec-requirement`, `spec-guard`, `design-obligation`, or `verification-obligation`. `contextual-only` belongs only in the context table or non-direct classifications.
+
+Direct table capability fields must match canonical `atom-plan-mapping.json`. Business `new` / `modified` rows must be spec projections with a concrete target; ordinary design/verification rows must display `none` / `none`; related capabilities must be source-explicit, unique, and non-owning. Render empty related arrays as `None`.
 
 Context table:
 
@@ -499,20 +518,20 @@ Context table:
 
 The context table, or relation-specific equivalent tables in the same final packet, must include every non-direct row from `atom-plan-mapping.md` whose `Final Owner Change` is this change. This includes contextual, dependency, evidence-burden, preserve/reference, explicit non-goal, later-change, and other non-direct relations. Each such atom must appear as its own explicit `GA-####` row with source document, line range, relation/context type, why it affects the current design or scope, and handling. Do not truncate, summarize, aggregate, or replace explicit non-direct atom rows with count-only rows, `additional-context`, or link-only placeholders. If the table is large, split it by relation type inside the same packet while preserving one explicit row per atom.
 
-Each `change-capability-anchors/<change-slug>/capability-anchors/<capability-slug>.md` file is a derived direct-advancement view. It must include only direct atoms from the final change packet whose final owner capability is this capability. Non-direct constraints that materially affect the change stay in the final change packet, not in capability views.
+Each business `change-capability-anchors/<change-slug>/capability-anchors/<capability-slug>.md` file is a derived spec-advancement view. It must include only direct `spec-requirement` / `spec-guard` atoms from the final change packet whose `final-target-capability` is this capability and whose `final-capability-impact` is `new` or `modified`. Change-only design/verification rows, related-only associations, and non-direct constraints stay in the final change packet, not in capability views. The one exception is the dedicated `runtime-substrate-foundation` view containing direct `foundation-substrate` rows for the first foundation Change.
 
 Capability atom table:
 
-| Capability | Change | Global Atom ID | Source Document | Lines | Atom Type | Source Fact | Normativity | Artifact Projection | Relation | Propose Use | Evidence Need |
-| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| Capability | Change | Capability Impact | Global Atom ID | Source Document | Lines | Atom Type | Source Fact | Normativity | Artifact Projection | Relation | Propose Use | Evidence Need |
+| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
 
 Derived-view invariants:
 
 - Every capability row must have a matching direct row in the final change packet.
-- Every direct atom whose owner capability is this capability must appear in the capability file.
+- Every direct spec atom whose target capability is this capability and whose impact is `new` or `modified` must appear in the business capability file; every direct `foundation-substrate` atom must appear in the dedicated foundation view.
 - Capability files must not rename atoms, change source line ranges, change artifact projection, or independently split/merge source facts.
-- The set of capability files under a change must exactly match the direct capabilities advanced by that change. Extra files for dependency-only, preserve-only, or contextual-only capabilities are not allowed.
-- Capability files must not contain contextual, dependency, evidence-burden, preserve/reference, explicit non-goal, later-change, upstream-baseline, or other non-direct rows. Those rows are excluded from capability advancement but must remain explicit in the owning final change packet.
+- The set of business capability files under a Change must exactly match its distinct explicit `new` / `modified` target capabilities. Extra files for change-only design/verification rows, related-only, dependency-only, preserve-only, or contextual-only capabilities are not allowed. The foundation Change may add only the dedicated `runtime-substrate-foundation` view.
+- Capability files must not contain related-only, contextual, dependency, evidence-burden, preserve/reference, explicit non-goal, later-change, upstream-baseline, or other non-direct rows. Business views must also exclude change-only design/verification rows. Those rows are excluded from capability advancement but must remain explicit in the owning final change packet.
 
 ## Final Capability Relation Consistency Check
 
@@ -520,17 +539,17 @@ Before returning `accepted` or `adjusted`, Phase 5 must run a consistency check 
 
 Required comparison:
 
-| Capability | Capability Map First Change | First Direct Owner From Packets | First Matrix Cell | First Roadmap `New` | First Anchor Index Occurrence | Later Direct Owners | Result | Repair If Failed |
+| Capability | Capability Map First Change | First Explicit `new` Target From Packets | First Matrix Cell | First Roadmap `New` | First Anchor Index Occurrence | Later Explicit `modified` Targets | Result | Repair If Failed |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- |
 
 Rules:
 
 - All comparison columns must satisfy the Capability Relation Invariants.
-- No capability may appear in `change-capability-anchors/index.md` unless at least one direct atom in that change packet has that capability as final owner.
+- No business capability may appear in `change-capability-anchors/index.md` unless at least one direct spec atom in that Change packet has it as `final-target-capability` with impact `new` or `modified`. The only exception is `runtime-substrate-foundation` for direct `foundation-substrate` rows.
 - Packet-level non-direct coverage must be checked before Phase 5 can return `accepted` or `adjusted`: every non-direct `atom-plan-mapping.md` row with a real `Final Owner Change` must be present as an explicit `GA-####` row in that change's final packet context/dependency/evidence/preserve/non-goal handling.
-- Capability-view purity must be checked before Phase 5 can return `accepted` or `adjusted`: every capability view row must be `direct`, every row must have a matching direct packet row, and no non-direct atom may appear only in a capability view.
+- Capability-view purity must be checked before Phase 5 can return `accepted` or `adjusted`: every business view row must be direct, spec-projected, and match the view target with impact `new` / `modified`; every foundation view row must use `foundation-substrate`; every row must have a matching direct packet row; no change-only, related-only, or non-direct atom may appear only in a capability view.
 - If stale labels are the only problem, repair the Phase 5 artifacts without changing Phase 2 or Phase 3 evidence.
-- If the mismatch shows that final direct atom ownership itself is ambiguous or contradictory, return `needs-coverage-recheck` or `blocked`; do not mark Phase 5 `accepted` or `adjusted`.
+- If the mismatch shows that final Change ownership or spec target/impact is ambiguous or contradictory, return `needs-coverage-recheck` or `blocked`; do not mark Phase 5 `accepted` or `adjusted`.
 
 ## Workflow
 
@@ -547,9 +566,9 @@ Rules:
 11. If adjusted, update root `openspec/orchestrate/change-plan.md` to the latest effective plan after the Phase 5 snapshot and mapping are written.
 12. If accepted or adjusted, write `phase-works/phase-5/capability-progression-review.md`, `change-complexity-review.md`, and `plan-refit-decision-log.md`.
 13. If the status is `adjusted`, `needs-coverage-recheck`, or `blocked`, write `phase-works/phase-5/change-plan-adjustments.md` with the plan-impact and next-action summary.
-14. Derive final `change-capability-anchors/<change-slug>/` packets and capability views from the global atom index, source-window refit trace, and final plan when the status is `accepted` or `adjusted`. Final change packets must explicitly list every owner-scoped non-direct atom; capability views must include only executable direct atoms. Foundation capability views are allowed only for `runtime-substrate-foundation`.
+14. Derive final `change-capability-anchors/<change-slug>/` packets and capability views from the global atom index, source-window refit trace, and final plan when the status is `accepted` or `adjusted`. Final change packets must explicitly list every Change-owned direct atom and every owner-scoped non-direct atom. Business capability views include only direct `new` / `modified` spec atoms for their target; the dedicated foundation view includes only `foundation-substrate` rows for `runtime-substrate-foundation`.
 15. If accepted or adjusted, write `change-capability-anchors/index.md`.
-16. If accepted or adjusted, run the Final Capability Relation Consistency Check and packet-level non-direct coverage check. Repair stale `First change`, matrix cells, roadmap `New`/`Modified` labels, final anchors index rows, capability views, final packet context/evidence/dependency/non-goal rows, and human-plan summaries before proceeding.
+16. If accepted or adjusted, run the Final Capability Relation Consistency Check and packet-level non-direct coverage check. Repair canonical mapping/config values, then rerender stale `First change`, matrix cells, roadmap `New`/`Modified` labels, final anchors index rows, capability views, final packet context/evidence/dependency/non-goal rows, and human-plan summaries before proceeding. Do not let the renderer infer `new` / `modified` from order.
 17. Write `phase-works/phase-5/change-capability-human-plan.md` as a readable synthesis of final change packets and capability progression when the status is `accepted` or `adjusted`.
 18. Always write `phase-works/phase-5/phase-5-agent-report.md`. Write `phase-works/phase-5/alignment-final-report.md` only when the status is `accepted` or `adjusted`.
 19. Run a local artifact consistency check by inspection or deterministic parsing before finishing.
@@ -558,15 +577,15 @@ Rules:
 
 `phase-works/phase-5/source-window-refit-trace.md` must include:
 
-| Input Change / Capability | Source Window Evidence | Input Atoms | Final Change / Capability | Atom Movement | Relation Changes | Engineering Reason |
+| Input Change / Capability | Source Window Evidence | Input Atoms | Final Change / Target Capability | Atom Movement | Relation Changes | Engineering Reason |
 | --- | --- | --- | --- | --- | --- | --- |
 
 Canonical `phase-works/phase-5/atom-plan-mapping.json` must include every global atom mapping row. Rendered `phase-works/phase-5/atom-plan-mapping.md` must use this table:
 
-| Global Atom ID | Source Document | Lines | Phase 3 Owner / Status | Phase 3 Artifact Projection | Final Owner Type | Final Owner Change | Final Owner Capability | Final Artifact Projection | Final Relation | Capability Advancement | Plan Decision | Reason |
-| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| Global Atom ID | Source Document | Lines | Phase 3 Owner / Status | Phase 3 Artifact Projection | Final Owner Type | Final Owner Change | Final Capability Impact | Final Target Capability | Related Capabilities | Final Artifact Projection | Final Relation | Plan Decision | Reason |
+| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
 
-The rendered mirror must also include `Trace Appendix` with trace file, trace schema, trace sha256, and render contract `source-aligned-render-v1`.
+The rendered mirror must also include `Trace Appendix` with trace file, trace schema, trace sha256, and render contract `source-aligned-render-v2`.
 
 `phase-works/phase-5/plan-refit-decision-log.md` must include:
 
@@ -608,13 +627,15 @@ It must also include:
 - new, split, merged, removed, reordered, or renamed changes
 - new, split, merged, removed, or renamed capabilities
 - atoms moved, reclassified, or left as contextual
-- confirmation that every executable direct global atom has exactly one final owner change/capability, and every foundation direct atom is owned by the first executable foundation change with capability `runtime-substrate-foundation`
+- confirmation that every executable direct global atom has exactly one final owner Change; ordinary design/verification atoms use `none` / `none`; and every foundation direct atom is owned by the first executable foundation Change with `foundation-substrate` / `runtime-substrate-foundation`
 - confirmation that every direct global atom has final artifact projection
 - confirmation that `design-obligation` and `verification-obligation` atoms were not forced into `spec-requirement`
+- confirmation that `new` / `modified` occur only for direct spec projections with concrete targets, every `(Change, target capability)` pair has one consistent impact, each capability route begins with explicit `new` then uses explicit `modified`, and no accepted/adjusted row remains `unresolved`
+- confirmation that `related-capabilities[]` values are unique, declared, source-explicit, distinct from the target, and excluded from ownership, progression, capability views, and advanced-capability complexity counts
 - confirmation that every owner-scoped non-direct atom in `atom-plan-mapping.md` appears explicitly in the owning final change packet and was not represented only by a count, summary, `additional-context`, capability view, or link-only placeholder
-- confirmation that capability views contain only direct atoms and that non-direct constraints are preserved in final change packets rather than capability views
-- confirmation that final capability relations are direct `New` or `Modified` advancement only
-- confirmation that Capability Map `First change`, progression matrix first cells, roadmap `New`/`Modified` labels, final packet capability ownership, capability views, anchor index, and human plan all agree after the refit
+- confirmation that business capability views contain only direct `new` / `modified` spec atoms for their target, the foundation view contains only `foundation-substrate` rows, and change-only/non-direct constraints are preserved in final change packets rather than capability views
+- confirmation that final business capability relations are explicit `New` or `Modified` spec advancement only and the renderer did not infer them from order
+- confirmation that Capability Map `First change`, progression matrix first cells, roadmap `New`/`Modified` labels, final packet capability impact/target, capability views, anchor index, and human plan all agree after the refit
 - confirmation that the final plan is not a diagonal or same-name change/capability roadmap unless every exception is source-backed and recorded
 - confirmation that change packets contain upstream baseline and downstream design context without pulling future scope into current direct ownership
 - confirmation that final change complexity is implementation-ready or explicitly blocked with split options

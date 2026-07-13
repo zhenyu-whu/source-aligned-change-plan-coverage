@@ -72,10 +72,7 @@ class SourceAlignedValidatorTest(unittest.TestCase):
         )
         self._write(
             "openspec/orchestrate/phase-works/phase-2/source-obligation-atoms/docs--source.atoms.md",
-            "| Source Atom ID | Source Document | Lines | Atom Type | Source Fact | Normativity | Candidate Status | Candidate Artifact Projection | Candidate Owner Change | Candidate Owner Capability | Roles | Rationale | Propose Use | Evidence Need |\n"
-            "| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |\n"
-            "| atom.one | docs/source.md | L1-L2 | behavior | fact one | must | direct-candidate | spec-requirement | change-a | cap-a | primary | why | use | unit |\n"
-            "| atom.two | docs/source.md | L1-L2 | explicit-non-goal | fact two | must-not | explicit-non-goal | spec-guard | change-a | cap-a | non-goal | why | use | none |\n",
+            "phase-2 source atoms are rendered from JSON\n",
         )
         self._write("openspec/orchestrate/phase-works/phase-2/source-obligation-atoms/index.md", "index\n")
         self._write("openspec/orchestrate/phase-works/phase-2/source-obligation-review/index.html", "<!doctype html>\n")
@@ -84,23 +81,25 @@ class SourceAlignedValidatorTest(unittest.TestCase):
             "openspec/orchestrate/phase-works/phase-3/source-doc-manifest.md",
             "| Source Document | Classification | Phase 2 Atom File | Review File | Effective Atom Ranges | Missing Obligation Atom Ranges | Non-Atom Ranges | Read Scope | Reason |\n"
             "| --- | --- | --- | --- | --- | --- | --- | --- | --- |\n"
-            "| docs/source.md | covered-by-atoms | openspec/orchestrate/phase-works/phase-2/source-obligation-atoms/docs--source.atoms.md | openspec/orchestrate/phase-works/phase-3/source-doc-coverage/docs--source.coverage.md | L1-L2 | None | L3-L20 | full-source remainder audit | ok |\n",
+            "| docs/source.md | covered-by-atoms | openspec/orchestrate/phase-works/phase-2/source-obligation-atoms/docs--source.atoms.md | openspec/orchestrate/phase-works/phase-3/source-doc-coverage/docs--source.coverage.md | L1-L8 | None | L9-L20 | full-source remainder audit | ok |\n",
         )
         self._write(
             "openspec/orchestrate/phase-works/phase-3/source-doc-coverage/docs--source.coverage.md",
-            "| Global Atom ID | Source Atom Origins | Lines | Atom Type | Coverage Status | Artifact Projection | Candidate / Owner Change | Candidate / Owner Capability | Source Fact |\n"
-            "| --- | --- | --- | --- | --- | --- | --- | --- | --- |\n"
-            "| GA-0001 | atom.one | L1-L2 | behavior | direct | spec-requirement | change-a | cap-a | fact one |\n"
-            "| GA-0002 | atom.two | L1-L2 | explicit-non-goal | explicit-non-goal | spec-guard | change-a | cap-a | fact two |\n"
+            "| Global Atom ID | Source Atom Origins | Lines | Atom Type | Coverage Status | Artifact Projection | Candidate / Owner Change | Capability Impact | Target Capability | Related Capabilities | Source Fact |\n"
+            "| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |\n"
+            "| GA-0001 | atom.spec | L1-L2 | behavior | direct | spec-requirement | change-a | new | cap-a | None | spec fact |\n"
+            "| GA-0002 | atom.design | L3-L4 | architecture | direct | design-obligation | change-a | none | none | cap-support | design fact |\n"
+            "| GA-0003 | atom.verify | L5-L6 | verification | direct | verification-obligation | change-a | none | none | cap-support | verification fact |\n"
+            "| GA-0004 | atom.non-goal | L7-L8 | explicit-non-goal | explicit-non-goal | spec-guard | change-a | none | none | None | non-goal fact |\n"
             "\n"
             "| Source Section or Range | Expected Atom Type | Global Atom IDs | Coverage Judgment | Reason |\n"
             "| --- | --- | --- | --- | --- |\n"
-            "| L1-L2 | behavior | GA-0001; GA-0002 | covered | ok |\n"
-            "| L3-L20 | none | None | non-atom | safe remainder |\n"
+            "| L1-L8 | mixed | GA-0001; GA-0002; GA-0003; GA-0004 | covered | ok |\n"
+            "| L9-L20 | none | None | non-atom | safe remainder |\n"
             "\n"
             "| Candidate Range | Read Scope | Semantic Classification | Production Obligation? | Reason |\n"
             "| --- | --- | --- | --- | --- |\n"
-            "| L3-L20 | full-source remainder audit | formatting/background | false | no production obligation |\n",
+            "| L9-L20 | full-source remainder audit | formatting/background | false | no production obligation |\n",
         )
         self._write("openspec/orchestrate/phase-works/phase-3/coverage-review.md", "Decision: coverage-complete\n")
         self._write("openspec/orchestrate/phase-works/phase-3/coverage-review-app/index.html", "<!doctype html>\n")
@@ -123,21 +122,22 @@ class SourceAlignedValidatorTest(unittest.TestCase):
         self._write("openspec/orchestrate/change-capability-anchors/index.md", "index\n")
         self._write(
             "openspec/orchestrate/change-capability-anchors/obligation-atom-index.md",
-            "| Global Atom ID | Source Document | Lines | Atom Type | Source Fact | Normativity | Coverage Status | Artifact Projection | Owner Change | Owner Capability | Source Atom Origins | Atom Relation | Propose Use | Evidence Need | Review Judgment |\n"
-            "| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |\n"
-            "| GA-0001 | docs/source.md | L1-L2 | behavior | fact one | must | direct | spec-requirement | change-a | cap-a | atom.one | direct | use | unit | ok |\n"
-            "| GA-0002 | docs/source.md | L1-L2 | explicit-non-goal | fact two | must-not | explicit-non-goal | spec-guard | change-a | cap-a | atom.two | non-goal | use | none | ok |\n",
+            "phase-3 global atom index is rendered from JSON\n",
         )
         self._write(
             "openspec/orchestrate/phase-works/phase-5/atom-plan-mapping.md",
-            "| Global Atom ID | Source Document | Lines | Phase 3 Owner / Status | Phase 3 Artifact Projection | Final Owner Type | Final Owner Change | Final Owner Capability | Final Artifact Projection | Final Relation | Capability Advancement | Plan Decision | Reason |\n"
-            "| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |\n"
-            "| GA-0001 | docs/source.md | L1-L2 | change-a / direct | spec-requirement | executable-change | change-a | cap-a | spec-requirement | direct | advances-capability | direct-owner | reason |\n"
-            "| GA-0002 | docs/source.md | L1-L2 | change-a / explicit-non-goal | spec-guard | executable-change | change-a | cap-a | spec-guard | non-goal | does-not-advance-capability | scoped-non-direct | reason |\n",
+            "phase-5 atom mapping is rendered from JSON\n",
         )
         self._write(
             "openspec/orchestrate/change-capability-anchors/change-a/change-a.md",
-            "# change-a\n\n| Global Atom ID | Relation |\n| --- | --- |\n| GA-0001 | direct |\n| GA-0002 | non-goal |\n",
+            "# change-a\n\n## Final Direct Owner Atoms\n\n"
+            "| Global Atom ID | Capability Impact | Target Capability | Related Capabilities | Relation |\n"
+            "| --- | --- | --- | --- | --- |\n"
+            "| GA-0001 | new | cap-a | None | direct |\n"
+            "| GA-0002 | none | None/change-only | cap-support | direct |\n"
+            "| GA-0003 | none | None/change-only | cap-support | direct |\n\n"
+            "## Contextual Atoms\n\n| Global Atom ID | Relation |\n| --- | --- |\n"
+            "| GA-0004 | non-goal |\n",
         )
         self._write(
             "openspec/orchestrate/change-capability-anchors/change-a/capability-anchors/cap-a.md",
@@ -145,7 +145,7 @@ class SourceAlignedValidatorTest(unittest.TestCase):
         )
         self._write(
             "openspec/orchestrate/phase-works/phase-5/change-complexity-review.md",
-            "| Change | Direct Atom Count | Budget Status |\n| --- | --- | --- |\n| change-a | 1 | within-target |\n",
+            "| Change | Direct Atom Count | Budget Status |\n| --- | --- | --- |\n| change-a | 3 | within-target |\n",
         )
 
         self._write_json_sidecars()
@@ -179,34 +179,76 @@ class SourceAlignedValidatorTest(unittest.TestCase):
         )
         source_atoms = [
             {
-                "source-atom-id": "atom.one",
+                "source-atom-id": "atom.spec",
                 "source-document": "docs/source.md",
                 "lines": "L1-L2",
                 "line-ranges": [{"start": 1, "end": 2}],
                 "atom-type": "behavior",
-                "source-fact": "fact one",
+                "source-fact": "spec fact",
                 "normativity": "must",
                 "candidate-status": "direct-candidate",
                 "candidate-artifact-projection": "spec-requirement",
                 "candidate-owner-change": "change-a",
-                "candidate-owner-capability": "cap-a",
+                "candidate-capability-impact": "new",
+                "candidate-target-capability": "cap-a",
+                "candidate-related-capabilities": [],
                 "roles": "primary",
                 "rationale": "why",
                 "propose-use": "use",
                 "evidence-need": "unit",
             },
             {
-                "source-atom-id": "atom.two",
+                "source-atom-id": "atom.design",
                 "source-document": "docs/source.md",
-                "lines": "L1-L2",
-                "line-ranges": [{"start": 1, "end": 2}],
+                "lines": "L3-L4",
+                "line-ranges": [{"start": 3, "end": 4}],
+                "atom-type": "architecture",
+                "source-fact": "design fact",
+                "normativity": "must",
+                "candidate-status": "direct-candidate",
+                "candidate-artifact-projection": "design-obligation",
+                "candidate-owner-change": "change-a",
+                "candidate-capability-impact": "none",
+                "candidate-target-capability": "none",
+                "candidate-related-capabilities": ["cap-support"],
+                "roles": "primary",
+                "rationale": "source-explicit support for cap-a",
+                "propose-use": "use",
+                "evidence-need": "architecture-review",
+            },
+            {
+                "source-atom-id": "atom.verify",
+                "source-document": "docs/source.md",
+                "lines": "L5-L6",
+                "line-ranges": [{"start": 5, "end": 6}],
+                "atom-type": "verification",
+                "source-fact": "verification fact",
+                "normativity": "must",
+                "candidate-status": "direct-candidate",
+                "candidate-artifact-projection": "verification-obligation",
+                "candidate-owner-change": "change-a",
+                "candidate-capability-impact": "none",
+                "candidate-target-capability": "none",
+                "candidate-related-capabilities": ["cap-support"],
+                "roles": "primary",
+                "rationale": "source-explicit verification for cap-a",
+                "propose-use": "use",
+                "evidence-need": "integration",
+            },
+            {
+                "source-atom-id": "atom.non-goal",
+                "source-document": "docs/source.md",
+                "lines": "L7-L8",
+                "line-ranges": [{"start": 7, "end": 8}],
                 "atom-type": "explicit-non-goal",
-                "source-fact": "fact two",
+                "source-fact": "non-goal fact",
                 "normativity": "must-not",
                 "candidate-status": "explicit-non-goal",
                 "candidate-artifact-projection": "spec-guard",
                 "candidate-owner-change": "change-a",
-                "candidate-owner-capability": "cap-a",
+                "candidate-capability-impact": "none",
+                "candidate-target-capability": "none",
+                "candidate-related-capabilities": [],
                 "roles": "non-goal",
                 "rationale": "why",
                 "propose-use": "use",
@@ -245,14 +287,16 @@ class SourceAlignedValidatorTest(unittest.TestCase):
                 "lines": "L1-L2",
                 "line-ranges": [{"start": 1, "end": 2}],
                 "atom-type": "behavior",
-                "source-fact": "fact one",
+                "source-fact": "spec fact",
                 "normativity": "must",
                 "coverage-status": "direct",
                 "artifact-projection": "spec-requirement",
                 "owner-change": "change-a",
-                "owner-capability": "cap-a",
-                "source-atom-origins": "atom.one",
-                "origins": ["atom.one"],
+                "capability-impact": "new",
+                "target-capability": "cap-a",
+                "related-capabilities": [],
+                "source-atom-origins": "atom.spec",
+                "origins": ["atom.spec"],
                 "atom-relation": "direct",
                 "propose-use": "use",
                 "evidence-need": "unit",
@@ -261,17 +305,61 @@ class SourceAlignedValidatorTest(unittest.TestCase):
             {
                 "global-atom-id": "GA-0002",
                 "source-document": "docs/source.md",
-                "lines": "L1-L2",
-                "line-ranges": [{"start": 1, "end": 2}],
+                "lines": "L3-L4",
+                "line-ranges": [{"start": 3, "end": 4}],
+                "atom-type": "architecture",
+                "source-fact": "design fact",
+                "normativity": "must",
+                "coverage-status": "direct",
+                "artifact-projection": "design-obligation",
+                "owner-change": "change-a",
+                "capability-impact": "none",
+                "target-capability": "none",
+                "related-capabilities": ["cap-support"],
+                "source-atom-origins": "atom.design",
+                "origins": ["atom.design"],
+                "atom-relation": "direct",
+                "propose-use": "use",
+                "evidence-need": "architecture-review",
+                "review-judgment": "ok",
+            },
+            {
+                "global-atom-id": "GA-0003",
+                "source-document": "docs/source.md",
+                "lines": "L5-L6",
+                "line-ranges": [{"start": 5, "end": 6}],
+                "atom-type": "verification",
+                "source-fact": "verification fact",
+                "normativity": "must",
+                "coverage-status": "direct",
+                "artifact-projection": "verification-obligation",
+                "owner-change": "change-a",
+                "capability-impact": "none",
+                "target-capability": "none",
+                "related-capabilities": ["cap-support"],
+                "source-atom-origins": "atom.verify",
+                "origins": ["atom.verify"],
+                "atom-relation": "direct",
+                "propose-use": "use",
+                "evidence-need": "integration",
+                "review-judgment": "ok",
+            },
+            {
+                "global-atom-id": "GA-0004",
+                "source-document": "docs/source.md",
+                "lines": "L7-L8",
+                "line-ranges": [{"start": 7, "end": 8}],
                 "atom-type": "explicit-non-goal",
-                "source-fact": "fact two",
+                "source-fact": "non-goal fact",
                 "normativity": "must-not",
                 "coverage-status": "explicit-non-goal",
                 "artifact-projection": "spec-guard",
                 "owner-change": "change-a",
-                "owner-capability": "cap-a",
-                "source-atom-origins": "atom.two",
-                "origins": ["atom.two"],
+                "capability-impact": "none",
+                "target-capability": "none",
+                "related-capabilities": [],
+                "source-atom-origins": "atom.non-goal",
+                "origins": ["atom.non-goal"],
                 "atom-relation": "non-goal",
                 "propose-use": "use",
                 "evidence-need": "none",
@@ -296,31 +384,81 @@ class SourceAlignedValidatorTest(unittest.TestCase):
                 "rows": [
                     {
                         "source-document": "docs/source.md",
-                        "source-atom-id": "atom.one",
+                        "source-atom-id": "atom.spec",
                         "lines": "L1-L2",
                         "line-ranges": [{"start": 1, "end": 2}],
                         "candidate-status": "direct-candidate",
                         "candidate-artifact-projection": "spec-requirement",
                         "candidate-owner-change": "change-a",
-                        "candidate-owner-capability": "cap-a",
+                        "candidate-capability-impact": "new",
+                        "candidate-target-capability": "cap-a",
+                        "candidate-related-capabilities": [],
                         "global-atom-id": "GA-0001",
                         "global-coverage-status": "direct",
                         "global-artifact-projection": "spec-requirement",
+                        "global-capability-impact": "new",
+                        "global-target-capability": "cap-a",
+                        "global-related-capabilities": [],
                         "review-decision": "global-atom-created",
                         "reason": "ok",
                     },
                     {
                         "source-document": "docs/source.md",
-                        "source-atom-id": "atom.two",
-                        "lines": "L1-L2",
-                        "line-ranges": [{"start": 1, "end": 2}],
+                        "source-atom-id": "atom.design",
+                        "lines": "L3-L4",
+                        "line-ranges": [{"start": 3, "end": 4}],
+                        "candidate-status": "direct-candidate",
+                        "candidate-artifact-projection": "design-obligation",
+                        "candidate-owner-change": "change-a",
+                        "candidate-capability-impact": "none",
+                        "candidate-target-capability": "none",
+                        "candidate-related-capabilities": ["cap-support"],
+                        "global-atom-id": "GA-0002",
+                        "global-coverage-status": "direct",
+                        "global-artifact-projection": "design-obligation",
+                        "global-capability-impact": "none",
+                        "global-target-capability": "none",
+                        "global-related-capabilities": ["cap-support"],
+                        "review-decision": "global-atom-created",
+                        "reason": "ok",
+                    },
+                    {
+                        "source-document": "docs/source.md",
+                        "source-atom-id": "atom.verify",
+                        "lines": "L5-L6",
+                        "line-ranges": [{"start": 5, "end": 6}],
+                        "candidate-status": "direct-candidate",
+                        "candidate-artifact-projection": "verification-obligation",
+                        "candidate-owner-change": "change-a",
+                        "candidate-capability-impact": "none",
+                        "candidate-target-capability": "none",
+                        "candidate-related-capabilities": ["cap-support"],
+                        "global-atom-id": "GA-0003",
+                        "global-coverage-status": "direct",
+                        "global-artifact-projection": "verification-obligation",
+                        "global-capability-impact": "none",
+                        "global-target-capability": "none",
+                        "global-related-capabilities": ["cap-support"],
+                        "review-decision": "global-atom-created",
+                        "reason": "ok",
+                    },
+                    {
+                        "source-document": "docs/source.md",
+                        "source-atom-id": "atom.non-goal",
+                        "lines": "L7-L8",
+                        "line-ranges": [{"start": 7, "end": 8}],
                         "candidate-status": "explicit-non-goal",
                         "candidate-artifact-projection": "spec-guard",
                         "candidate-owner-change": "change-a",
-                        "candidate-owner-capability": "cap-a",
-                        "global-atom-id": "GA-0002",
+                        "candidate-capability-impact": "none",
+                        "candidate-target-capability": "none",
+                        "candidate-related-capabilities": [],
+                        "global-atom-id": "GA-0004",
                         "global-coverage-status": "explicit-non-goal",
                         "global-artifact-projection": "spec-guard",
+                        "global-capability-impact": "none",
+                        "global-target-capability": "none",
+                        "global-related-capabilities": [],
                         "review-decision": "non-direct-status",
                         "reason": "ok",
                     },
@@ -340,15 +478,15 @@ class SourceAlignedValidatorTest(unittest.TestCase):
                         "line-count": 20,
                         "evidence-ranges": [
                             {
-                                "lines": "L1-L2",
-                                "line-ranges": [{"start": 1, "end": 2}],
-                                "origins": ["atom.one", "atom.two"],
+                                "lines": "L1-L8",
+                                "line-ranges": [{"start": 1, "end": 8}],
+                                "origins": ["atom.spec", "atom.design", "atom.verify", "atom.non-goal"],
                             }
                         ],
                         "candidate-uncovered-ranges": [
                             {
-                                "lines": "L3-L20",
-                                "line-ranges": [{"start": 3, "end": 20}],
+                                "lines": "L9-L20",
+                                "line-ranges": [{"start": 9, "end": 20}],
                             }
                         ],
                     }
@@ -356,8 +494,8 @@ class SourceAlignedValidatorTest(unittest.TestCase):
                 "rows": [
                     {
                         "source-document": "docs/source.md",
-                        "lines": "L3-L20",
-                        "line-ranges": [{"start": 3, "end": 20}],
+                        "lines": "L9-L20",
+                        "line-ranges": [{"start": 9, "end": 20}],
                         "how-found": "phase3-line-range-audit",
                         "read-scope": "full-source remainder audit",
                         "semantic-classification": "formatting/background",
@@ -431,26 +569,62 @@ class SourceAlignedValidatorTest(unittest.TestCase):
                         "phase-3-artifact-projection": "spec-requirement",
                         "final-owner-type": "executable-change",
                         "final-owner-change": "change-a",
-                        "final-owner-capability": "cap-a",
+                        "final-capability-impact": "new",
+                        "final-target-capability": "cap-a",
+                        "related-capabilities": [],
                         "final-artifact-projection": "spec-requirement",
                         "final-relation": "direct",
-                        "capability-advancement": "advances-capability",
                         "plan-decision": "direct-owner",
                         "reason": "reason",
                     },
                     {
                         "global-atom-id": "GA-0002",
                         "source-document": "docs/source.md",
-                        "lines": "L1-L2",
-                        "line-ranges": [{"start": 1, "end": 2}],
+                        "lines": "L3-L4",
+                        "line-ranges": [{"start": 3, "end": 4}],
+                        "phase-3-owner-status": "change-a / direct",
+                        "phase-3-artifact-projection": "design-obligation",
+                        "final-owner-type": "executable-change",
+                        "final-owner-change": "change-a",
+                        "final-capability-impact": "none",
+                        "final-target-capability": "none",
+                        "related-capabilities": ["cap-support"],
+                        "final-artifact-projection": "design-obligation",
+                        "final-relation": "direct",
+                        "plan-decision": "direct-owner",
+                        "reason": "reason",
+                    },
+                    {
+                        "global-atom-id": "GA-0003",
+                        "source-document": "docs/source.md",
+                        "lines": "L5-L6",
+                        "line-ranges": [{"start": 5, "end": 6}],
+                        "phase-3-owner-status": "change-a / direct",
+                        "phase-3-artifact-projection": "verification-obligation",
+                        "final-owner-type": "executable-change",
+                        "final-owner-change": "change-a",
+                        "final-capability-impact": "none",
+                        "final-target-capability": "none",
+                        "related-capabilities": ["cap-support"],
+                        "final-artifact-projection": "verification-obligation",
+                        "final-relation": "direct",
+                        "plan-decision": "direct-owner",
+                        "reason": "reason",
+                    },
+                    {
+                        "global-atom-id": "GA-0004",
+                        "source-document": "docs/source.md",
+                        "lines": "L7-L8",
+                        "line-ranges": [{"start": 7, "end": 8}],
                         "phase-3-owner-status": "change-a / explicit-non-goal",
                         "phase-3-artifact-projection": "spec-guard",
                         "final-owner-type": "executable-change",
                         "final-owner-change": "change-a",
-                        "final-owner-capability": "cap-a",
+                        "final-capability-impact": "none",
+                        "final-target-capability": "none",
+                        "related-capabilities": [],
                         "final-artifact-projection": "spec-guard",
                         "final-relation": "non-goal",
-                        "capability-advancement": "does-not-advance-capability",
                         "plan-decision": "scoped-non-direct",
                         "reason": "reason",
                     },
@@ -468,8 +642,8 @@ class SourceAlignedValidatorTest(unittest.TestCase):
                         "change-kind": "business",
                         "packet-path": "openspec/orchestrate/change-capability-anchors/change-a/change-a.md",
                         "packet-digest": sha256_file(self.orchestrate / "change-capability-anchors/change-a/change-a.md"),
-                        "direct-atom-ids": ["GA-0001"],
-                        "owner-scoped-non-direct-atom-ids": ["GA-0002"],
+                        "direct-atom-ids": ["GA-0001", "GA-0002", "GA-0003"],
+                        "owner-scoped-non-direct-atom-ids": ["GA-0004"],
                         "capability-view-paths": [
                             "openspec/orchestrate/change-capability-anchors/change-a/capability-anchors/cap-a.md"
                         ],
@@ -553,24 +727,34 @@ class SourceAlignedValidatorTest(unittest.TestCase):
         row["coverage-status"] = "direct"
         row["artifact-projection"] = "design-obligation"
         row["owner-change"] = "bootstrap-runtime-substrate"
-        row["owner-capability"] = "runtime-substrate-foundation"
+        row["capability-impact"] = "none"
+        row["target-capability"] = "none"
+        row["related-capabilities"] = []
         row["atom-relation"] = "direct"
         write_json(global_index_path, global_index)
         render_orchestrate(self.orchestrate, "phase3-global-index", write=True)
 
+        source_map_path = self.orchestrate / "phase-works/phase-3/phase-3-trace/source-to-global-atom-map.json"
+        source_map = json.loads(source_map_path.read_text(encoding="utf-8"))
+        source_map["rows"][1]["global-capability-impact"] = "none"
+        source_map["rows"][1]["global-target-capability"] = "none"
+        source_map["rows"][1]["global-related-capabilities"] = []
+        write_json(source_map_path, source_map)
+        render_orchestrate(self.orchestrate, "phase3-source-map", write=True)
+
         mapping_path = self.orchestrate / "phase-works/phase-5/atom-plan-mapping.json"
         mapping = json.loads(mapping_path.read_text(encoding="utf-8"))
         mapping["rows"][0]["final-owner-type"] = "executable-change"
-        mapping["rows"][0]["capability-advancement"] = "advances-capability"
         foundation_row = mapping["rows"][1]
         foundation_row["phase-3-owner-status"] = "bootstrap-runtime-substrate / direct"
         foundation_row["phase-3-artifact-projection"] = "design-obligation"
         foundation_row["final-owner-type"] = "executable-change"
         foundation_row["final-owner-change"] = "bootstrap-runtime-substrate"
-        foundation_row["final-owner-capability"] = "runtime-substrate-foundation"
+        foundation_row["final-capability-impact"] = "foundation-substrate"
+        foundation_row["final-target-capability"] = "runtime-substrate-foundation"
+        foundation_row["related-capabilities"] = []
         foundation_row["final-artifact-projection"] = "design-obligation"
         foundation_row["final-relation"] = "direct"
-        foundation_row["capability-advancement"] = "foundation-substrate"
         foundation_row["plan-decision"] = "foundation-executable"
         if legacy_reference:
             foundation_row["foundation-reference-id"] = "foundation-runtime-substrate"
@@ -580,7 +764,10 @@ class SourceAlignedValidatorTest(unittest.TestCase):
 
         self._write(
             "openspec/orchestrate/change-capability-anchors/bootstrap-runtime-substrate/bootstrap-runtime-substrate.md",
-            "# bootstrap-runtime-substrate\n\n| Global Atom ID | Relation |\n| --- | --- |\n| GA-0002 | direct |\n",
+            "# bootstrap-runtime-substrate\n\n## Final Direct Owner Atoms\n\n"
+            "| Global Atom ID | Capability Impact | Target Capability | Related Capabilities | Relation |\n"
+            "| --- | --- | --- | --- | --- |\n"
+            "| GA-0002 | foundation-substrate | runtime-substrate-foundation | None | direct |\n",
         )
         self._write(
             "openspec/orchestrate/change-capability-anchors/bootstrap-runtime-substrate/capability-anchors/runtime-substrate-foundation.md",
@@ -588,9 +775,15 @@ class SourceAlignedValidatorTest(unittest.TestCase):
         )
         self._write(
             "openspec/orchestrate/change-capability-anchors/change-a/change-a.md",
-            "# change-a\n\n| Global Atom ID | Relation |\n| --- | --- |\n| GA-0001 | direct |\n",
+            "# change-a\n\n## Final Direct Owner Atoms\n\n"
+            "| Global Atom ID | Capability Impact | Target Capability | Related Capabilities | Relation |\n"
+            "| --- | --- | --- | --- | --- |\n"
+            "| GA-0001 | new | cap-a | None | direct |\n"
+            "| GA-0003 | none | None/change-only | cap-support | direct |\n\n"
+            "## Contextual Atoms\n\n| Global Atom ID | Relation |\n| --- | --- |\n"
+            "| GA-0004 | non-goal |\n",
         )
-        self._write("openspec/orchestrate/change-capability-anchors/index.md", "index\nGA-0001\nGA-0002\n")
+        self._write("openspec/orchestrate/change-capability-anchors/index.md", "index\nGA-0001\nGA-0002\nGA-0003\nGA-0004\n")
         index_path = self.orchestrate / "phase-works/phase-5/final-packet-index.json"
         index = json.loads(index_path.read_text(encoding="utf-8"))
         foundation_packet = {
@@ -606,25 +799,50 @@ class SourceAlignedValidatorTest(unittest.TestCase):
         }
         index["packets"][0]["change-kind"] = "business"
         index["packets"][0]["packet-digest"] = sha256_file(self.orchestrate / "change-capability-anchors/change-a/change-a.md")
-        index["packets"][0]["owner-scoped-non-direct-atom-ids"] = []
+        index["packets"][0]["direct-atom-ids"] = ["GA-0001", "GA-0003"]
+        index["packets"][0]["owner-scoped-non-direct-atom-ids"] = ["GA-0004"]
         index["packets"] = [index["packets"][0], foundation_packet] if wrong_order else [foundation_packet, index["packets"][0]]
         write_json(index_path, index)
         self._write_manifest()
 
     def _validate(self, complete: bool = True) -> dict:
-        return validate(self.orchestrate, self.root, "all", complete, False)
+        return validate(self.orchestrate, self.root, "all", complete)
 
     def _validate_phase(self, phase: str, complete: bool = False) -> dict:
-        return validate(self.orchestrate, self.root, phase, complete, False)
+        return validate(self.orchestrate, self.root, phase, complete)
 
     def assert_error(self, rule_id: str) -> None:
         result = self._validate()
         self.assertFalse(result["ok"], result)
         self.assertTrue(any(issue["rule_id"] == rule_id for issue in result["issues"]), result)
 
+    def assert_issue_contains(self, needle: str, phase: str = "all") -> dict:
+        result = self._validate() if phase == "all" else self._validate_phase(phase)
+        self.assertFalse(result["ok"], result)
+        matching = [
+            issue
+            for issue in result["issues"]
+            if needle.lower() in f"{issue['rule_id']} {issue['message']}".lower()
+        ]
+        self.assertTrue(matching, result)
+        return result
+
     def test_minimal_valid_orchestrate_passes(self) -> None:
         result = self._validate()
         self.assertTrue(result["ok"], result)
+
+    def test_change_only_direct_atoms_stay_in_change_packet_not_capability_view(self) -> None:
+        result = self._validate()
+        self.assertTrue(result["ok"], result)
+        packet = (
+            self.orchestrate / "change-capability-anchors/change-a/change-a.md"
+        ).read_text(encoding="utf-8")
+        capability_view = (
+            self.orchestrate / "change-capability-anchors/change-a/capability-anchors/cap-a.md"
+        ).read_text(encoding="utf-8")
+        for atom_id in ("GA-0002", "GA-0003"):
+            self.assertIn(atom_id, packet)
+            self.assertNotIn(atom_id, capability_view)
 
     def test_phase1_minimal_with_manifest_skeleton_passes(self) -> None:
         for trace in ("phase-2", "phase-3", "phase-4", "phase-5"):
@@ -727,10 +945,113 @@ class SourceAlignedValidatorTest(unittest.TestCase):
         self._write_manifest()
         self.assert_error("phase2-direct-contextual-only")
 
+    def test_phase2_spec_delta_requires_target_capability(self) -> None:
+        path = self.orchestrate / "phase-works/phase-2/source-obligation-atoms/docs--source.atoms.json"
+        data = json.loads(path.read_text(encoding="utf-8"))
+        data["source-atoms"][0]["candidate-target-capability"] = "none"
+        write_json(path, data)
+        render_orchestrate(self.orchestrate, "phase2-source-atoms", write=True)
+        self._write_manifest()
+        self.assert_error("capability-target")
+
+    def test_phase2_business_impact_cannot_use_unresolved_target(self) -> None:
+        path = self.orchestrate / "phase-works/phase-2/source-obligation-atoms/docs--source.atoms.json"
+        data = json.loads(path.read_text(encoding="utf-8"))
+        data["source-atoms"][0]["candidate-target-capability"] = "unresolved"
+        write_json(path, data)
+        self._write_manifest()
+        self.assert_error("capability-target")
+
+    def test_phase2_design_delta_cannot_advance_capability(self) -> None:
+        path = self.orchestrate / "phase-works/phase-2/source-obligation-atoms/docs--source.atoms.json"
+        data = json.loads(path.read_text(encoding="utf-8"))
+        design = data["source-atoms"][1]
+        design["candidate-capability-impact"] = "new"
+        design["candidate-target-capability"] = "cap-support"
+        design["candidate-related-capabilities"] = []
+        write_json(path, data)
+        render_orchestrate(self.orchestrate, "phase2-source-atoms", write=True)
+        self._write_manifest()
+        self.assert_error("capability-change-only")
+
+    def test_phase2_contextual_spec_candidate_cannot_advance_capability(self) -> None:
+        path = self.orchestrate / "phase-works/phase-2/source-obligation-atoms/docs--source.atoms.json"
+        data = json.loads(path.read_text(encoding="utf-8"))
+        data["source-atoms"][0]["candidate-status"] = "contextual-candidate"
+        write_json(path, data)
+        self._write_manifest()
+        self.assert_error("phase2-non-direct-capability")
+
+    def test_phase2_candidate_new_capability_target_requires_new_impact(self) -> None:
+        path = self.orchestrate / "phase-works/phase-2/source-obligation-atoms/docs--source.atoms.json"
+        data = json.loads(path.read_text(encoding="utf-8"))
+        data["source-atoms"][0]["candidate-target-capability"] = "candidate-new-capability"
+        data["source-atoms"][0]["candidate-capability-impact"] = "modified"
+        write_json(path, data)
+        self._write_manifest()
+        self.assert_error("phase2-new-capability-impact")
+
+    def test_phase2_none_impact_requires_explicit_none_target(self) -> None:
+        path = self.orchestrate / "phase-works/phase-2/source-obligation-atoms/docs--source.atoms.json"
+        data = json.loads(path.read_text(encoding="utf-8"))
+        data["source-atoms"][1]["candidate-target-capability"] = ""
+        write_json(path, data)
+        self._write_manifest()
+        self.assert_error("capability-target")
+
+    def test_phase2_related_capabilities_must_be_unique(self) -> None:
+        path = self.orchestrate / "phase-works/phase-2/source-obligation-atoms/docs--source.atoms.json"
+        data = json.loads(path.read_text(encoding="utf-8"))
+        data["source-atoms"][1]["candidate-related-capabilities"] = ["cap-support", "cap-support"]
+        write_json(path, data)
+        render_orchestrate(self.orchestrate, "phase2-source-atoms", write=True)
+        self._write_manifest()
+        self.assert_error("capability-related-duplicate")
+
+    def test_phase2_related_capabilities_require_legal_ids(self) -> None:
+        path = self.orchestrate / "phase-works/phase-2/source-obligation-atoms/docs--source.atoms.json"
+        data = json.loads(path.read_text(encoding="utf-8"))
+        data["source-atoms"][1]["candidate-related-capabilities"] = ["Cap Support"]
+        write_json(path, data)
+        render_orchestrate(self.orchestrate, "phase2-source-atoms", write=True)
+        self._write_manifest()
+        self.assert_error("capability-related-format")
+
+    def test_phase2_related_capabilities_reject_reserved_markers(self) -> None:
+        path = self.orchestrate / "phase-works/phase-2/source-obligation-atoms/docs--source.atoms.json"
+        data = json.loads(path.read_text(encoding="utf-8"))
+        data["source-atoms"][1]["candidate-related-capabilities"] = ["unresolved"]
+        write_json(path, data)
+        self._write_manifest()
+        self.assert_error("capability-related-reserved")
+
+    def test_phase2_v1_schema_is_rejected(self) -> None:
+        path = self.orchestrate / "phase-works/phase-2/source-obligation-atoms/docs--source.atoms.json"
+        data = json.loads(path.read_text(encoding="utf-8"))
+        data["trace-schema"] = "source-aligned-source-atoms-v1"
+        data["trace-contract-version"] = "source-aligned-trace-v1"
+        write_json(path, data)
+        self._write_manifest()
+        result = self.assert_issue_contains("trace-contract-version", phase="phase-2")
+        self.assertTrue(any(issue["rule_id"] == "trace-schema" for issue in result["issues"]), result)
+
+    def test_phase2_mixed_v1_capability_fields_are_rejected(self) -> None:
+        path = self.orchestrate / "phase-works/phase-2/source-obligation-atoms/docs--source.atoms.json"
+        data = json.loads(path.read_text(encoding="utf-8"))
+        spec = data["source-atoms"][0]
+        spec.pop("candidate-capability-impact")
+        spec.pop("candidate-target-capability")
+        spec.pop("candidate-related-capabilities")
+        spec["candidate-owner-capability"] = "cap-a"
+        write_json(path, data)
+        render_orchestrate(self.orchestrate, "phase2-source-atoms", write=True)
+        self._write_manifest()
+        self.assert_issue_contains("candidate-capability-impact", phase="phase-2")
+
     def test_phase2_rendered_markdown_drift_fails(self) -> None:
         path = self.orchestrate / "phase-works/phase-2/source-obligation-atoms/docs--source.atoms.md"
         text = path.read_text(encoding="utf-8")
-        path.write_text(text.replace("fact one", "fact one edited only in markdown", 1), encoding="utf-8")
+        path.write_text(text.replace("spec fact", "spec fact edited only in markdown", 1), encoding="utf-8")
         result = self._validate_phase("phase-2")
         self.assertFalse(result["ok"], result)
         self.assertTrue(any(issue["rule_id"] == "rendered-markdown-drift" for issue in result["issues"]), result)
@@ -743,7 +1064,7 @@ class SourceAlignedValidatorTest(unittest.TestCase):
         render_orchestrate(self.orchestrate, "phase2-source-atoms", write=True)
         markdown = (self.orchestrate / "phase-works/phase-2/source-obligation-atoms/docs--source.atoms.md").read_text(encoding="utf-8")
         self.assertIn("中文事实包含 \\| 管道符和 换行。", markdown)
-        self.assertIn("Render contract: `source-aligned-render-v1`", markdown)
+        self.assertIn("Render contract: `source-aligned-render-v2`", markdown)
         result = self._validate_phase("phase-2")
         self.assertTrue(result["ok"], result)
 
@@ -760,6 +1081,14 @@ class SourceAlignedValidatorTest(unittest.TestCase):
         write_json(path, data)
         self._write_manifest()
         self.assert_error("phase3-ga-duplicate")
+
+    def test_phase3_non_direct_spec_atom_cannot_advance_capability(self) -> None:
+        path = self.orchestrate / "change-capability-anchors/obligation-atom-index.json"
+        data = json.loads(path.read_text(encoding="utf-8"))
+        data["global-atoms"][0]["coverage-status"] = "contextual"
+        write_json(path, data)
+        self._write_manifest()
+        self.assert_error("phase3-non-direct-capability")
 
     def test_phase3_source_to_global_map_missing_atom_fails(self) -> None:
         path = self.orchestrate / "phase-works/phase-3/phase-3-trace/source-to-global-atom-map.json"
@@ -866,6 +1195,141 @@ class SourceAlignedValidatorTest(unittest.TestCase):
         self._write_manifest()
         self.assert_error("phase5-mapping-coverage")
 
+    def test_phase5_terminal_mapping_rejects_unresolved_impact(self) -> None:
+        path = self.orchestrate / "phase-works/phase-5/atom-plan-mapping.json"
+        data = json.loads(path.read_text(encoding="utf-8"))
+        data["rows"][0]["final-capability-impact"] = "unresolved"
+        write_json(path, data)
+        render_orchestrate(self.orchestrate, "phase5-atom-plan-mapping", write=True)
+        self._write_manifest()
+        self.assert_error("phase5-capability-impact")
+
+    def test_phase5_direct_spec_atom_requires_target(self) -> None:
+        path = self.orchestrate / "phase-works/phase-5/atom-plan-mapping.json"
+        data = json.loads(path.read_text(encoding="utf-8"))
+        data["rows"][0]["final-target-capability"] = "none"
+        write_json(path, data)
+        render_orchestrate(self.orchestrate, "phase5-atom-plan-mapping", write=True)
+        self._write_manifest()
+        self.assert_error("phase5-capability-target")
+
+    def test_phase5_business_impact_cannot_use_unresolved_target(self) -> None:
+        path = self.orchestrate / "phase-works/phase-5/atom-plan-mapping.json"
+        data = json.loads(path.read_text(encoding="utf-8"))
+        data["rows"][0]["final-target-capability"] = "unresolved"
+        write_json(path, data)
+        self._write_manifest()
+        self.assert_error("phase5-capability-target")
+
+    def test_phase5_direct_atom_requires_executable_owner_type(self) -> None:
+        path = self.orchestrate / "phase-works/phase-5/atom-plan-mapping.json"
+        data = json.loads(path.read_text(encoding="utf-8"))
+        data["rows"][0]["final-owner-type"] = "garbage-owner"
+        write_json(path, data)
+        self._write_manifest()
+        self.assert_error("phase5-direct-owner-type")
+
+    def test_phase5_direct_spec_atom_cannot_use_none_impact(self) -> None:
+        path = self.orchestrate / "phase-works/phase-5/atom-plan-mapping.json"
+        data = json.loads(path.read_text(encoding="utf-8"))
+        data["rows"][0]["final-capability-impact"] = "none"
+        data["rows"][0]["final-target-capability"] = "none"
+        write_json(path, data)
+        render_orchestrate(self.orchestrate, "phase5-atom-plan-mapping", write=True)
+        self._write_manifest()
+        self.assert_error("phase5-spec-impact")
+
+    def test_phase5_design_atom_cannot_use_business_capability_impact(self) -> None:
+        path = self.orchestrate / "phase-works/phase-5/atom-plan-mapping.json"
+        data = json.loads(path.read_text(encoding="utf-8"))
+        design = data["rows"][1]
+        design["final-capability-impact"] = "new"
+        design["final-target-capability"] = "cap-a"
+        design["related-capabilities"] = []
+        write_json(path, data)
+        render_orchestrate(self.orchestrate, "phase5-atom-plan-mapping", write=True)
+        self._write_manifest()
+        self.assert_error("phase5-change-only-impact")
+
+    def test_phase5_verification_atom_cannot_use_business_capability_impact(self) -> None:
+        path = self.orchestrate / "phase-works/phase-5/atom-plan-mapping.json"
+        data = json.loads(path.read_text(encoding="utf-8"))
+        verification = data["rows"][2]
+        verification["final-capability-impact"] = "modified"
+        verification["final-target-capability"] = "cap-a"
+        verification["related-capabilities"] = []
+        write_json(path, data)
+        render_orchestrate(self.orchestrate, "phase5-atom-plan-mapping", write=True)
+        self._write_manifest()
+        self.assert_error("phase5-change-only-impact")
+
+    def test_phase5_same_change_capability_cannot_mix_new_and_modified(self) -> None:
+        mapping_path = self.orchestrate / "phase-works/phase-5/atom-plan-mapping.json"
+        mapping = json.loads(mapping_path.read_text(encoding="utf-8"))
+        second_spec = mapping["rows"][3]
+        second_spec["final-relation"] = "direct"
+        second_spec["final-capability-impact"] = "modified"
+        second_spec["final-target-capability"] = "cap-a"
+        second_spec["related-capabilities"] = []
+        write_json(mapping_path, mapping)
+        render_orchestrate(self.orchestrate, "phase5-atom-plan-mapping", write=True)
+
+        packet_index_path = self.orchestrate / "phase-works/phase-5/final-packet-index.json"
+        packet_index = json.loads(packet_index_path.read_text(encoding="utf-8"))
+        packet = packet_index["packets"][0]
+        packet["direct-atom-ids"].append("GA-0004")
+        packet["owner-scoped-non-direct-atom-ids"] = []
+        write_json(packet_index_path, packet_index)
+        self._write(
+            "openspec/orchestrate/change-capability-anchors/change-a/capability-anchors/cap-a.md",
+            "# cap-a\n\n| Global Atom ID | Relation |\n| --- | --- |\n"
+            "| GA-0001 | direct |\n"
+            "| GA-0004 | direct |\n",
+        )
+        self._write_manifest()
+        self.assert_error("phase5-capability-impact-mixed")
+
+    def test_phase5_first_delta_must_be_new_and_later_delta_modified(self) -> None:
+        mapping_path = self.orchestrate / "phase-works/phase-5/atom-plan-mapping.json"
+        mapping = json.loads(mapping_path.read_text(encoding="utf-8"))
+        second_change_spec = mapping["rows"][3]
+        second_change_spec["final-owner-change"] = "change-b"
+        second_change_spec["final-relation"] = "direct"
+        second_change_spec["final-capability-impact"] = "modified"
+        second_change_spec["final-target-capability"] = "cap-a"
+        second_change_spec["related-capabilities"] = []
+        write_json(mapping_path, mapping)
+        render_orchestrate(self.orchestrate, "phase5-atom-plan-mapping", write=True)
+
+        change_b_packet = self._write(
+            "openspec/orchestrate/change-capability-anchors/change-b/change-b.md",
+            "# change-b\n\n| Global Atom ID | Relation |\n| --- | --- |\n| GA-0004 | direct |\n",
+        )
+        self._write(
+            "openspec/orchestrate/change-capability-anchors/change-b/capability-anchors/cap-a.md",
+            "# cap-a\n\n| Global Atom ID | Relation |\n| --- | --- |\n| GA-0004 | direct |\n",
+        )
+        packet_index_path = self.orchestrate / "phase-works/phase-5/final-packet-index.json"
+        packet_index = json.loads(packet_index_path.read_text(encoding="utf-8"))
+        packet_index["packets"][0]["owner-scoped-non-direct-atom-ids"] = []
+        packet_index["packets"].insert(
+            0,
+            {
+                "change": "change-b",
+                "change-kind": "business",
+                "packet-path": "openspec/orchestrate/change-capability-anchors/change-b/change-b.md",
+                "packet-digest": sha256_file(change_b_packet),
+                "direct-atom-ids": ["GA-0004"],
+                "owner-scoped-non-direct-atom-ids": [],
+                "capability-view-paths": [
+                    "openspec/orchestrate/change-capability-anchors/change-b/capability-anchors/cap-a.md"
+                ],
+            },
+        )
+        write_json(packet_index_path, packet_index)
+        self._write_manifest()
+        self.assert_error("phase5-capability-impact-order")
+
     def test_phase5_blocked_does_not_require_final_packets(self) -> None:
         trace_path = self.orchestrate / "trace/phase-5.trace.json"
         trace = json.loads(trace_path.read_text(encoding="utf-8"))
@@ -911,6 +1375,15 @@ class SourceAlignedValidatorTest(unittest.TestCase):
         self._convert_ga0002_to_foundation_change(wrong_order=True)
         self.assert_error("phase5-foundation-order")
 
+    def test_phase5_foundation_packet_cannot_be_empty(self) -> None:
+        self._convert_ga0002_to_foundation_change()
+        path = self.orchestrate / "phase-works/phase-5/final-packet-index.json"
+        data = json.loads(path.read_text(encoding="utf-8"))
+        data["packets"][0]["direct-atom-ids"] = []
+        write_json(path, data)
+        self._write_manifest()
+        self.assert_error("phase5-foundation-empty")
+
     def test_phase5_refit_helper_rejects_blocked_write(self) -> None:
         config_path = self.orchestrate / "phase-works/phase-5/phase5-refit.config.json"
         write_json(
@@ -925,7 +1398,9 @@ class SourceAlignedValidatorTest(unittest.TestCase):
                         "kind": "business",
                     }
                 ],
-                "capabilities": [{"slug": "cap-a", "boundary": "cap-a"}],
+                "capabilities": [
+                    {"slug": "cap-a", "boundary": "cap-a"},
+                ],
             },
         )
         output_dir = self.root / "out/orchestrate"
@@ -965,7 +1440,10 @@ class SourceAlignedValidatorTest(unittest.TestCase):
                         "kind": "business",
                     }
                 ],
-                "capabilities": [{"slug": "cap-a", "boundary": "cap-a"}],
+                "capabilities": [
+                    {"slug": "cap-a", "boundary": "cap-a"},
+                    {"slug": "cap-support", "boundary": "仅作为 source-explicit related capability。"},
+                ],
             },
         )
         output_dir = self.root / "out/orchestrate"
@@ -990,17 +1468,139 @@ class SourceAlignedValidatorTest(unittest.TestCase):
         )
         self.assertEqual(proc.returncode, 0, proc.stderr)
         self.assertTrue((output_dir / "change-capability-anchors/index.md").exists())
-        self.assertTrue((output_dir / "change-capability-anchors/change-a/change-a.md").exists())
+        packet_path = output_dir / "change-capability-anchors/change-a/change-a.md"
+        self.assertTrue(packet_path.exists())
+        packet = packet_path.read_text(encoding="utf-8")
+        for atom_id in ("GA-0001", "GA-0002", "GA-0003", "GA-0004"):
+            self.assertIn(atom_id, packet)
+        self.assertIn("Related Capabilities", packet)
+        self.assertIn("cap-support", packet)
+
+        capability_view = (
+            output_dir / "change-capability-anchors/change-a/capability-anchors/cap-a.md"
+        ).read_text(encoding="utf-8")
+        self.assertIn("GA-0001", capability_view)
+        self.assertNotIn("GA-0002", capability_view)
+        self.assertNotIn("GA-0003", capability_view)
+        self.assertFalse(
+            (output_dir / "change-capability-anchors/change-a/capability-anchors/cap-support.md").exists()
+        )
+
+        for derived_path in (
+            "phase-works/phase-5/change-plan.md",
+            "phase-works/phase-5/capability-progression-review.md",
+            "phase-works/phase-5/change-complexity-review.md",
+            "change-capability-anchors/index.md",
+        ):
+            derived = (output_dir / derived_path).read_text(encoding="utf-8")
+            self.assertNotIn("cap-support", derived, derived_path)
+
+    def test_phase5_refit_rejects_undeclared_spec_target(self) -> None:
+        config_path = self.orchestrate / "phase-works/phase-5/phase5-refit.config.json"
+        write_json(
+            config_path,
+            {
+                "status": "adjusted",
+                "changes": [
+                    {
+                        "slug": "change-a",
+                        "title": "change-a",
+                        "outcome": "Spec target 必须在 config capabilities 中声明。",
+                        "kind": "business",
+                    }
+                ],
+                "capabilities": [],
+            },
+        )
+        output_dir = self.root / "out/orchestrate"
+        proc = subprocess.run(
+            [
+                sys.executable,
+                str(self.refit_script),
+                "--orchestrate-dir",
+                str(self.orchestrate),
+                "--mapping",
+                str(self.orchestrate / "phase-works/phase-5/atom-plan-mapping.json"),
+                "--config",
+                str(config_path),
+                "--output-orchestrate-dir",
+                str(output_dir),
+                "--write",
+            ],
+            text=True,
+            capture_output=True,
+            check=False,
+        )
+        self.assertNotEqual(proc.returncode, 0, proc.stdout)
+        self.assertIn("target capability 未在 config capabilities 中声明", proc.stderr)
+
+    def test_phase5_refit_allows_change_only_plan_with_empty_capabilities(self) -> None:
+        mapping_path = self.orchestrate / "phase-works/phase-5/atom-plan-mapping.json"
+        mapping = json.loads(mapping_path.read_text(encoding="utf-8"))
+        former_spec = mapping["rows"][0]
+        former_spec["phase-3-artifact-projection"] = "design-obligation"
+        former_spec["final-artifact-projection"] = "design-obligation"
+        former_spec["final-capability-impact"] = "none"
+        former_spec["final-target-capability"] = "none"
+        former_spec["related-capabilities"] = []
+        write_json(mapping_path, mapping)
+
+        config_path = self.orchestrate / "phase-works/phase-5/phase5-refit.config.json"
+        write_json(
+            config_path,
+            {
+                "status": "adjusted",
+                "changes": [
+                    {
+                        "slug": "change-a",
+                        "title": "change-a",
+                        "outcome": "仅交付 change-owned design 与 verification 义务。",
+                        "kind": "business",
+                    }
+                ],
+                "capabilities": [],
+            },
+        )
+        output_dir = self.root / "out/orchestrate"
+        proc = subprocess.run(
+            [
+                sys.executable,
+                str(self.refit_script),
+                "--orchestrate-dir",
+                str(self.orchestrate),
+                "--mapping",
+                str(mapping_path),
+                "--config",
+                str(config_path),
+                "--output-orchestrate-dir",
+                str(output_dir),
+                "--write",
+                "--validate-rendered",
+            ],
+            text=True,
+            capture_output=True,
+            check=False,
+        )
+        self.assertEqual(proc.returncode, 0, proc.stderr)
+        plan = (output_dir / "phase-works/phase-5/change-plan.md").read_text(encoding="utf-8")
+        self.assertIn("本计划没有业务 Capability delta", plan)
+        self.assertIn("不生成空矩阵", plan)
+        capability_views = list(
+            (output_dir / "change-capability-anchors/change-a/capability-anchors").glob("*.md")
+        )
+        self.assertEqual(capability_views, [])
+        packet = (
+            output_dir / "change-capability-anchors/change-a/change-a.md"
+        ).read_text(encoding="utf-8")
+        for atom_id in ("GA-0001", "GA-0002", "GA-0003", "GA-0004"):
+            self.assertIn(atom_id, packet)
 
     def test_phase5_refit_helper_writes_foundation_executable_packet(self) -> None:
         self._convert_ga0002_to_foundation_change()
         mapping_path = self.orchestrate / "phase-works/phase-5/atom-plan-mapping.json"
         mapping = json.loads(mapping_path.read_text(encoding="utf-8"))
         foundation_row = mapping["rows"][1]
-        foundation_row["final-owner-type"] = ""
         foundation_row["final-owner-change"] = "bootstrap-runtime-substrate"
-        foundation_row["final-owner-capability"] = "runtime-substrate-foundation"
-        foundation_row["capability-advancement"] = ""
         write_json(mapping_path, mapping)
 
         config_path = self.orchestrate / "phase-works/phase-5/phase5-refit.config.json"
@@ -1057,37 +1657,100 @@ class SourceAlignedValidatorTest(unittest.TestCase):
         rendered_mapping = json.loads((output_dir / "phase-works/phase-5/atom-plan-mapping.json").read_text(encoding="utf-8"))
         self.assertEqual(rendered_mapping["rows"][1]["final-owner-type"], "executable-change")
         self.assertEqual(rendered_mapping["rows"][1]["final-owner-change"], "bootstrap-runtime-substrate")
-        self.assertEqual(rendered_mapping["rows"][1]["final-owner-capability"], "runtime-substrate-foundation")
+        self.assertEqual(rendered_mapping["rows"][1]["final-capability-impact"], "foundation-substrate")
+        self.assertEqual(rendered_mapping["rows"][1]["final-target-capability"], "runtime-substrate-foundation")
+        plan = (output_dir / "phase-works/phase-5/change-plan.md").read_text(encoding="utf-8")
+        matrix = plan.split("## Capability Progression Matrix", 1)[1].split("## Change Roadmap", 1)[0]
+        self.assertIn("cap-a", matrix)
+        self.assertNotIn("runtime-substrate-foundation", matrix)
+        progression_review = (
+            output_dir / "phase-works/phase-5/capability-progression-review.md"
+        ).read_text(encoding="utf-8")
+        self.assertIn("| `cap-a` |", progression_review)
+        self.assertNotIn("| `runtime-substrate-foundation` |", progression_review)
 
     def test_phase5_non_direct_atom_missing_from_packet_fails(self) -> None:
         self._write(
             "openspec/orchestrate/change-capability-anchors/change-a/change-a.md",
-            "# change-a\n\n| Global Atom ID | Relation |\n| --- | --- |\n| GA-0001 | direct |\n",
+            "# change-a\n\n| Global Atom ID | Relation |\n| --- | --- |\n"
+            "| GA-0001 | direct |\n"
+            "| GA-0002 | direct |\n"
+            "| GA-0003 | direct |\n",
         )
         self._write_manifest()
         self.assert_error("phase5-final-non-direct-packet")
 
+    def test_phase5_non_direct_atom_missing_from_packet_index_fails(self) -> None:
+        packet_path = self.orchestrate / "change-capability-anchors/change-a/change-a.md"
+        packet = packet_path.read_text(encoding="utf-8").replace("| GA-0004 | non-goal |\n", "")
+        packet_path.write_text(packet, encoding="utf-8")
+        index_path = self.orchestrate / "phase-works/phase-5/final-packet-index.json"
+        index = json.loads(index_path.read_text(encoding="utf-8"))
+        index["packets"][0]["owner-scoped-non-direct-atom-ids"] = []
+        index["packets"][0]["packet-digest"] = sha256_file(packet_path)
+        write_json(index_path, index)
+        self._write_manifest()
+        self.assert_error("phase5-final-non-direct-packet-index")
+
     def test_capability_view_contains_non_direct_atom_fails(self) -> None:
         self._write(
             "openspec/orchestrate/change-capability-anchors/change-a/capability-anchors/cap-a.md",
-            "# cap-a\n\n| Global Atom ID | Relation |\n| --- | --- |\n| GA-0001 | direct |\n| GA-0002 | non-goal |\n",
+            "# cap-a\n\n| Global Atom ID | Relation |\n| --- | --- |\n| GA-0001 | direct |\n| GA-0004 | non-goal |\n",
         )
         self.assert_error("phase5-capability-view-non-direct")
 
-    def test_rendered_markdown_drift_replaces_field_level_drift(self) -> None:
+    def test_capability_view_contains_change_only_direct_atom_fails(self) -> None:
         self._write(
-            "openspec/orchestrate/phase-works/phase-2/source-obligation-atoms/docs--source.atoms.md",
-            "| Source Atom ID | Source Document | Lines | Atom Type | Source Fact | Normativity | Candidate Status | Candidate Artifact Projection | Candidate Owner Change | Candidate Owner Capability | Roles | Rationale | Propose Use | Evidence Need |\n"
-            "| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |\n"
-            "| atom.one | docs/source.md | L1-L2 | behavior | drifted fact | must | direct-candidate | spec-requirement | change-a | cap-a | primary | why | use | unit |\n"
-            "| atom.two | docs/source.md | L3-L4 | explicit-non-goal | fact two | must-not | explicit-non-goal | spec-guard | change-a | cap-a | non-goal | why | use | none |\n",
+            "openspec/orchestrate/change-capability-anchors/change-a/capability-anchors/cap-a.md",
+            "# cap-a\n\n| Global Atom ID | Relation |\n| --- | --- |\n"
+            "| GA-0001 | direct |\n"
+            "| GA-0002 | direct |\n",
         )
+        self.assert_error("phase5-capability-view-non-advancing")
+
+    def test_unindexed_capability_view_is_scanned_and_rejected(self) -> None:
+        self._write(
+            "openspec/orchestrate/change-capability-anchors/change-a/capability-anchors/cap-support.md",
+            "# stale related view\n\n| Global Atom ID | Relation |\n| --- | --- |\n| GA-0002 | direct |\n",
+        )
+        self._write_manifest()
+        self.assert_error("phase5-capability-view-unindexed")
+
+    def test_final_direct_table_capability_fields_must_match_mapping(self) -> None:
+        packet_path = self.orchestrate / "change-capability-anchors/change-a/change-a.md"
+        packet = packet_path.read_text(encoding="utf-8").replace(
+            "| GA-0001 | new | cap-a | None | direct |",
+            "| GA-0001 | modified | cap-a | None | direct |",
+        )
+        packet_path.write_text(packet, encoding="utf-8")
+        index_path = self.orchestrate / "phase-works/phase-5/final-packet-index.json"
+        index = json.loads(index_path.read_text(encoding="utf-8"))
+        index["packets"][0]["packet-digest"] = sha256_file(packet_path)
+        write_json(index_path, index)
+        self._write_manifest()
+        self.assert_error("phase5-final-direct-table-drift")
+
+    def test_related_capabilities_array_participates_in_render_drift(self) -> None:
+        path = self.orchestrate / "phase-works/phase-2/source-obligation-atoms/docs--source.atoms.json"
+        data = json.loads(path.read_text(encoding="utf-8"))
+        data["source-atoms"][1]["candidate-related-capabilities"] = ["cap-a", "cap-b"]
+        write_json(path, data)
+        self._write_manifest()
         self.assert_error("rendered-markdown-drift")
+
+    def test_phase3_source_map_candidate_fields_must_match_phase2_evidence(self) -> None:
+        path = self.orchestrate / "phase-works/phase-3/phase-3-trace/source-to-global-atom-map.json"
+        data = json.loads(path.read_text(encoding="utf-8"))
+        data["rows"][1]["candidate-related-capabilities"] = ["other-cap"]
+        write_json(path, data)
+        render_orchestrate(self.orchestrate, "phase3-source-map", write=True)
+        self._write_manifest()
+        self.assert_error("phase3-map-candidate-drift")
 
     def test_strict_warnings_returns_non_zero(self) -> None:
         self._write(
             "openspec/orchestrate/phase-works/phase-5/change-complexity-review.md",
-            "| Change | Direct Atom Count | Budget Status |\n| --- | --- | --- |\n| change-a | 1 | hard-over-budget |\n",
+            "| Change | Direct Atom Count | Budget Status |\n| --- | --- | --- |\n| change-a | 3 | hard-over-budget |\n",
         )
         proc = subprocess.run(
             [

@@ -8,7 +8,7 @@ Phase 3 is not a new propose-writing pass and must not invent production require
 2. Is each atom small enough, source-backed, and semantically valid?
 3. Are broad atoms compressing multiple UI/flow/data/verification obligations?
 4. Are repeated atoms true duplicates, refinements, preserve/dependency/context, or conflicts?
-5. Can each production obligation be assigned exactly one candidate owner change/capability, or does it require Phase 5 refit after Phase 4 source-window grounding?
+5. Can each production obligation be assigned one candidate owner Change, and can each spec projection receive a normalized capability impact/target, or does either decision require Phase 5 refit after Phase 4 source-window grounding?
 6. Are all source ranges without atoms genuinely non-production, reference-only, formatting, background, or otherwise safe to ignore?
 7. Does each atom have the right artifact projection (`spec-requirement`, `spec-guard`, `design-obligation`, `verification-obligation`, or `contextual-only`) based on source semantics?
 
@@ -64,12 +64,12 @@ After writing each Phase 3 artifact, perform the language self-check from the sk
 
 ## Global Atom Index
 
-`change-capability-anchors/obligation-atom-index.json` is the canonical normalized global registry. `change-capability-anchors/obligation-atom-index.md` is its renderer-backed review mirror. The registry resolves global uniqueness, artifact projection, candidate/final ownership, source traceability, and non-direct relations.
+`change-capability-anchors/obligation-atom-index.json` is the canonical normalized global registry. `change-capability-anchors/obligation-atom-index.md` is its renderer-backed review mirror. The registry resolves global uniqueness, artifact projection, candidate Change ownership, capability impact/target, source-explicit related capabilities, source traceability, and non-direct relations. A capability is not a co-owner.
 
 It must include:
 
-| Global Atom ID | Source Document | Lines | Atom Type | Source Fact | Normativity | Coverage Status | Artifact Projection | Owner Change | Owner Capability | Source Atom Origins | Atom Relation | Propose Use | Evidence Need | Review Judgment |
-| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| Global Atom ID | Source Document | Lines | Atom Type | Source Fact | Normativity | Coverage Status | Artifact Projection | Owner Change | Capability Impact | Target Capability | Related Capabilities | Source Atom Origins | Atom Relation | Propose Use | Evidence Need | Review Judgment |
+| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
 
 Rules:
 
@@ -79,7 +79,10 @@ Rules:
 - If a later obligation genuinely strengthens or narrows an earlier obligation, create a new atom only for the additional source-backed delta and set `Atom Relation` to `refines:<global-atom-id>` or `modifies:<global-atom-id>`.
 - If a source fact only preserves or depends on another atom, use `Atom Relation` such as `preserves:<global-atom-id>` or `depends-on:<global-atom-id>` and do not count it as duplicate direct coverage.
 - If a source fact is needed only to keep current design compatible with a later obligation, classify it as contextual future-compatibility and link it to the future or candidate global atom when known.
-- `Owner Change` and `Owner Capability` may remain `phase-5-refit-required` when coverage is complete but final placement depends on source-window grounding, sequencing, or granularity decisions. Phase 5 must resolve these before final output.
+- `Owner Change` may remain `phase-5-refit-required` when coverage is complete but final Change placement depends on source-window grounding, sequencing, or granularity decisions. Phase 5 must resolve it before final output.
+- `Capability Impact` is `new`, `modified`, `none`, or `unresolved`. `new` / `modified` are valid only for direct `spec-requirement` / `spec-guard` rows and require a concrete declared `Target Capability`. `none` requires target `none`. `unresolved` may use a known target or `unresolved`, requires a non-empty `Review Judgment` or rationale, and must be resolved in Phase 5.
+- Direct `design-obligation` / `verification-obligation` rows use impact `none` and target `none` while remaining direct and candidate-owned by a Change. Non-direct/contextual rows also use `none` / `none`.
+- `Related Capabilities` is a unique array of declared capability ids whose association is explicit in the cited source window. It defaults to `[]`, excludes `Target Capability`, does not substitute for a target, and creates no ownership, progression, capability view, or complexity count.
 - `Artifact Projection` must follow source semantics independently from `Coverage Status`: direct architecture/runtime/package/schema/provider/deployment atoms may be `design-obligation`; test strategy, fixture, visual, smoke, and evidence atoms may be `verification-obligation`; preserve and explicit non-goal atoms may be `spec-guard`.
 - `contextual-only` is reserved for non-direct context, reference, future-compatibility, or non-coverage rows. If an atom is still a direct candidate or `phase-5-refit-required`, assign `spec-requirement`, `spec-guard`, `design-obligation`, or `verification-obligation`; if no non-context projection is safe, mark the row `blocked` instead of letting a direct atom proceed as `contextual-only`.
 - `duplicate` is not a complete rationale unless it names the duplicated `Global Atom ID` and explains semantic equivalence.
@@ -141,11 +144,11 @@ Evaluate in this order:
 1. Confirm every `read-full` manifest source document appears exactly once in `phase-works/phase-2/source-obligation-atoms/work-queue.md` and has one canonical extraction owner.
 2. Confirm every `read-full` manifest source document has one Phase 2 source atom file.
 3. Treat `work-queue.md` only as scheduling trace. Do not use its batching rationale, document name, path, role, or line count as coverage evidence.
-4. Extract every Phase 2 atom candidate with source document, source-local atom id, line range, atom type, source fact, normativity, candidate status, candidate artifact projection, candidate owner change/capability, roles, rationale, propose use, evidence need, and artifact origin.
+4. Extract every Phase 2 atom candidate with source document, source-local atom id, line range, atom type, source fact, normativity, candidate status, candidate artifact projection, candidate owner Change, candidate capability impact/target/related capabilities, roles, rationale, propose use, evidence need, and artifact origin.
 5. Run `scripts/phase3_line_range_audit.py` or equivalent Phase 3 code to mechanically parse Phase 2 source atom and anchor ranges, normalize line ranges, merge ranges, list candidate uncovered intervals, list overlaps, and flag malformed rows or non-canonical line-range formatting warnings. This mechanical output is not a semantic decision, but every candidate uncovered interval must be semantically reviewed before Phase 3 can return `coverage-complete`.
 6. Build a semantic duplicate review across extracted atoms. Same source document/range, equivalent source facts, equivalent state/action/verification obligations, or identical propose use are duplicate candidates until reviewed.
 7. Split broad atoms when one Phase 2 row covers multiple mandatory UI/flow/data/verification obligations. Each split atom must keep source evidence and a source-local origin or Phase 3 missing-atom finding id.
-8. Build `change-capability-anchors/obligation-atom-index.json` with one global atom per production obligation and one normalized artifact projection per global atom.
+8. Build `change-capability-anchors/obligation-atom-index.json` with one global atom per production obligation, one normalized artifact projection, one candidate owner Change/status, and normalized capability impact/target/related fields per global atom.
 9. Render `change-capability-anchors/obligation-atom-index.md` from the canonical global atom trace sidecar.
 10. Write `phase-works/phase-3/phase-3-trace/source-to-global-atom-map.json`, mapping every Phase 2 atom/context row to exactly one global atom id, relation, non-direct status, or blocker, then render `source-to-global-atom-map.md` from JSON.
 11. Write `phase-works/phase-3/phase-3-trace/duplicate-ownership-review.md`, preserving every duplicate, broad-atom, overlap, and ownership candidate considered and its resolution.
@@ -159,9 +162,9 @@ Evaluate in this order:
     - ignore background prose, repeated summaries, discarded options, and purely explanatory text unless it defines a production behavior, boundary, data fact, verification obligation, deployment requirement, auth/privacy rule, failure path, or preserve constraint
     - record each remaining meaningful uncovered source obligation as a missing atom and add it to the global index when precise enough
 15. Write canonical `phase-works/phase-3/phase-3-trace/source-remainder-review.json`, listing every candidate remaining source range reviewed, how it was discovered, read scope, semantic classification, whether it contains a production obligation, and the resulting atom/status/finding, then render `source-remainder-review.md` from JSON. The JSON sidecar must include `audit-documents[]` with the mechanically recomputed evidence ranges and candidate uncovered ranges for every `read-full` source document, plus `rows[]` that cover every candidate uncovered range. A larger semantic review row may cover a smaller uncovered range, but no candidate uncovered range may be left without a review row.
-16. Identify atoms whose owner change/capability cannot be resolved without source-window grounding and plan refit. Mark them `phase-5-refit-required` instead of forcing them into the Phase 1 framework.
+16. Identify atoms whose candidate owner Change or spec target/impact cannot be resolved without source-window grounding and plan refit. Mark Change placement as `phase-5-refit-required` and/or capability impact as `unresolved`, with rationale, instead of forcing them into the Phase 1 framework.
 17. Write `phase-works/phase-3/phase-3-trace/atom-normalization-decision-log.md`, preserving every candidate finding considered, the decision for each, and whether Phase 5 must resolve final placement.
-18. Build compact global statistics across source documents, global atoms, meaningful missing atoms, duplicate findings, broad-atom split findings, non-coverage classifications, ownership ambiguities, gaps, and conflicts.
+18. Build compact global statistics across source documents, global atoms, meaningful missing atoms, duplicate findings, broad-atom split findings, non-coverage classifications, Change-ownership ambiguities, capability-impact/target uncertainties, gaps, and conflicts.
 19. Write `trace/phase-3.trace.json` according to `references/trace-sidecar-contract.md`, including the canonical source remainder review path.
 20. Run `scripts/render_source_aligned_orchestrate.py --artifact phase3-global-index --write`, `--artifact phase3-source-map --write`, and `--artifact phase3-remainder-review --write` or `--artifact all-supported --write` so all JSON-backed Markdown mirrors are current.
 21. Generate `phase-works/phase-3/coverage-review-app/index.html` from the source documents and Phase 3 JSON artifacts. Prefer the bundled helper `scripts/phase3_coverage_review_app.py` unless a project-specific equivalent already exists.
@@ -174,14 +177,14 @@ The review app is a deterministic visualization layer over Phase 3 artifacts. It
 
 - For each source document, which source sections are covered, classified as safe non-atom ranges, or handed off?
 - For each Phase 2 source atom row, what normalized global atom, relation, non-direct status, or blocker did Phase 3 assign?
-- Which duplicate, broad-atom, overlap, ownership ambiguity, projection uncertainty, blocker, and Phase 5 refit handoff items deserve focused review?
-- Is the global `GA-####` registry internally searchable by source, status, projection, owner, relation, and evidence burden?
+- Which duplicate, broad-atom, overlap, Change-ownership ambiguity, capability-impact/target uncertainty, projection uncertainty, blocker, and Phase 5 refit handoff items deserve focused review?
+- Is the global `GA-####` registry internally searchable by source, status, projection, owner Change, capability impact/target/related capabilities, relation, and evidence burden?
 
 The app must include:
 
 - `Source Coverage` view: source document tree, original source content with line numbers, effective `GA-####` annotations, per-document coverage judgment, section coverage, non-atom range review, and duplicate/ownership review.
 - `Source -> Global` view: searchable/filterable table over canonical `phase-3-trace/source-to-global-atom-map.json`, with the Markdown mirror available for reviewer reading.
-- `Risk Queue` view: focused duplicate/broad/ownership/Phase 5 refit handoff queue, sorted by review risk rather than source order.
+- `Risk Queue` view: focused duplicate/broad/Change-ownership/capability-impact/Phase 5 refit handoff queue, sorted by review risk rather than source order.
 - `Global Registry` view: searchable/filterable table over canonical `change-capability-anchors/obligation-atom-index.json`, with the Markdown mirror available for reviewer reading.
 - Visible warning count when any source file, coverage file, trace table, global index, or line range cannot be parsed mechanically.
 
@@ -213,8 +216,8 @@ Each `phase-works/phase-3/source-doc-coverage/<source>.coverage.md` file must in
 
 ### Effective Atom Coverage
 
-| Global Atom ID | Source Atom Origins | Lines | Atom Type | Coverage Status | Artifact Projection | Candidate / Owner Change | Candidate / Owner Capability | Source Fact |
-| --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| Global Atom ID | Source Atom Origins | Lines | Atom Type | Coverage Status | Artifact Projection | Candidate / Owner Change | Capability Impact | Target Capability | Related Capabilities | Source Fact |
+| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
 
 ### Source Obligation Coverage
 
@@ -242,8 +245,8 @@ Each `phase-works/phase-3/source-doc-coverage/<source>.coverage.md` file must in
 
 Canonical `phase-works/phase-3/phase-3-trace/source-to-global-atom-map.json` must include one row for every Phase 2 atom/context row. Its rendered Markdown mirror uses this table:
 
-| Source Document | Source Atom ID | Lines | Candidate Status | Candidate Artifact Projection | Candidate Owner Change | Candidate Owner Capability | Global Atom ID | Global Relation | Non-Coverage Status | Blocker | Review Decision | Reason |
-| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| Source Document | Source Atom ID | Lines | Candidate Status | Candidate Artifact Projection | Candidate Owner Change | Candidate Capability Impact | Candidate Target Capability | Candidate Related Capabilities | Global Atom ID | Global Relation | Global Capability Impact | Global Target Capability | Global Related Capabilities | Non-Coverage Status | Blocker | Review Decision | Reason |
+| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
 
 Canonical `phase-works/phase-3/phase-3-trace/source-remainder-review.json` must include the same semantic review in machine-readable form. Its rendered Markdown mirror includes audit documents and semantic review rows:
 
@@ -294,7 +297,7 @@ And a Phase 5 refit handoff table:
 - `Decision: coverage-complete`
 - `Decision: blocked`
 
-Use `coverage-complete` only when every source document under the specified roots is manifest-classified, every production-meaningful source obligation has exactly one global atom or justified non-coverage status, every source range without atoms is classified as production-safe non-atom content in `source-remainder-review.json`, there are no unclassified atoms, no unresolved duplicate obligations, no broad atom compression findings left unsplit or justified, no blocking conflicts, and every Phase 5 placement question is explicitly handed off.
+Use `coverage-complete` only when every source document under the specified roots is manifest-classified, every production-meaningful source obligation has exactly one global atom or justified non-coverage status, every source range without atoms is classified as production-safe non-atom content in `source-remainder-review.json`, there are no unclassified atoms, no unresolved duplicate obligations, no broad atom compression findings left unsplit or justified, no blocking conflicts, and every Phase 5 placement question is explicitly handed off. Every global row must also satisfy the v2 capability field structure: direct spec rows use `new` / `modified` or rationale-backed `unresolved`, direct design/verification rows use `none` / `none`, and related capability arrays are unique, source-explicit, declared, and non-owning.
 
 Additionally, use `coverage-complete` only when every source document listed in `phase-works/phase-3/source-doc-manifest.md` has a matching `phase-works/phase-3/source-doc-coverage/<source>.coverage.md` file, all Phase 3 trace files including `source-remainder-review.json` exist and reconcile with the final review, and `phase-works/phase-3/coverage-review-app/index.html` exists as a review aid over the final Phase 3 outputs.
 
@@ -313,10 +316,10 @@ Use `blocked` when source documents conflict, source roots are incomplete, sourc
 - source documents covered by atoms
 - missing obligation atoms added, or confirmation that none remain
 - source ranges classified as non-atom content
-- duplicate and ownership findings
+- duplicate and Change-ownership findings
 - broad atoms split or justified
 - non-coverage classifications
-- artifact projection distribution and any projection uncertainties
+- artifact projection distribution, capability-impact distribution, target/related-capability review, and any unresolved spec-target uncertainties
 - Phase 5 placement handoffs
 - conflicts resolved or remaining
 - confirmation that every production-meaningful obligation under the specified roots is covered by exactly one global atom or justified

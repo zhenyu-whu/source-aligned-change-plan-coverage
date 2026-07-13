@@ -18,7 +18,13 @@ from collections import Counter, defaultdict
 from pathlib import Path
 from typing import Dict, Iterable, List, Optional, Sequence, Tuple
 
-from source_aligned_trace_lib import line_ranges_label, range_covered_by
+from source_aligned_trace_lib import (
+    GLOBAL_ATOM_INDEX_SCHEMA,
+    SOURCE_TO_GLOBAL_MAP_SCHEMA,
+    TRACE_CONTRACT_VERSION,
+    line_ranges_label,
+    range_covered_by,
+)
 
 
 TABLE_SEPARATOR_RE = re.compile(r"^:?-{3,}:?$")
@@ -80,6 +86,22 @@ def normalize_header(value: str) -> str:
 def squash(value: object) -> str:
     text = "" if value is None else str(value)
     return re.sub(r"\s+", " ", text.replace("\n", " ")).strip()
+
+
+def stable_identifier_list(value: object) -> str:
+    """Return a deterministic, de-duplicated reviewer-facing ID list."""
+    if isinstance(value, list):
+        items = [normalize_code(str(item)) for item in value]
+    else:
+        text = str(value or "").replace("`", "")
+        items = [item.strip() for item in re.split(r"[,;]", text)]
+    normalized = sorted({item for item in items if item and item.lower() != "none"})
+    return "; ".join(normalized)
+
+
+def capability_target(value: object) -> str:
+    target = normalize_code(str(value or ""))
+    return "None/change-only" if not target or target.lower() == "none" else target
 
 
 def iter_markdown_tables(lines: Sequence[str]) -> Iterable[Tuple[Dict[str, int], List[List[str]]]]:
@@ -180,6 +202,15 @@ def parse_global_atoms(orchestrate_dir: Path, warnings: List[str]) -> List[Dict[
     json_path = orchestrate_dir / "change-capability-anchors/obligation-atom-index.json"
     if json_path.exists():
         data = json.loads(json_path.read_text(encoding="utf-8"))
+        if (
+            data.get("trace-schema") != GLOBAL_ATOM_INDEX_SCHEMA
+            or data.get("trace-contract-version") != TRACE_CONTRACT_VERSION
+        ):
+            warnings.append(
+                f"{json_path.name}: unsupported trace contract; expected "
+                f"{GLOBAL_ATOM_INDEX_SCHEMA} / {TRACE_CONTRACT_VERSION}"
+            )
+            return []
         atoms: List[Dict[str, object]] = []
         for row in data.get("global-atoms", []):
             if not isinstance(row, dict):
@@ -197,7 +228,9 @@ def parse_global_atoms(orchestrate_dir: Path, warnings: List[str]) -> List[Dict[
                     "coverageStatus": squash(row.get("coverage-status", "")),
                     "artifactProjection": squash(row.get("artifact-projection", "")),
                     "ownerChange": normalize_code(str(row.get("owner-change", ""))),
-                    "ownerCapability": normalize_code(str(row.get("owner-capability", ""))),
+                    "capabilityImpact": squash(row.get("capability-impact", "")),
+                    "targetCapability": capability_target(row.get("target-capability", "")),
+                    "relatedCapabilities": stable_identifier_list(row.get("related-capabilities", [])),
                     "sourceAtomOrigins": normalize_code(str(row.get("source-atom-origins", ""))),
                     "atomRelation": normalize_code(str(row.get("atom-relation", ""))),
                     "proposeUse": squash(row.get("propose-use", "")),
@@ -219,6 +252,9 @@ def parse_global_atoms(orchestrate_dir: Path, warnings: List[str]) -> List[Dict[
             "source fact",
             "coverage status",
             "artifact projection",
+            "capability impact",
+            "target capability",
+            "related capabilities",
         ],
     )
     atoms: List[Dict[str, object]] = []
@@ -239,7 +275,9 @@ def parse_global_atoms(orchestrate_dir: Path, warnings: List[str]) -> List[Dict[
                 "coverageStatus": squash(row.get("coverage status", "")),
                 "artifactProjection": squash(row.get("artifact projection", "")),
                 "ownerChange": normalize_code(row.get("owner change", "")),
-                "ownerCapability": normalize_code(row.get("owner capability", "")),
+                "capabilityImpact": normalize_code(row.get("capability impact", "")),
+                "targetCapability": capability_target(row.get("target capability", "")),
+                "relatedCapabilities": stable_identifier_list(row.get("related capabilities", "")),
                 "sourceAtomOrigins": normalize_code(row.get("source atom origins", "")),
                 "atomRelation": normalize_code(row.get("atom relation", "")),
                 "proposeUse": squash(row.get("propose use", "")),
@@ -254,6 +292,16 @@ def parse_mapping(orchestrate_dir: Path, warnings: Optional[List[str]] = None) -
     json_path = orchestrate_dir / "phase-works/phase-3/phase-3-trace/source-to-global-atom-map.json"
     if json_path.exists():
         data = json.loads(json_path.read_text(encoding="utf-8"))
+        if (
+            data.get("trace-schema") != SOURCE_TO_GLOBAL_MAP_SCHEMA
+            or data.get("trace-contract-version") != TRACE_CONTRACT_VERSION
+        ):
+            if warnings is not None:
+                warnings.append(
+                    f"{json_path.name}: unsupported trace contract; expected "
+                    f"{SOURCE_TO_GLOBAL_MAP_SCHEMA} / {TRACE_CONTRACT_VERSION}"
+                )
+            return []
         output: List[Dict[str, str]] = []
         for row in data.get("rows", []):
             if not isinstance(row, dict):
@@ -273,10 +321,21 @@ def parse_mapping(orchestrate_dir: Path, warnings: Optional[List[str]] = None) -
                     "candidateStatus": squash(row.get("candidate-status", "")),
                     "candidateArtifactProjection": squash(row.get("candidate-artifact-projection", "")),
                     "candidateOwnerChange": normalize_code(str(row.get("candidate-owner-change", ""))),
-                    "candidateOwnerCapability": normalize_code(str(row.get("candidate-owner-capability", ""))),
+                    "candidateCapabilityImpact": squash(row.get("candidate-capability-impact", "")),
+                    "candidateTargetCapability": capability_target(
+                        row.get("candidate-target-capability", "")
+                    ),
+                    "candidateRelatedCapabilities": stable_identifier_list(
+                        row.get("candidate-related-capabilities", [])
+                    ),
                     "globalAtomIdOrRelation": normalize_code(str(relation)),
                     "globalCoverageStatus": squash(row.get("global-coverage-status", "")),
                     "globalArtifactProjection": squash(row.get("global-artifact-projection", "")),
+                    "globalCapabilityImpact": squash(row.get("global-capability-impact", "")),
+                    "globalTargetCapability": capability_target(row.get("global-target-capability", "")),
+                    "globalRelatedCapabilities": stable_identifier_list(
+                        row.get("global-related-capabilities", [])
+                    ),
                     "reviewDecision": squash(row.get("review-decision", "")),
                     "reason": squash(row.get("reason", "")),
                 }
@@ -292,13 +351,28 @@ def parse_mapping(orchestrate_dir: Path, warnings: Optional[List[str]] = None) -
             "source document",
             "source atom id",
             "lines",
-            "global atom id or relation",
-            "global coverage status",
+            "candidate capability impact",
+            "candidate target capability",
+            "candidate related capabilities",
+            "global atom id",
+            "global relation",
+            "global capability impact",
+            "global target capability",
+            "global related capabilities",
+            "non-coverage status",
+            "blocker",
             "review decision",
         ],
     )
     output: List[Dict[str, str]] = []
     for row in rows:
+        relation = (
+            row.get("global atom id")
+            or row.get("global relation")
+            or row.get("non-coverage status")
+            or row.get("blocker")
+            or ""
+        )
         output.append(
             {
                 "sourceDocument": normalize_code(row.get("source document", "")),
@@ -307,10 +381,19 @@ def parse_mapping(orchestrate_dir: Path, warnings: Optional[List[str]] = None) -
                 "candidateStatus": squash(row.get("candidate status", "")),
                 "candidateArtifactProjection": squash(row.get("candidate artifact projection", "")),
                 "candidateOwnerChange": normalize_code(row.get("candidate owner change", "")),
-                "candidateOwnerCapability": normalize_code(row.get("candidate owner capability", "")),
-                "globalAtomIdOrRelation": normalize_code(row.get("global atom id or relation", "")),
-                "globalCoverageStatus": squash(row.get("global coverage status", "")),
-                "globalArtifactProjection": squash(row.get("global artifact projection", "")),
+                "candidateCapabilityImpact": normalize_code(row.get("candidate capability impact", "")),
+                "candidateTargetCapability": capability_target(row.get("candidate target capability", "")),
+                "candidateRelatedCapabilities": stable_identifier_list(
+                    row.get("candidate related capabilities", "")
+                ),
+                "globalAtomIdOrRelation": normalize_code(relation),
+                "globalCoverageStatus": "",
+                "globalArtifactProjection": "",
+                "globalCapabilityImpact": normalize_code(row.get("global capability impact", "")),
+                "globalTargetCapability": capability_target(row.get("global target capability", "")),
+                "globalRelatedCapabilities": stable_identifier_list(
+                    row.get("global related capabilities", "")
+                ),
                 "reviewDecision": squash(row.get("review decision", "")),
                 "reason": squash(row.get("reason", "")),
             }
@@ -441,6 +524,9 @@ def parse_coverage_file(path: Path, warnings: List[str]) -> Dict[str, object]:
             "lines",
             "coverage status",
             "artifact projection",
+            "capability impact",
+            "target capability",
+            "related capabilities",
             "source fact",
         ],
     )
@@ -491,7 +577,9 @@ def parse_coverage_file(path: Path, warnings: List[str]) -> Dict[str, object]:
                 "coverageStatus": squash(row.get("coverage status", "")),
                 "artifactProjection": squash(row.get("artifact projection", "")),
                 "ownerChange": normalize_code(row.get("candidate / owner change", "")),
-                "ownerCapability": normalize_code(row.get("candidate / owner capability", "")),
+                "capabilityImpact": normalize_code(row.get("capability impact", "")),
+                "targetCapability": capability_target(row.get("target capability", "")),
+                "relatedCapabilities": stable_identifier_list(row.get("related capabilities", "")),
                 "sourceFact": squash(row.get("source fact", "")),
             }
         )
@@ -676,19 +764,26 @@ def make_risk_queue(
         relation = row.get("globalAtomIdOrRelation", "")
         decision = row.get("reviewDecision", "")
         status = row.get("globalCoverageStatus", "")
+        capability_impact = row.get("globalCapabilityImpact") or row.get("candidateCapabilityImpact", "")
         if "blocked" in status or "unresolved" in status:
             severity = 100
+            risk_type = status or decision
+        elif capability_impact == "unresolved":
+            severity = 65
+            risk_type = "capability-impact-unresolved"
         elif "phase-5" in status or "phase-5" in decision or "phase-5" in relation or "phase-4" in status or "phase-4" in decision or "phase-4" in relation:
             severity = 60
+            risk_type = status or decision
         elif "split" in relation:
             severity = 72
+            risk_type = status or decision
         else:
             continue
         key = f"map:{row.get('sourceDocument', '')}:{row.get('sourceAtomId', '')}"
         add_risk(
             key,
             severity,
-            status or decision,
+            risk_type,
             row.get("sourceAtomId", ""),
             f"{row.get('sourceDocument', '')} {row.get('lines', '')}",
             relation,
@@ -1818,8 +1913,10 @@ def render_html(data: Dict[str, object]) -> str:
             <div class="fields">
               <div class="field"><span>Status</span><strong>${{escapeHtml(atom.coverageStatus)}}</strong></div>
               <div class="field"><span>Projection</span><strong>${{escapeHtml(atom.artifactProjection)}}</strong></div>
-              <div class="field"><span>Owner</span><strong>${{escapeHtml(atom.ownerChange || 'none')}}</strong></div>
-              <div class="field"><span>Capability</span><strong>${{escapeHtml(atom.ownerCapability || 'none')}}</strong></div>
+              <div class="field"><span>Owner Change</span><strong>${{escapeHtml(atom.ownerChange || 'none')}}</strong></div>
+              <div class="field"><span>Capability Impact</span><strong>${{escapeHtml(atom.capabilityImpact || 'none')}}</strong></div>
+              <div class="field"><span>Target Capability</span><strong>${{escapeHtml(atom.targetCapability || 'None/change-only')}}</strong></div>
+              <div class="field"><span>Related Capabilities</span><strong>${{escapeHtml(atom.relatedCapabilities || 'none')}}</strong></div>
             </div>
           </article>
         `;
@@ -1948,9 +2045,16 @@ def render_html(data: Dict[str, object]) -> str:
         {{ key: 'sourceDocument', label: 'Source Document', code: true }},
         {{ key: 'sourceAtomId', label: 'Source Atom', code: true }},
         {{ key: 'lines', label: 'Lines', code: true }},
+        {{ key: 'candidateOwnerChange', label: 'Candidate Change', code: true }},
+        {{ key: 'candidateCapabilityImpact', label: 'Candidate Impact' }},
+        {{ key: 'candidateTargetCapability', label: 'Candidate Target', code: true }},
+        {{ key: 'candidateRelatedCapabilities', label: 'Candidate Related', code: true }},
         {{ key: 'globalAtomIdOrRelation', label: 'GA / Relation', code: true }},
         {{ key: 'globalCoverageStatus', label: 'Status' }},
         {{ key: 'globalArtifactProjection', label: 'Projection' }},
+        {{ key: 'globalCapabilityImpact', label: 'Global Impact' }},
+        {{ key: 'globalTargetCapability', label: 'Global Target', code: true }},
+        {{ key: 'globalRelatedCapabilities', label: 'Global Related', code: true }},
         {{ key: 'reviewDecision', label: 'Decision' }},
         {{ key: 'reason', label: 'Reason' }},
       ], rows);
@@ -1996,7 +2100,9 @@ def render_html(data: Dict[str, object]) -> str:
         {{ key: 'coverageStatus', label: 'Status' }},
         {{ key: 'artifactProjection', label: 'Projection' }},
         {{ key: 'ownerChange', label: 'Owner', code: true }},
-        {{ key: 'ownerCapability', label: 'Capability', code: true }},
+        {{ key: 'capabilityImpact', label: 'Capability Impact' }},
+        {{ key: 'targetCapability', label: 'Target Capability', code: true }},
+        {{ key: 'relatedCapabilities', label: 'Related Capabilities', code: true }},
         {{ key: 'sourceFact', label: 'Source Fact' }},
         {{ key: 'reviewJudgment', label: 'Review Judgment' }},
       ], rows);

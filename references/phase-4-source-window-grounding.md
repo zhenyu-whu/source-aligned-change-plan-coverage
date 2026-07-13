@@ -2,7 +2,7 @@
 
 Phase 4 runs after Phase 3 returns `Decision: coverage-complete`. It is an independent source-grounding phase, not a plan-refit phase.
 
-Phase 4 exists because Phase 2/3 atom rows are sufficient for coverage and traceability, but they are often too compressed for engineering delivery judgment. This phase uses Phase 2/3 atom line ranges as an index to copy the original source windows into reviewer-facing dossiers grouped by input change and input capability. It then writes semantic profiles that preserve the actual source meaning needed by Phase 5 plan refit and by human reviewers.
+Phase 4 exists because Phase 2/3 atom rows are sufficient for coverage and traceability, but they are often too compressed for engineering delivery judgment. This phase uses Phase 2/3 atom line ranges as an index to copy the original source windows into reviewer-facing dossiers grouped by input Change and stable input spec capability. It then writes semantic profiles that preserve the actual source meaning needed by Phase 5 plan refit and by human reviewers. Capability dossiers are supporting semantic views, never ownership surfaces.
 
 Phase 4 MUST be performed by a fresh independent subagent. It must not rerun Phase 2 extraction, normalize atoms, decide final ownership, split/merge/reorder changes, or invent source obligations. If source windows reveal a missing, conflicting, or over-broad obligation that cannot be explained by existing Phase 3 atoms, Phase 4 must return `needs-coverage-recheck`.
 
@@ -49,8 +49,8 @@ Apply the skill-level Artifact Language Gate to every Phase 4 output. Keep fixed
 Phase 4 may:
 
 - copy original source windows selected from Phase 2/3 atom line ranges and nearby semantic context
-- group copied source windows by input change and input capability
-- cite Phase 2 source atom ids, `GA-####` ids, Phase 3 status/projection/owner, duplicate/remainder/contextual notes, and Phase 5 handoff markers
+- group copied source windows by input Change and by eligible input capability
+- cite Phase 2 source atom ids, `GA-####` ids, Phase 3 status/projection/owner Change/capability impact/target/related capabilities, duplicate/remainder/contextual notes, and Phase 5 handoff markers
 - write source-window semantic profiles for every input change and input capability
 - record suspected split, merge, reorder, rename, foundation, capability-boundary, contextual, dependency, evidence-burden, or non-goal pressure for Phase 5
 - report missing or ambiguous source windows as grounding issues
@@ -60,7 +60,7 @@ Phase 4 must not:
 - rerun Phase 2 extraction or Phase 3 normalization
 - edit source documents, Phase 2 source atom files, Phase 3 coverage files, or the global atom index
 - create, split, merge, delete, or renumber atoms
-- decide final owner change/capability, final atom relation, or final artifact projection
+- decide final owner Change, final capability impact/target/related capabilities, final atom relation, or final artifact projection
 - update root `openspec/orchestrate/change-plan.md`
 - generate final change packets, final capability views, or `change-capability-anchors/index.md`
 - decide that the initial plan is accepted or adjusted
@@ -70,7 +70,9 @@ If Phase 4 cannot ground a source-window dossier because line ranges, source pat
 
 ## Source-Window Dossier Method
 
-For every input change and input capability named by the current change plan or Phase 3 candidate ownership, collect the relevant Phase 2/3 atoms and copy their original source windows into dossier files. Group by input ownership before Phase 5 refit so a reviewer can see what the initial plan meant before any atoms move.
+Create the capability dossier set only from: capabilities in the Phase 1/current Capability Map, concrete Phase 3 `target-capability` values, and Phase 3 `related-capabilities[]` links that are explicit in the cited source windows. Do not create a capability dossier from a module/provider/storage/deployment/verification label, an inferred association, a change-only `none` target, or a free-form mention.
+
+For every input Change and every eligible input capability, collect the relevant Phase 2/3 atoms and copy their original source windows into dossier files. Group Change dossiers by candidate Change ownership before Phase 5 refit. Group capability dossiers by target impact first and source-explicit related evidence second, and visibly label related-only rows as `non-owning-supporting-evidence` so a reviewer can see what the initial plan meant without interpreting association as ownership or progression.
 
 Window selection rules:
 
@@ -89,6 +91,7 @@ Each `by-input-change/<input-change-slug>.md` dossier must include:
 - copied original line-numbered source windows with exact line ranges and local context
 - linked `GA-####` ids and Phase 2 source atom ids when available
 - Phase 3 status/projection/owner for each atom
+- Phase 3 capability impact, target capability, and source-explicit related capabilities for each atom
 - neighboring contextual, duplicate, remainder, or Phase 5 handoff evidence
 - preliminary semantic profile: business outcome, entry, fact, projection, failure/recovery, verification surface, manual acceptance scenario, and suspected Phase 5 refit pressure
 
@@ -97,8 +100,9 @@ Each `by-input-capability/<input-capability-slug>.md` dossier must include:
 - input capability id/name and Phase 1 behavior-boundary hypothesis
 - related input changes in roadmap order
 - copied source windows grouped by change and source document
-- direct, contextual, dependency, evidence, and non-goal atom groupings
+- target `new` / `modified` spec atom groupings, plus separately labeled contextual, dependency, evidence, non-goal, and `non-owning-supporting-evidence` related atom groupings
 - behavior-boundary semantic profile: what behavior it owns, what it must not own, where it first becomes directly testable, and which later changes appear to add source-backed deltas
+- explicit confirmation that related-only rows do not create ownership, progression, capability views, or advanced-capability complexity counts
 
 Also write `source-window-dossiers/source-window-index.json` according to `references/trace-sidecar-contract.md`. It is the canonical machine-readable index of dossier windows, linked `GA-####` ids, source hashes, line ranges, window text hashes, semantic profiles, grounding issues, and Phase 4 status.
 
@@ -134,7 +138,7 @@ Use this file for:
 - missing source windows
 - source windows that imply a missing global atom
 - broad atoms whose original source window contains multiple obligations that Phase 3 did not split
-- contradictory candidate ownership evidence
+- contradictory candidate Change placement, capability target, or source-explicit related-capability evidence
 - input changes/capabilities with no source-window support
 - cases where a human product decision is required before Phase 5 can refit safely
 
@@ -154,7 +158,7 @@ It must also include:
 - semantic profile summary
 - grounding issues summary
 - confirmation that Phase 4 did not edit Phase 2/3 evidence or the global atom index
-- confirmation that Phase 4 did not decide final change/capability ownership
+- confirmation that Phase 4 did not decide final Change ownership or final capability impact/target/related fields
 - confirmation that every Phase 4 artifact passed the Artifact Language Gate
 - confirmation that `source-window-index.json` and `trace/phase-4.trace.json` were written and passed validator
 - next required step: `Start Phase 5`, `Run Phase 3 again`, or `Blocked`

@@ -55,7 +55,9 @@ If the specified source set is too large to read safely, return a blocker instea
 Use this model throughout the plan:
 
 - A change is a vertical business or system loop. It should move the product or system through a concrete, reviewable outcome.
-- A capability is a long-lived behavior boundary. It usually matures across multiple changes.
+- A capability is a long-lived spec behavior boundary that should remain meaningful as `openspec/specs/<capability>/spec.md` after multiple changes are implemented and archived. It usually matures across multiple changes.
+- Repository/module boundaries, storage/provider/deployment choices, internal API organization, migration mechanics, and verification strategy are not capabilities by themselves. Keep such technical architecture content in the owning Change's design/tasks/evidence scope unless the source defines a durable normative system behavior suitable for a spec boundary.
+- Discover capabilities before planning changes, but do not generate changes mechanically from the capability list. Slice changes from truthful user/system loops, then project only the spec deltas each loop creates or modifies.
 - A change may advance multiple capabilities when those increments are required by the same functional loop. The goal is not to maximize capability coverage per change.
 - A capability is usually advanced by multiple changes over time.
 - Do not create a one-to-one roadmap where each change merely implements one capability. If a candidate roadmap trends that way, reslice changes around user/system loops and keep capabilities as cross-cutting behavior boundaries.
@@ -66,6 +68,7 @@ Use this model throughout the plan:
 - A change-capability relation has only two allowed values:
   - `New`: the change first creates that capability/spec boundary.
   - `Modified`: the change changes requirements or scenarios for an existing capability/spec boundary.
+- A valid technical or architecture-oriented change may have both `New: None` and `Modified: None` when it creates no spec delta. It must still be implementable, verifiable, archive-ready, and must not invent a Capability merely to fill the matrix.
 - Do not model consumed, preserved, reused, or dependency-only capabilities as change-capability relations. Mention them in dependencies or notes only when useful, not in the capability progression matrix.
 - Name capabilities as stable English kebab-case ids, such as `account-access-continuity` or `async-work-execution-recovery`. Do not use module names, table names, page names, external-service names, or localized display names as capability ids.
 
@@ -113,7 +116,7 @@ Before accepting the initial framework, review the capability map and progressio
 
 1. Does each capability describe a durable behavior boundary that can plausibly mature across multiple changes?
 2. Do more than half of the planned changes have exactly one non-empty capability cell? If yes, inspect whether the roadmap has become capability-driven and reslice unless each exception is source-backed.
-3. Do many capabilities have exactly one owning change, or does a capability slug paraphrase its first change slug? If yes, merge, rename, or broaden those capabilities unless they are genuinely terminal source-backed boundaries.
+3. Do many capabilities have exactly one advancing/baseline change, or does a capability slug paraphrase its first advancing change slug? If yes, merge, rename, or broaden those capabilities unless they are genuinely terminal source-backed boundaries.
 4. Did any user/system loop lose directly necessary identity, privacy, realtime, versioning, entitlement, failure recovery, export, or observability increments only to make the row narrower? If yes, restore those direct increments to the loop.
 5. Would the same source obligation be easier for a later `openspec-propose` agent to understand as one vertical loop with several capability deltas? If yes, keep the loop and document the cross-capability coupling.
 
@@ -167,21 +170,21 @@ The Phase 1 foundation candidate must not include:
 
 Source-backed domain behavior found during Phase 1 should be sliced into business change candidates or recorded as non-canonical ownership hints for Phase 2. Do not hide it inside a foundation/spine change.
 
-Phase 1 must not promise that the foundation candidate will become an executable final change. Phase 5 owns that decision. If it qualifies, Phase 5 renders it as the first executable foundation change packet with `change-kind: foundation`, final owner capability `runtime-substrate-foundation`, and `capability-advancement: foundation-substrate`; otherwise Phase 5 must move, defer, contextualize, or block it. Business roadmap progression starts with the first `change-kind: business` packet.
+Phase 1 must not promise that the foundation candidate will become an executable final change. Phase 5 owns that decision. If it qualifies, Phase 5 renders it as the first executable foundation change packet with `change-kind: foundation`, `final-target-capability: runtime-substrate-foundation`, and `final-capability-impact: foundation-substrate`; otherwise Phase 5 must move, defer, contextualize, or block it. Business roadmap progression starts with the first `change-kind: business` packet.
 
 ## Workflow
 
 1. Enumerate every source document under the user-specified roots or exact paths.
 2. Read every enumerated source document body. Do not sample, skim only filenames, or defer full reading to Phase 2.
 3. Write `phase-works/phase-1/source-doc-manifest.md` with every source document, read status, high-level source role, and coarse topic/path hints.
-4. Extract core user or system paths.
+4. Extract core user or system paths, long-lived normative behaviors, constraints, and architecture decisions from the complete source read.
 5. Express each path as: entry -> behavior -> system fact -> visible result -> failure recovery.
-6. Identify long-lived behavior capabilities with English kebab-case ids. Capabilities should be broader than one implementation unit unless the source set proves a terminal boundary.
+6. Identify stable spec capabilities first, using English kebab-case ids. Require each capability to justify a durable `openspec/specs/<capability>/spec.md` boundary that remains useful after multiple changes; reject module, storage, deployment, provider, component, or verification-only labels.
 7. Generate candidate vertical changes from user/system loops, not from the capability list.
-8. For each candidate change, identify the direct increment it contributes to each involved capability, and classify that relation as `New` or `Modified`.
-9. Filter, merge, or reslice candidates using the Closed-loop Test, Change Complexity Calibration, Split Challenge, Capability Shape Challenge, and anti one-to-one mapping rule.
-10. Order changes by the Change Ordering Principle and real behavior dependencies, prioritizing the earliest minimal runnable loop over future-prerequisite availability.
-11. Build a capability progression matrix that shows how each change advances each capability.
+8. Filter, merge, or reslice candidates using the Closed-loop Test, Change Complexity Calibration, Split Challenge, Capability Shape Challenge, and anti one-to-one mapping rule.
+9. Order changes by behavior maturity and real engineering dependencies, prioritizing the earliest minimal runnable loop over future-prerequisite availability.
+10. Project each ordered change onto the capability map: classify every actual spec delta as `New` or `Modified`, and use `None` for both when the change is change-only architecture/design/verification work.
+11. Build a capability progression matrix that shows only those `New` / `Modified` spec deltas.
 12. Mark key scenarios, non-goals, risks, conflicts, and deferred content from the input documents.
 13. Add concise `Source evidence` hints only to justify the planned slice. These hints may name source paths, headings, section numbers, decision IDs, route/page/object names, APIs, commands, DTOs, entities, tables, jobs, events, assets, environments, or verification anchors.
 14. Keep Phase 1 evidence hints short and non-canonical. Do not extract or enumerate every source-backed requirement, and do not create obligation atom ledgers, line ranges, anchor tables, coverage statuses, "pending Phase 2" evidence lists, or evidence counts. Phase 2 owns source-first atom extraction, Phase 3 owns coverage normalization, Phase 4 owns source-window grounding, and Phase 5 owns final plan refit.
@@ -223,9 +226,10 @@ Produce `openspec/orchestrate/phase-works/phase-1/change-plan.md`, then promote 
 Rules:
 
 - Capability values must be English kebab-case ids in backticks.
-- Behavior boundary explains the durable behavior, not the implementation module.
+- Behavior boundary explains the durable spec behavior and why `openspec/specs/<capability>/spec.md` remains valuable after the planned changes, not the implementation module.
 - Later expansion should show that the capability can mature across later changes.
 - If `Later expansion` is `None` or only repeats the first change for many capabilities, the plan must explain why those capabilities are genuinely terminal instead of one-change aliases.
+- If the complete source set contains no business spec delta, keep the `Capability Map` heading and write `无业务 Capability delta` instead of inventing a capability or rendering a malformed empty table.
 
 ### Capability Progression Matrix
 
@@ -241,8 +245,10 @@ Rules:
 - Each column is one capability from the Capability Map.
 - Each non-empty cell describes the specific functional increment this change contributes to that capability.
 - Leave the cell blank when the change does not create or modify that capability.
+- A change with `New: None` and `Modified: None` has a fully blank matrix row; do not synthesize a capability for architecture, design, or verification work.
+- If there are no capabilities, keep the `Capability Progression Matrix` heading and write `无业务 Capability delta` instead of emitting an empty capability table.
 - Do not fill cells with generic reuse, generic test coverage, or "uses existing capability"; only direct capability advancement belongs in the matrix.
-- Do not prefix matrix cells with `New:` or `Modified:`; first appearance of a capability in the ordered roadmap is implicitly `New`, later appearances are implicitly `Modified`.
+- Do not prefix matrix cells with `New:` or `Modified:`; use each Change Roadmap entry's explicit `New` / `Modified` lists as the Phase 1 relation source. The first listed delta for a capability must be `New`, and later listed deltas must be `Modified`; no renderer should guess or silently repair these labels from matrix order.
 - Keep cell text concise enough for review.
 - If the matrix is mostly diagonal, has many single-cell rows paired with single-change capabilities, or visually resembles a change list duplicated as capabilities, revise the change/capability model before Phase 1 finishes.
 
@@ -273,16 +279,16 @@ Answer:
 
 1. Are there consecutive low-level changes with no observable behavior?
 2. Does every executable business change have a closed loop?
-3. Are any capabilities named by technical module instead of behavior boundary?
+3. Are any capabilities named by technical module, storage/provider/deployment choice, or verification strategy instead of a durable `openspec/specs/<capability>/spec.md` behavior boundary?
 4. Are any key input scenarios unmapped to a change?
 5. Can any change only be verified by "code exists" rather than behavior proof?
 6. Does the plan imply a one-to-one mapping between changes and capabilities?
-7. Does every change-capability relation use only `New` or `Modified`, with blanks where a change does not create or modify a capability?
+7. Does every change-capability relation use only `New` or `Modified`, with blanks and roadmap `None` where a change does not create or modify a spec capability?
 8. Does any change combine multiple independently verifiable functional points that could be implemented and archived separately?
 9. Does the first feature change after a foundation candidate introduce infrastructure-heavy concerns before its functional point needs their full behavior?
 10. Does the plan merge behavior only to avoid a one-to-one appearance in the capability matrix?
 11. Are any initial change/capability boundaries marked as hypotheses that may need Phase 5 refit after atom extraction and Phase 4 source-window grounding?
-12. Do many capability ids paraphrase the change slug that first owns them?
+12. Do many capability ids paraphrase the change slug that first establishes their spec baseline?
 13. Are cross-cutting production concerns being moved into separate capability-shaped changes even though they directly affect the same user/system loop?
 14. If more than half of executable business changes advance only one capability, is there source-backed evidence that those are genuinely separate loops rather than a diagonalized roadmap?
 15. If a foundation candidate exists, is it strictly a zero-domain engineering bootstrap?
@@ -290,6 +296,8 @@ Answer:
 17. Are source-backed domain obligations represented as business change candidates or Phase 2 ownership context for the first workflow that needs them?
 18. Does the roadmap order any permission, governance, quota, audit, admin, observability, or operation capability before the concrete behavior it protects, governs, limits, audits, operates, or observes, without proving that capability is independently acceptable?
 19. For typical web systems, does the early roadmap produce a thin user-visible end-to-end behavior rather than a static UI shell or prerequisite collection?
+20. Did Phase 1 identify stable capabilities before slicing loop-based changes, while avoiding generation of changes from the capability list itself?
+21. Did any change-only architecture/design/verification scope cause the plan to invent a Capability instead of leaving both `New` and `Modified` as `None`?
 
 ## Phase Report
 

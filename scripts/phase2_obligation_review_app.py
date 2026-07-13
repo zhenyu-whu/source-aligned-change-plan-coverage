@@ -18,6 +18,8 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Dict, Iterable, List, Optional, Sequence, Tuple
 
+from source_aligned_trace_lib import SOURCE_ATOMS_SCHEMA, TRACE_CONTRACT_VERSION
+
 
 TABLE_SEPARATOR_RE = re.compile(r"^:?-{3,}:?$")
 HEADING_RE = re.compile(r"^(#{1,6})\s+(.+?)\s*$")
@@ -86,6 +88,22 @@ def normalize_header(value: str) -> str:
 def squash(value: object) -> str:
     text = "" if value is None else str(value)
     return re.sub(r"\s+", " ", text.replace("\n", " ")).strip()
+
+
+def stable_identifier_list(value: object) -> str:
+    """Return a deterministic, de-duplicated reviewer-facing ID list."""
+    if isinstance(value, list):
+        items = [normalize_code(str(item)) for item in value]
+    else:
+        text = str(value or "").replace("`", "")
+        items = [item.strip() for item in re.split(r"[,;]", text)]
+    normalized = sorted({item for item in items if item and item.lower() != "none"})
+    return "; ".join(normalized)
+
+
+def capability_target(value: object) -> str:
+    target = normalize_code(str(value or ""))
+    return "None/change-only" if not target or target.lower() == "none" else target
 
 
 def iter_markdown_tables(lines: Sequence[str]) -> Iterable[Tuple[Dict[str, int], List[List[str]]]]:
@@ -192,6 +210,9 @@ def parse_atom_ledger(atom_file: Path) -> Tuple[List[Dict[str, object]], List[st
             "atom type",
             "source fact",
             "candidate status",
+            "candidate capability impact",
+            "candidate target capability",
+            "candidate related capabilities",
         }
         if not required.issubset(index):
             continue
@@ -221,8 +242,14 @@ def parse_atom_ledger(atom_file: Path) -> Tuple[List[Dict[str, object]], List[st
                         get_cell(cells, index, "candidate artifact projection")
                     ),
                     "candidateOwnerChange": squash(get_cell(cells, index, "candidate owner change")),
-                    "candidateOwnerCapability": squash(
-                        get_cell(cells, index, "candidate owner capability")
+                    "candidateCapabilityImpact": normalize_code(
+                        get_cell(cells, index, "candidate capability impact")
+                    ),
+                    "candidateTargetCapability": capability_target(
+                        get_cell(cells, index, "candidate target capability")
+                    ),
+                    "candidateRelatedCapabilities": stable_identifier_list(
+                        get_cell(cells, index, "candidate related capabilities")
                     ),
                     "roles": squash(get_cell(cells, index, "roles")),
                     "rationale": squash(get_cell(cells, index, "rationale")),
@@ -242,6 +269,11 @@ def parse_atom_json(atom_json: Path) -> Tuple[List[Dict[str, object]], List[str]
     data = json.loads(atom_json.read_text(encoding="utf-8"))
     atoms: List[Dict[str, object]] = []
     warnings: List[str] = []
+    if data.get("trace-schema") != SOURCE_ATOMS_SCHEMA or data.get("trace-contract-version") != TRACE_CONTRACT_VERSION:
+        return [], [
+            f"unsupported trace contract in {atom_json}: expected "
+            f"{SOURCE_ATOMS_SCHEMA} / {TRACE_CONTRACT_VERSION}"
+        ]
     for row in data.get("source-atoms", []):
         if not isinstance(row, dict):
             warnings.append(f"invalid source-atoms row in {atom_json}")
@@ -262,7 +294,11 @@ def parse_atom_json(atom_json: Path) -> Tuple[List[Dict[str, object]], List[str]
                 "candidateStatus": squash(row.get("candidate-status", "")),
                 "candidateArtifactProjection": squash(row.get("candidate-artifact-projection", "")),
                 "candidateOwnerChange": squash(row.get("candidate-owner-change", "")),
-                "candidateOwnerCapability": squash(row.get("candidate-owner-capability", "")),
+                "candidateCapabilityImpact": squash(row.get("candidate-capability-impact", "")),
+                "candidateTargetCapability": capability_target(row.get("candidate-target-capability", "")),
+                "candidateRelatedCapabilities": stable_identifier_list(
+                    row.get("candidate-related-capabilities", [])
+                ),
                 "roles": squash(row.get("roles", "")),
                 "rationale": squash(row.get("rationale", "")),
                 "proposeUse": squash(row.get("propose-use", "")),
@@ -1066,7 +1102,9 @@ def render_html(data: Dict[str, object]) -> str:
         atom.candidateStatus,
         atom.candidateArtifactProjection,
         atom.candidateOwnerChange,
-        atom.candidateOwnerCapability,
+        atom.candidateCapabilityImpact,
+        atom.candidateTargetCapability,
+        atom.candidateRelatedCapabilities,
         atom.roles,
       ].join(' ').toLowerCase().includes(filter));
     }}
@@ -1187,8 +1225,10 @@ def render_html(data: Dict[str, object]) -> str:
               <div class="field"><span>Atom Type</span><strong>${{escapeHtml(atom.atomType)}}</strong></div>
               <div class="field"><span>Status</span><strong>${{escapeHtml(atom.candidateStatus)}}</strong></div>
               <div class="field"><span>Projection</span><strong>${{escapeHtml(atom.candidateArtifactProjection)}}</strong></div>
-              <div class="field"><span>Owner</span><strong>${{escapeHtml(atom.candidateOwnerChange || 'none')}}</strong></div>
-              <div class="field"><span>Capability</span><strong>${{escapeHtml(atom.candidateOwnerCapability || 'none')}}</strong></div>
+              <div class="field"><span>Owner Change</span><strong>${{escapeHtml(atom.candidateOwnerChange || 'none')}}</strong></div>
+              <div class="field"><span>Capability Impact</span><strong>${{escapeHtml(atom.candidateCapabilityImpact || 'none')}}</strong></div>
+              <div class="field"><span>Target Capability</span><strong>${{escapeHtml(atom.candidateTargetCapability || 'None/change-only')}}</strong></div>
+              <div class="field"><span>Related Capabilities</span><strong>${{escapeHtml(atom.candidateRelatedCapabilities || 'none')}}</strong></div>
               <div class="field"><span>Evidence</span><strong>${{escapeHtml(atom.evidenceNeed || 'none')}}</strong></div>
             </div>
           </article>

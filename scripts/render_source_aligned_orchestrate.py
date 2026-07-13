@@ -22,7 +22,7 @@ from source_aligned_trace_lib import (
 )
 
 
-RENDER_CONTRACT_VERSION = "source-aligned-render-v1"
+RENDER_CONTRACT_VERSION = "source-aligned-render-v2"
 SUPPORTED_ARTIFACTS = {
     "phase2-source-atoms",
     "phase3-global-index",
@@ -82,6 +82,23 @@ def code_list(value: object) -> str:
     return code(value)
 
 
+def stable_code_list(value: object) -> str:
+    """Render identifier arrays deterministically without duplicate entries."""
+    if isinstance(value, list):
+        items = sorted({squash(item) for item in value if squash(item)})
+        escaped_items = [item.replace("|", "\\|") for item in items]
+        return ", ".join(f"`{item}`" for item in escaped_items) if escaped_items else "`None`"
+    return code(value)
+
+
+def capability_target(value: object) -> str:
+    """Make change-only capability targets explicit in reviewer-facing mirrors."""
+    target = squash(value)
+    if not target or target.lower() == "none":
+        return code("None/change-only")
+    return code(target)
+
+
 def lines_from(row: Dict[str, object]) -> str:
     raw = squash(row.get("lines", ""))
     if raw:
@@ -126,6 +143,18 @@ def read_json(path: Path) -> Dict[str, object]:
     return data
 
 
+def require_trace_contract(data: Dict[str, object], path: Path, trace_schema: str) -> None:
+    actual_schema = squash(data.get("trace-schema"))
+    if actual_schema != trace_schema:
+        raise ValueError(f"{path} trace-schema must be {trace_schema}, got {actual_schema or 'missing'}")
+    actual_contract = squash(data.get("trace-contract-version"))
+    if actual_contract != TRACE_CONTRACT_VERSION:
+        raise ValueError(
+            f"{path} trace-contract-version must be {TRACE_CONTRACT_VERSION}, "
+            f"got {actual_contract or 'missing'}"
+        )
+
+
 def source_line_count(repo_root: Path, source_document: str) -> str:
     path = repo_root / source_document
     if not path.exists():
@@ -150,6 +179,7 @@ def manifest_source_role(orchestrate_dir: Path, source_document: str) -> str:
 def render_phase2_source_atoms(orchestrate_dir: Path, json_path: Path) -> str:
     repo_root = repo_root_for(orchestrate_dir)
     data = read_json(json_path)
+    require_trace_contract(data, json_path, SOURCE_ATOMS_SCHEMA)
     source_document = squash(data.get("source-document"))
     source_role = squash(data.get("source-role")) or manifest_source_role(orchestrate_dir, source_document) or "None"
     lines: List[str] = [
@@ -212,7 +242,9 @@ def render_phase2_source_atoms(orchestrate_dir: Path, json_path: Path) -> str:
                 "Candidate Status",
                 "Candidate Artifact Projection",
                 "Candidate Owner Change",
-                "Candidate Owner Capability",
+                "Candidate Capability Impact",
+                "Candidate Target Capability",
+                "Candidate Related Capabilities",
                 "Roles",
                 "Rationale",
                 "Propose Use",
@@ -229,7 +261,9 @@ def render_phase2_source_atoms(orchestrate_dir: Path, json_path: Path) -> str:
                     code(row.get("candidate-status")),
                     code(row.get("candidate-artifact-projection")),
                     code(row.get("candidate-owner-change")),
-                    code(row.get("candidate-owner-capability")),
+                    code(row.get("candidate-capability-impact")),
+                    capability_target(row.get("candidate-target-capability")),
+                    stable_code_list(row.get("candidate-related-capabilities")),
                     code_list(row.get("roles")),
                     md(row.get("rationale")),
                     md(row.get("propose-use")),
@@ -292,6 +326,7 @@ def render_phase2_source_atoms(orchestrate_dir: Path, json_path: Path) -> str:
 def render_global_index(orchestrate_dir: Path, json_path: Path) -> str:
     repo_root = repo_root_for(orchestrate_dir)
     data = read_json(json_path)
+    require_trace_contract(data, json_path, GLOBAL_ATOM_INDEX_SCHEMA)
     body = [
         "# Obligation Atom Index",
         "",
@@ -306,7 +341,9 @@ def render_global_index(orchestrate_dir: Path, json_path: Path) -> str:
                 "Coverage Status",
                 "Artifact Projection",
                 "Owner Change",
-                "Owner Capability",
+                "Capability Impact",
+                "Target Capability",
+                "Related Capabilities",
                 "Source Atom Origins",
                 "Atom Relation",
                 "Propose Use",
@@ -324,7 +361,9 @@ def render_global_index(orchestrate_dir: Path, json_path: Path) -> str:
                     code(row.get("coverage-status")),
                     code(row.get("artifact-projection")),
                     code(row.get("owner-change")),
-                    code(row.get("owner-capability")),
+                    code(row.get("capability-impact")),
+                    capability_target(row.get("target-capability")),
+                    stable_code_list(row.get("related-capabilities")),
                     code_list(row.get("source-atom-origins") or row.get("origins")),
                     code(row.get("atom-relation")),
                     md(row.get("propose-use")),
@@ -342,6 +381,7 @@ def render_global_index(orchestrate_dir: Path, json_path: Path) -> str:
 def render_source_map(orchestrate_dir: Path, json_path: Path) -> str:
     repo_root = repo_root_for(orchestrate_dir)
     data = read_json(json_path)
+    require_trace_contract(data, json_path, SOURCE_TO_GLOBAL_MAP_SCHEMA)
     body = [
         "# Source To Global Atom Map",
         "",
@@ -353,9 +393,14 @@ def render_source_map(orchestrate_dir: Path, json_path: Path) -> str:
                 "Candidate Status",
                 "Candidate Artifact Projection",
                 "Candidate Owner Change",
-                "Candidate Owner Capability",
+                "Candidate Capability Impact",
+                "Candidate Target Capability",
+                "Candidate Related Capabilities",
                 "Global Atom ID",
                 "Global Relation",
+                "Global Capability Impact",
+                "Global Target Capability",
+                "Global Related Capabilities",
                 "Non-Coverage Status",
                 "Blocker",
                 "Review Decision",
@@ -369,9 +414,14 @@ def render_source_map(orchestrate_dir: Path, json_path: Path) -> str:
                     code(row.get("candidate-status")),
                     code(row.get("candidate-artifact-projection")),
                     code(row.get("candidate-owner-change")),
-                    code(row.get("candidate-owner-capability")),
+                    code(row.get("candidate-capability-impact")),
+                    capability_target(row.get("candidate-target-capability")),
+                    stable_code_list(row.get("candidate-related-capabilities")),
                     code(row.get("global-atom-id")),
                     code(row.get("global-relation")),
+                    code(row.get("global-capability-impact")),
+                    capability_target(row.get("global-target-capability")),
+                    stable_code_list(row.get("global-related-capabilities")),
                     code(row.get("non-coverage-status")),
                     md(row.get("blocker")),
                     code(row.get("review-decision")),
@@ -388,6 +438,7 @@ def render_source_map(orchestrate_dir: Path, json_path: Path) -> str:
 def render_remainder_review(orchestrate_dir: Path, json_path: Path) -> str:
     repo_root = repo_root_for(orchestrate_dir)
     data = read_json(json_path)
+    require_trace_contract(data, json_path, SOURCE_REMAINDER_REVIEW_SCHEMA)
     body = ["# Source Remainder Review", "", "## Audit Documents", ""]
     body.append(
         render_table(
@@ -443,6 +494,7 @@ def render_remainder_review(orchestrate_dir: Path, json_path: Path) -> str:
 def render_atom_plan_mapping(orchestrate_dir: Path, json_path: Path) -> str:
     repo_root = repo_root_for(orchestrate_dir)
     data = read_json(json_path)
+    require_trace_contract(data, json_path, ATOM_PLAN_MAPPING_SCHEMA)
     body = [
         "# Atom Plan Mapping",
         "",
@@ -455,10 +507,11 @@ def render_atom_plan_mapping(orchestrate_dir: Path, json_path: Path) -> str:
                 "Phase 3 Artifact Projection",
                 "Final Owner Type",
                 "Final Owner Change",
-                "Final Owner Capability",
+                "Final Capability Impact",
+                "Final Target Capability",
+                "Related Capabilities",
                 "Final Artifact Projection",
                 "Final Relation",
-                "Capability Advancement",
                 "Plan Decision",
                 "Reason",
             ],
@@ -471,10 +524,11 @@ def render_atom_plan_mapping(orchestrate_dir: Path, json_path: Path) -> str:
                     code(row.get("phase-3-artifact-projection")),
                     code(row.get("final-owner-type")),
                     code(row.get("final-owner-change")),
-                    code(row.get("final-owner-capability")),
+                    code(row.get("final-capability-impact")),
+                    capability_target(row.get("final-target-capability")),
+                    stable_code_list(row.get("related-capabilities")),
                     code(row.get("final-artifact-projection")),
                     code(row.get("final-relation")),
-                    code(row.get("capability-advancement")),
                     code(row.get("plan-decision")),
                     md(row.get("reason")),
                 ]
