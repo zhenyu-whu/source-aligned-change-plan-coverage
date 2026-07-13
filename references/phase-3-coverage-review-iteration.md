@@ -1,36 +1,36 @@
-# Phase 3: Coverage Normalization and Gap Audit
+# Phase 3：覆盖规范化与 gap 审计
 
-Phase 3 consumes the source-first Phase 2 atom files and produces the normalized global obligation atom index. Its job is to close source coverage and atom identity, not to refit the final change plan. Phase 4 grounds the source windows behind the candidate change/capability framework, and Phase 5 performs plan sequencing and granularity decisions after Phase 3 has made atom granularity stable.
+Phase 3 消费 source-first Phase 2 atom file，并生成规范化 global obligation atom index。它负责闭合 source coverage 和 atom identity，不负责重整 final Change plan。Phase 4 对 candidate Change/Capability framework 背后的 source window 执行 grounding；Phase 3 稳定 atom granularity 后，Phase 5 再决定 plan sequence 和 granularity。
 
-Phase 3 is not a new propose-writing pass and must not invent production requirements without source evidence. It answers:
+Phase 3 不是新的 propose-writing pass，不得在没有 source evidence 时发明 production requirement。它回答：
 
-1. Does every production-meaningful source obligation have an atom?
-2. Is each atom small enough, source-backed, and semantically valid?
-3. Are broad atoms compressing multiple UI/flow/data/verification obligations?
-4. Are repeated atoms true duplicates, refinements, preserve/dependency/context, or conflicts?
-5. Can each production obligation be assigned one candidate owner Change, and can each spec projection receive a normalized capability impact/target, or does either decision require Phase 5 refit after Phase 4 source-window grounding?
-6. Are all source ranges without atoms genuinely non-production, reference-only, formatting, background, or otherwise safe to ignore?
-7. Does each atom have the right artifact projection (`spec-requirement`, `spec-guard`, `design-obligation`, `verification-obligation`, or `contextual-only`) based on source semantics?
+1. 每项具有生产意义的 source obligation 是否都有 atom？
+2. 每个 atom 是否足够小、具有 source 支撑且语义有效？
+3. broad atom 是否压缩了多个 UI/flow/data/verification obligation？
+4. 重复 atom 是真正 duplicate、refinement、preserve/dependency/context，还是 conflict？
+5. 每项 production obligation 是否能分配给一个 candidate owner Change，每项 spec projection 是否能获得规范化 capability impact/target；还是必须等 Phase 4 source-window grounding 后，由 Phase 5 refit 决定？
+6. 所有无 atom 的 source range 是否确实属于 non-production、reference-only、formatting、background 或其他可安全忽略内容？
+7. 每个 atom 是否根据 source semantics 获得正确 artifact projection（`spec-requirement`、`spec-guard`、`design-obligation`、`verification-obligation` 或 `contextual-only`）？
 
-Source anchors and line ranges remain useful for navigation and mechanical checks, but semantic obligation coverage is the quality gate.
+source anchor 和行范围仍可用于导航和 mechanical check，但 semantic obligation coverage 才是 quality gate。
 
-## Inputs
+## 输入
 
 - `openspec/orchestrate/change-plan.md`
 - `openspec/orchestrate/phase-works/phase-1/source-doc-manifest.md`
 - `openspec/orchestrate/phase-works/phase-2/source-obligation-atoms/work-queue.md`
 - `openspec/orchestrate/phase-works/phase-2/source-obligation-atoms/index.md`
-- `openspec/orchestrate/phase-works/phase-2/source-obligation-atoms/<source>.atoms.json` as canonical extraction evidence
-- `openspec/orchestrate/phase-works/phase-2/source-obligation-atoms/<source>.atoms.md` as reviewer mirror
-- User-specified source document roots or exact source paths, for manifest verification and targeted semantic reads.
-- Required mechanical helper/input shape: `.codex/skills/source-aligned-change-plan-coverage/scripts/phase3_line_range_audit.py` or equivalent Phase 3 code must compute Phase 2 atom/anchor line coverage for every `read-full` source document and preserve the result in `source-remainder-review.json`.
+- `openspec/orchestrate/phase-works/phase-2/source-obligation-atoms/<source>.atoms.json`，作为 canonical extraction evidence
+- `openspec/orchestrate/phase-works/phase-2/source-obligation-atoms/<source>.atoms.md`，作为 reviewer mirror
+- 用户指定的 source document 根目录或精确 source path，用于 manifest verification 和 targeted semantic read。
+- 必需 mechanical helper/input shape：`.codex/skills/source-aligned-change-plan-coverage/scripts/phase3_line_range_audit.py` 或等效 Phase 3 code 必须为每份 `read-full` source document 计算 Phase 2 atom/anchor line coverage，并将结果保存在 `source-remainder-review.json` 中。
 
-## Outputs
+## 输出
 
-Write current copies only:
+只写入当前副本：
 
 - `openspec/orchestrate/phase-works/phase-3/source-doc-manifest.md`
-- `openspec/orchestrate/phase-works/phase-3/source-doc-coverage/<source-relative-path-without-extension>.coverage.md` for every source document listed in the manifest
+- 为 manifest 中列出的每份 source document 写入 `openspec/orchestrate/phase-works/phase-3/source-doc-coverage/<source-relative-path-without-extension>.coverage.md`
 - `openspec/orchestrate/change-capability-anchors/obligation-atom-index.md`
 - `openspec/orchestrate/change-capability-anchors/obligation-atom-index.json`
 - `openspec/orchestrate/phase-works/phase-3/phase-3-trace/source-to-global-atom-map.md`
@@ -43,48 +43,48 @@ Write current copies only:
 - `openspec/orchestrate/phase-works/phase-3/phase-3-agent-report.md`
 - `openspec/orchestrate/trace/phase-3.trace.json`
 
-Use a single-level filename for per-source files. Derive it from the source document path as listed in the manifest, remove the file extension, replace path separators with `--`, and add `.coverage.md`. Do not create nested directories under `phase-works/phase-3/source-doc-coverage/`.
+per-source file 使用单层 filename。根据 manifest 中列出的 source document path 生成名称，移除 extension，将 path separator 替换为 `--`，再添加 `.coverage.md`。不得在 `phase-works/phase-3/source-doc-coverage/` 下创建 nested directory。
 
-Phase 3 may add precise missing source-backed atoms to canonical `obligation-atom-index.json`, then render `obligation-atom-index.md` from that JSON. It must not edit Phase 2 source atom files. If missing obligations are too broad or require rereading many documents beyond targeted semantic review, return `Decision: blocked` and state whether a full Phase 2 rerun is required.
+Phase 3 可以向 canonical `obligation-atom-index.json` 添加精确的 missing source-backed atom，再从该 JSON 渲染 `obligation-atom-index.md`。不得编辑 Phase 2 source atom file。如果 missing obligation 过于宽泛，或需要超出 targeted semantic review 范围重读大量 document，返回 `Decision: blocked`，并说明是否需要完整 Phase 2 rerun。
 
-`phase-works/phase-3/phase-3-trace/` records the current Phase 3 intermediate audit trail. JSON files are canonical; renderer-backed Markdown mirrors are review aids, not source of truth. They must be overwritten on each fresh Phase 3 run and must be consistent with canonical `obligation-atom-index.json`, per-source coverage files, and `phase-works/phase-3/coverage-review.md`.
+`phase-works/phase-3/phase-3-trace/` 记录当前 Phase 3 intermediate audit trail。JSON file 是 canonical；renderer-backed Markdown mirror 只是 review aid，不是 source of truth。每次 fresh Phase 3 run 都必须覆盖这些文件，并确保它们与 canonical `obligation-atom-index.json`、per-source coverage file 和 `phase-works/phase-3/coverage-review.md` 一致。
 
-After the writer finishes, Phase 3 must pass the reviewer/repair loop from `references/reviewer-repair-loop.md`: the main agent runs the phase validator, spawns a fresh independent coverage reviewer subagent, spawns a fresh independent Phase 3 repair-writer subagent if artifact changes are needed, reruns validator, spawns a fresh independent reviewer again after repair, then continues only after pass.
+writer 完成后，Phase 3 必须通过 `references/reviewer-repair-loop.md` 定义的 reviewer/repair loop：main agent 运行 Phase validator、启动 fresh independent coverage reviewer subagent；如果需要修改 artifact，则启动 fresh independent Phase 3 repair-writer subagent；重新运行 validator，repair 后再次启动 fresh independent reviewer；只有通过后才能继续。
 
-## Artifact Language Gate
+## Artifact 语言门禁
 
-Apply the skill-level Artifact Language Gate to every Phase 3 output. Keep fixed table headers, field names, enum/status values, atom ids, paths, line ranges, capability ids, change slugs, relation tokens, and exact source phrases as required, but write all agent-authored explanatory content in Simplified Chinese.
+对每项 Phase 3 output 应用 skill-level Artifact Language Gate。按需保留固定 table header、field name、enum/status value、atom ID、path、行范围、Capability ID、Change slug、relation token 和精确 source phrase，但所有 agent 编写的 explanatory content 都必须使用简体中文。
 
-In particular, `Source Fact`, `Review Judgment`, `Reason`, `Interpretation`, semantic classifications that are not fixed enum values, duplicate/ownership resolutions, non-atom range reasons, handoff explanations, metric interpretations, and report summaries must be Chinese unless the entire value is only a fixed enum, ID, path, command, relation token, or exact source term.
+尤其是 `Source Fact`、`Review Judgment`、`Reason`、`Interpretation`、非固定 enum value 的 semantic classification、duplicate/ownership resolution、non-atom range reason、handoff explanation、metric interpretation 和 report summary 都必须使用中文；只有整个值仅包含固定 enum、ID、path、command、relation token 或精确 source term 时例外。
 
-After writing each Phase 3 artifact, perform the language self-check from the skill gate. If any explanation sentence remains English-dominant after ignoring IDs, paths, commands, code, fixed enum/status values, relation tokens, and exact source phrases, rewrite it before finishing Phase 3.
+每次写入 Phase 3 artifact 后，执行 skill gate 中的 language self-check。忽略 ID、path、command、code、固定 enum/status value、relation token 和精确 source phrase 后，如果仍存在英文主导的 explanation sentence，必须在 Phase 3 结束前改写。
 
-## Global Atom Index
+## global atom 索引
 
-`change-capability-anchors/obligation-atom-index.json` is the canonical normalized global registry. `change-capability-anchors/obligation-atom-index.md` is its renderer-backed review mirror. The registry resolves global uniqueness, artifact projection, candidate Change ownership, capability impact/target, source-explicit related capabilities, source traceability, and non-direct relations. A capability is not a co-owner.
+`change-capability-anchors/obligation-atom-index.json` 是 canonical 规范化 global registry；`change-capability-anchors/obligation-atom-index.md` 是其 renderer-backed review mirror。该 registry 解决 global uniqueness、artifact projection、candidate Change ownership、capability impact/target、source-explicit related Capability、source traceability 和 non-direct relation。Capability 不是 co-owner。
 
-It must include:
+必须包含：
 
 | Global Atom ID | Source Document | Lines | Atom Type | Source Fact | Normativity | Coverage Status | Artifact Projection | Owner Change | Capability Impact | Target Capability | Related Capabilities | Source Atom Origins | Atom Relation | Propose Use | Evidence Need | Review Judgment |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
 
-Rules:
+规则：
 
-- Assign exactly one `Global Atom ID` to each production obligation.
-- Each `Global Atom ID` must use the canonical `GA-####` format, such as `GA-0001`. Do not use another global prefix, a range, or a Phase 2 source-local atom id as the normalized global atom id.
-- If two source atom rows describe the same source obligation, keep one global atom and map the other rows to the same global atom or a non-direct relation.
-- If a later obligation genuinely strengthens or narrows an earlier obligation, create a new atom only for the additional source-backed delta and set `Atom Relation` to `refines:<global-atom-id>` or `modifies:<global-atom-id>`.
-- If a source fact only preserves or depends on another atom, use `Atom Relation` such as `preserves:<global-atom-id>` or `depends-on:<global-atom-id>` and do not count it as duplicate direct coverage.
-- If a source fact is needed only to keep current design compatible with a later obligation, classify it as contextual future-compatibility and link it to the future or candidate global atom when known.
-- `Owner Change` may remain `phase-5-refit-required` when coverage is complete but final Change placement depends on source-window grounding, sequencing, or granularity decisions. Phase 5 must resolve it before final output.
-- `Capability Impact` is `new`, `modified`, `none`, or `unresolved`. `new` / `modified` are valid only for direct `spec-requirement` / `spec-guard` rows and require a concrete declared `Target Capability`. `none` requires target `none`. `unresolved` may use a known target or `unresolved`, requires a non-empty `Review Judgment` or rationale, and must be resolved in Phase 5.
-- Direct `design-obligation` / `verification-obligation` rows use impact `none` and target `none` while remaining direct and candidate-owned by a Change. Non-direct/contextual rows also use `none` / `none`.
-- `Related Capabilities` is a unique array of declared capability ids whose association is explicit in the cited source window. It defaults to `[]`, excludes `Target Capability`, does not substitute for a target, and creates no ownership, progression, capability view, or complexity count.
-- `Artifact Projection` must follow source semantics independently from `Coverage Status`: direct architecture/runtime/package/schema/provider/deployment atoms may be `design-obligation`; test strategy, fixture, visual, smoke, and evidence atoms may be `verification-obligation`; preserve and explicit non-goal atoms may be `spec-guard`.
-- `contextual-only` is reserved for non-direct context, reference, future-compatibility, or non-coverage rows. If an atom is still a direct candidate or `phase-5-refit-required`, assign `spec-requirement`, `spec-guard`, `design-obligation`, or `verification-obligation`; if no non-context projection is safe, mark the row `blocked` instead of letting a direct atom proceed as `contextual-only`.
-- `duplicate` is not a complete rationale unless it names the duplicated `Global Atom ID` and explains semantic equivalence.
+- 为每项 production obligation 分配且只分配一个 `Global Atom ID`。
+- 每个 `Global Atom ID` 必须使用 canonical `GA-####` 格式，例如 `GA-0001`。不得使用其他 global 前缀、范围或 Phase 2 source-local atom ID 作为规范化 global atom ID。
+- 如果两个 source atom 行描述同一 source obligation，保留一个 global atom，并将其他行映射到同一 global atom 或 non-direct relation。
+- 如果后续 obligation 确实增强或缩窄早期 obligation，只为额外的 source-backed delta 创建新 atom，并将 `Atom Relation` 设为 `refines:<global-atom-id>` 或 `modifies:<global-atom-id>`。
+- 如果 source fact 只 preserve 或依赖另一 atom，使用 `preserves:<global-atom-id>` 或 `depends-on:<global-atom-id>` 等 `Atom Relation`，不得计入 duplicate direct coverage。
+- 如果 source fact 只用于使当前 design 与后续 obligation 保持兼容，将其分类为 contextual future-compatibility；已知时链接到未来或 candidate global atom。
+- coverage 完成但 final Change placement 依赖 source-window grounding、sequence 或 granularity decision 时，`Owner Change` 可以保持 `phase-5-refit-required`。Phase 5 必须在 final output 前解决。
+- `Capability Impact` 为 `new`、`modified`、`none` 或 `unresolved`。`new` / `modified` 只适用于 direct `spec-requirement` / `spec-guard` 行，并要求具体、已声明的 `Target Capability`。`none` 要求 target `none`。`unresolved` 可以使用已知 target 或 `unresolved`，要求非空 `Review Judgment` 或 rationale，并且必须在 Phase 5 解决。
+- direct `design-obligation` / `verification-obligation` 行使用 impact `none` 和 target `none`，同时保持 direct 且由 Change candidate-own。non-direct/contextual 行也使用 `none` / `none`。
+- `Related Capabilities` 是已声明 Capability ID 的唯一 array，其关联必须由引用 source window 明确表达。默认为 `[]`，排除 `Target Capability`，不得替代 target，也不产生 ownership、progression、Capability view 或 complexity count。
+- `Artifact Projection` 必须独立于 `Coverage Status` 并遵循 source semantics：direct architecture/runtime/package/schema/provider/deployment atom 可以为 `design-obligation`；test strategy、fixture、visual、smoke 和 evidence atom 可以为 `verification-obligation`；preserve 和显式 non-goal atom 可以为 `spec-guard`。
+- `contextual-only` 只用于 non-direct context、reference、future-compatibility 或 non-coverage 行。如果 atom 仍为 direct candidate 或 `phase-5-refit-required`，分配 `spec-requirement`、`spec-guard`、`design-obligation` 或 `verification-obligation`；如果不存在安全的 non-context projection，将该行标记为 `blocked`，不得让 direct atom 以 `contextual-only` 继续。
+- 除非指出 duplicate 的 `Global Atom ID` 并解释 semantic equivalence，否则 `duplicate` 不是完整 rationale。
 
-Artifact projection values:
+artifact projection value：
 
 - `spec-requirement`
 - `spec-guard`
@@ -93,7 +93,7 @@ Artifact projection values:
 - `contextual-only`
 - `blocked`
 
-Coverage statuses:
+coverage status：
 
 - `direct`
 - `contextual`
@@ -108,13 +108,13 @@ Coverage statuses:
 - `unresolved-conflict`
 - `blocked`
 
-## Source Discovery and Reading Boundary
+## 来源发现与读取边界
 
-Read the Phase 1 `phase-works/phase-1/source-doc-manifest.md`, verify it still matches the user-specified source roots, and write the enriched Phase 3 review copy to `phase-works/phase-3/source-doc-manifest.md`. If Phase 1 did not list every source document or Phase 2 did not write a source atom file for every `read-full` source document, return `Decision: blocked` unless the issue can be corrected through targeted Phase 3 review without invalidating Phase 1 or Phase 2.
+读取 Phase 1 `phase-works/phase-1/source-doc-manifest.md`，确认它仍与用户指定的 source root 匹配，并将增强后的 Phase 3 review 副本写入 `phase-works/phase-3/source-doc-manifest.md`。如果 Phase 1 未列出每份 source document，或 Phase 2 未为每份 `read-full` source document 写入 source atom file，则返回 `Decision: blocked`；除非可以通过 targeted Phase 3 review 修正问题，且不会使 Phase 1 或 Phase 2 失效。
 
-For every manifest row, write a matching per-source review file under `phase-works/phase-3/source-doc-coverage/`, even when the final classification is `reference-only`, `intentionally-not-read`, or `non-source-artifact`.
+为每个 manifest 行在 `phase-works/phase-3/source-doc-coverage/` 下写入匹配的 per-source review file，即使 final classification 为 `reference-only`、`intentionally-not-read` 或 `non-source-artifact`。
 
-Classify each document as:
+将每份 document 分类为：
 
 - `covered-by-atoms`
 - `candidate-missing-atoms`
@@ -123,177 +123,177 @@ Classify each document as:
 - `non-source-artifact`
 - `blocked`
 
-Use Phase 2 source atom files, Phase 2 source remainder notes, Phase 1 source hints, file path/name, source-root scope, and targeted source reads to classify documents. Read source file contents when one of these is true:
+使用 Phase 2 source atom file、Phase 2 source remainder note、Phase 1 source hint、file path/name、source-root scope 和 targeted source read 分类 document。出现以下任一情形时，阅读 source file content：
 
-- a source section is likely obligation-bearing and needs atom completeness review
-- a candidate uncovered line range must be semantically reviewed
-- a document has no atom candidates and may contain meaningful product/system obligations
-- a duplicate/ownership conflict is unclear without local context
-- a broad atom appears to cover a page/object/flow section without decomposing its obligations
-- path/name/Phase 2 traces are insufficient to justify a non-source or reference-only classification
+- source section 可能是 obligation-bearing，需要 atom completeness review
+- candidate uncovered 行范围必须接受 semantic review
+- document 没有 atom candidate，但可能包含有意义的 product/system obligation
+- 缺少 local context 时无法判断 duplicate/ownership conflict
+- broad atom 看起来覆盖 page/object/flow section，但没有分解 obligation
+- path/name/Phase 2 trace 不足以证明 non-source 或 reference-only classification 合理
 
-For UI, object/component, flow, interaction, state, fixture, scenario, verification, and design-system documents, targeted semantic reading must cover obligation-bearing sections, not only lines outside Phase 2 ranges.
+对 UI、object/component、flow、interaction、state、fixture、scenario、verification 和 design-system document，targeted semantic reading 必须覆盖 obligation-bearing section，而不只是 Phase 2 范围之外的行。
 
-## Audit Workflow
+## 审计工作流
 
-Evaluate in this order:
+按以下顺序评估：
 
-1. Confirm every `read-full` manifest source document appears exactly once in `phase-works/phase-2/source-obligation-atoms/work-queue.md` and has one canonical extraction owner.
-2. Confirm every `read-full` manifest source document has one Phase 2 source atom file.
-3. Treat `work-queue.md` only as scheduling trace. Do not use its batching rationale, document name, path, role, or line count as coverage evidence.
-4. Extract every Phase 2 atom candidate with source document, source-local atom id, line range, atom type, source fact, normativity, candidate status, candidate artifact projection, candidate owner Change, candidate capability impact/target/related capabilities, roles, rationale, propose use, evidence need, and artifact origin.
-5. Run `scripts/phase3_line_range_audit.py` or equivalent Phase 3 code to mechanically parse Phase 2 source atom and anchor ranges, normalize line ranges, merge ranges, list candidate uncovered intervals, list overlaps, and flag malformed rows or non-canonical line-range formatting warnings. This mechanical output is not a semantic decision, but every candidate uncovered interval must be semantically reviewed before Phase 3 can return `coverage-complete`.
-6. Build a semantic duplicate review across extracted atoms. Same source document/range, equivalent source facts, equivalent state/action/verification obligations, or identical propose use are duplicate candidates until reviewed.
-7. Split broad atoms when one Phase 2 row covers multiple mandatory UI/flow/data/verification obligations. Each split atom must keep source evidence and a source-local origin or Phase 3 missing-atom finding id.
-8. Build `change-capability-anchors/obligation-atom-index.json` with one global atom per production obligation, one normalized artifact projection, one candidate owner Change/status, and normalized capability impact/target/related fields per global atom.
-9. Render `change-capability-anchors/obligation-atom-index.md` from the canonical global atom trace sidecar.
-10. Write `phase-works/phase-3/phase-3-trace/source-to-global-atom-map.json`, mapping every Phase 2 atom/context row to exactly one global atom id, relation, non-direct status, or blocker, then render `source-to-global-atom-map.md` from JSON.
-11. Write `phase-works/phase-3/phase-3-trace/duplicate-ownership-review.md`, preserving every duplicate, broad-atom, overlap, and ownership candidate considered and its resolution.
-12. For each source document in the manifest, create or update the matching `phase-works/phase-3/source-doc-coverage/<source>.coverage.md` file before writing the final global review.
-13. For each source document, inspect obligation-bearing sections and verify atom completeness:
-    - For pages/objects: page role, route, entry, exit, layout constraints with behavior impact, every named state, state triggers, display, primary actions, disabled actions, recovery, interaction rules, object dependencies, action labels that define behavior, acceptance criteria, responsive behavior, and non-goals.
-    - For flow/state/system docs: lifecycle stages, allowed transitions, overlay/blocking rules, fixture fields, scenario ids, verification matrix rows, interaction outcomes, and preserve boundaries.
-    - For architecture/product docs: data facts, access/privacy rules, runtime/deployment requirements, background execution rules, external integration boundaries, failure/recovery rules, observability/audit rules, and verification requirements.
-14. Identify source ranges outside every Phase 2 atom or source anchor range. Read those candidate ranges plus necessary local context and classify them:
-    - ignore blank lines, table separators, decorative separators, generated table-of-contents lines, and pure formatting
-    - ignore background prose, repeated summaries, discarded options, and purely explanatory text unless it defines a production behavior, boundary, data fact, verification obligation, deployment requirement, auth/privacy rule, failure path, or preserve constraint
-    - record each remaining meaningful uncovered source obligation as a missing atom and add it to the global index when precise enough
-15. Write canonical `phase-works/phase-3/phase-3-trace/source-remainder-review.json`, listing every candidate remaining source range reviewed, how it was discovered, read scope, semantic classification, whether it contains a production obligation, and the resulting atom/status/finding, then render `source-remainder-review.md` from JSON. The JSON sidecar must include `audit-documents[]` with the mechanically recomputed evidence ranges and candidate uncovered ranges for every `read-full` source document, plus `rows[]` that cover every candidate uncovered range. A larger semantic review row may cover a smaller uncovered range, but no candidate uncovered range may be left without a review row.
-16. Identify atoms whose candidate owner Change or spec target/impact cannot be resolved without source-window grounding and plan refit. Mark Change placement as `phase-5-refit-required` and/or capability impact as `unresolved`, with rationale, instead of forcing them into the Phase 1 framework.
-17. Write `phase-works/phase-3/phase-3-trace/atom-normalization-decision-log.md`, preserving every candidate finding considered, the decision for each, and whether Phase 5 must resolve final placement.
-18. Build compact global statistics across source documents, global atoms, meaningful missing atoms, duplicate findings, broad-atom split findings, non-coverage classifications, Change-ownership ambiguities, capability-impact/target uncertainties, gaps, and conflicts.
-19. Write `trace/phase-3.trace.json` according to `references/trace-sidecar-contract.md`, including the canonical source remainder review path.
-20. Run `scripts/render_source_aligned_orchestrate.py --artifact phase3-global-index --write`, `--artifact phase3-source-map --write`, and `--artifact phase3-remainder-review --write` or `--artifact all-supported --write` so all JSON-backed Markdown mirrors are current.
-21. The main orchestrating agent refreshes `trace/manifest.json`, runs `validate_source_aligned_orchestrate.py --phase phase-3`, then runs the Phase 3 reviewer/repair loop with independent reviewer and repair-writer subagents. If validator reports `rendered-markdown-drift`, repair JSON or rerender; do not hand-edit Markdown.
-22. Decide whether coverage normalization is complete or blocked.
+1. 确认每份 `read-full` manifest source document 都恰好在 `phase-works/phase-2/source-obligation-atoms/work-queue.md` 中出现一次，并有一个 canonical extraction owner。
+2. 确认每份 `read-full` manifest source document 都有一个 Phase 2 source atom file。
+3. 只将 `work-queue.md` 视为 scheduling trace；不得把其 batching rationale、document name、path、role 或 line count 用作 coverage evidence。
+4. 提取每个 Phase 2 atom candidate 的 source document、source-local atom ID、行范围、atom type、source fact、normativity、candidate status、candidate artifact projection、candidate owner Change、candidate capability impact/target/related Capability、role、rationale、propose use、evidence need 和 artifact origin。
+5. 运行 `scripts/phase3_line_range_audit.py` 或等效 Phase 3 code，机械解析 Phase 2 source atom 和 anchor 范围、规范化并合并行范围、列出 candidate uncovered interval 和 overlap，并标记 malformed row 或 non-canonical line-range formatting warning。该 mechanical output 不是 semantic decision，但 Phase 3 返回 `coverage-complete` 前必须对每个 candidate uncovered interval 执行 semantic review。
+6. 跨已提取 atom 建立 semantic duplicate review。同一 source document/range、等价 source fact、等价 state/action/verification obligation 或相同 propose use 在完成 review 前都属于 duplicate candidate。
+7. 如果一个 Phase 2 行覆盖多个 mandatory UI/flow/data/verification obligation，拆分 broad atom。每个 split atom 必须保留 source evidence 和 source-local origin 或 Phase 3 missing-atom finding ID。
+8. 建立 `change-capability-anchors/obligation-atom-index.json`：每项 production obligation 对应一个 global atom；每个 global atom 具有一个规范化 artifact projection、一个 candidate owner Change/status，以及规范化 capability impact/target/related field。
+9. 从 canonical global atom trace sidecar 渲染 `change-capability-anchors/obligation-atom-index.md`。
+10. 写入 `phase-works/phase-3/phase-3-trace/source-to-global-atom-map.json`，将每个 Phase 2 atom/context 行恰好映射到一个 global atom ID、relation、non-direct status 或 blocker，再从 JSON 渲染 `source-to-global-atom-map.md`。
+11. 写入 `phase-works/phase-3/phase-3-trace/duplicate-ownership-review.md`，保留所有纳入考虑的 duplicate、broad-atom、overlap 和 ownership candidate 及其 resolution。
+12. 写入 final global review 前，为 manifest 中每份 source document 创建或更新匹配的 `phase-works/phase-3/source-doc-coverage/<source>.coverage.md` file。
+13. 对每份 source document 检查 obligation-bearing section 并验证 atom completeness：
+    - page/object：page role、route、entry、exit、具有 behavior impact 的 layout constraint、每个具名 state、state trigger、display、primary action、disabled action、recovery、interaction rule、object dependency、定义行为的 action label、acceptance criterion、responsive behavior 和 non-goal。
+    - flow/state/system doc：lifecycle stage、allowed transition、overlay/blocking rule、fixture field、scenario ID、verification matrix row、interaction outcome 和 preserve boundary。
+    - architecture/product doc：data fact、access/privacy rule、runtime/deployment requirement、background execution rule、external integration boundary、failure/recovery rule、observability/audit rule 和 verification requirement。
+14. 识别位于所有 Phase 2 atom/source anchor 范围之外的 source range。阅读这些 candidate range 及必要 local context 并分类：
+    - 忽略 blank line、table separator、decorative separator、生成的 table-of-contents 行和纯 formatting
+    - 忽略 background prose、重复 summary、discarded option 和纯 explanatory text；但如果定义了 production behavior、boundary、data fact、verification obligation、deployment requirement、auth/privacy rule、failure path 或 preserve constraint，则不得忽略
+    - 将剩余每项有意义的 uncovered source obligation 记录为 missing atom；足够精确时加入 global index
+15. 写入 canonical `phase-works/phase-3/phase-3-trace/source-remainder-review.json`，列出每个已 review 的 candidate remaining source range、发现方式、read scope、semantic classification、是否包含 production obligation 以及产生的 atom/status/finding，再从 JSON 渲染 `source-remainder-review.md`。JSON sidecar 必须包含 `audit-documents[]`，为每份 `read-full` source document 保存 mechanical recompute 得到的 evidence range 和 candidate uncovered range；还必须包含覆盖每个 candidate uncovered range 的 `rows[]`。较大的 semantic review 行可以覆盖较小 uncovered range，但任何 candidate uncovered range 都不得缺少 review 行。
+16. 识别无法在缺少 source-window grounding 和 plan refit 时解决 candidate owner Change 或 spec target/impact 的 atom。将 Change placement 标为 `phase-5-refit-required` 和/或将 capability impact 标为具有 rationale 的 `unresolved`，不得强制放入 Phase 1 framework。
+17. 写入 `phase-works/phase-3/phase-3-trace/atom-normalization-decision-log.md`，保留纳入考虑的每项 candidate finding、对应 decision，以及是否必须由 Phase 5 解决 final placement。
+18. 建立紧凑 global statistic，覆盖 source document、global atom、有意义的 missing atom、duplicate finding、broad-atom split finding、non-coverage classification、Change-ownership ambiguity、capability-impact/target uncertainty、gap 和 conflict。
+19. 按照 `references/trace-sidecar-contract.md` 写入 `trace/phase-3.trace.json`，其中包含 canonical source remainder review path。
+20. 运行 `scripts/render_source_aligned_orchestrate.py --artifact phase3-global-index --write`、`--artifact phase3-source-map --write` 和 `--artifact phase3-remainder-review --write`，或运行 `--artifact all-supported --write`，确保所有 JSON-backed Markdown mirror 为最新版本。
+21. main orchestrating agent 刷新 `trace/manifest.json`、运行 `validate_source_aligned_orchestrate.py --phase phase-3`，再使用 independent reviewer 和 repair-writer subagent 运行 Phase 3 reviewer/repair loop。如果 validator 报告 `rendered-markdown-drift`，repair JSON 或重新渲染；不得手工编辑 Markdown。
+22. 决定 coverage normalization 已完成还是 blocked。
 
-## Required Tables
+## 必需表格
 
-`phase-works/phase-3/source-doc-manifest.md` must include:
+`phase-works/phase-3/source-doc-manifest.md` 必须包含：
 
 | Source Document | Classification | Phase 2 Atom File | Review File | Effective Atom Ranges | Missing Obligation Atom Ranges | Non-Atom Ranges | Read Scope | Reason |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- |
 
-Each `phase-works/phase-3/source-doc-coverage/<source>.coverage.md` file must include:
+每个 `phase-works/phase-3/source-doc-coverage/<source>.coverage.md` file 必须包含：
 
-### Source Document
+### 来源文档
 
-- Source document path
-- Classification
-- Total lines, if known
-- Whether the file was read fully in Phase 2 and whether Phase 3 performed targeted rereads
+- 来源文档路径
+- classification 分类
+- total line（如已知）
+- 该 file 是否在 Phase 2 完整阅读，以及 Phase 3 是否执行 targeted reread
 
-### Effective Atom Coverage
+### 有效 atom 覆盖
 
 | Global Atom ID | Source Atom Origins | Lines | Atom Type | Coverage Status | Artifact Projection | Candidate / Owner Change | Capability Impact | Target Capability | Related Capabilities | Source Fact |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
 
-### Source Obligation Coverage
+### 来源义务覆盖
 
 | Source Section or Range | Expected Atom Type | Global Atom IDs | Coverage Judgment | Reason |
 | --- | --- | --- | --- | --- |
 
-### Non-Atom Range Review
+### non-atom range 审阅
 
 | Candidate Range | Read Scope | Semantic Classification | Production Obligation? | Reason |
 | --- | --- | --- | --- | --- |
 
-### Duplicate and Ownership Review
+### 重复项与所有权审阅
 
 | Source Ranges or Atoms | Candidate Duplicate/Conflict | Resolution | Global Atom ID or Relation | Review Judgment |
 | --- | --- | --- | --- | --- |
 
-### Document Judgment
+### 文档判断
 
-- Missing obligation atoms, or `None`
-- Duplicate direct atoms, or `None`
-- Broad-atom split findings, or `None`
-- Non-coverage statuses used
-- Phase 5 placement findings, or `None`
-- Judgment: `covered`, `covered-by-classification`, `phase-5-refit-required`, or `blocked`
+- missing obligation atom，或 `None`
+- duplicate direct atom，或 `None`
+- broad-atom split finding，或 `None`
+- 使用的 non-coverage status
+- Phase 5 placement finding，或 `None`
+- Judgment：`covered`、`covered-by-classification`、`phase-5-refit-required` 或 `blocked`
 
-Canonical `phase-works/phase-3/phase-3-trace/source-to-global-atom-map.json` must include one row for every Phase 2 atom/context row. Its rendered Markdown mirror uses this table:
+canonical `phase-works/phase-3/phase-3-trace/source-to-global-atom-map.json` 必须为每个 Phase 2 atom/context 行提供一行。其 rendered Markdown mirror 使用以下 table：
 
 | Source Document | Source Atom ID | Lines | Candidate Status | Candidate Artifact Projection | Candidate Owner Change | Candidate Capability Impact | Candidate Target Capability | Candidate Related Capabilities | Global Atom ID | Global Relation | Global Capability Impact | Global Target Capability | Global Related Capabilities | Non-Coverage Status | Blocker | Review Decision | Reason |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
 
-Canonical `phase-works/phase-3/phase-3-trace/source-remainder-review.json` must include the same semantic review in machine-readable form. Its rendered Markdown mirror includes audit documents and semantic review rows:
+canonical `phase-works/phase-3/phase-3-trace/source-remainder-review.json` 必须以 machine-readable form 包含同一 semantic review。其 rendered Markdown mirror 包含 audit document 和 semantic review 行：
 
 | Source Document | Lines | How Found | Read Scope | Semantic Classification | Production Obligation | Linked Global Atom IDs | Non-Coverage Status | Blocker | Reason |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
 
-The JSON sidecar fields are:
+JSON sidecar field：
 
-- `audit-documents[]`: one row per Phase 1 `read-full` source document, with `source-document`, `source-sha256`, `line-count`, `evidence-ranges[]`, and `candidate-uncovered-ranges[]`.
-- `rows[]`: one row per reviewed remainder range, with `source-document`, `lines`, `line-ranges[]`, `how-found`, `read-scope`, `semantic-classification`, `production-obligation`, `linked-global-atom-ids[]`, `non-coverage-status`, `blocker`, and `reason`.
+- `audit-documents[]`：每份 Phase 1 `read-full` source document 一行，包含 `source-document`、`source-sha256`、`line-count`、`evidence-ranges[]` 和 `candidate-uncovered-ranges[]`。
+- `rows[]`：每个已 review remainder range 一行，包含 `source-document`、`lines`、`line-ranges[]`、`how-found`、`read-scope`、`semantic-classification`、`production-obligation`、`linked-global-atom-ids[]`、`non-coverage-status`、`blocker` 和 `reason`。
 
-Validator gate:
+validator gate：
 
-- Every mechanically candidate uncovered range must be covered by at least one `rows[]` review range.
-- A production-obligation row must link to at least one known `GA-####` or record a blocker.
-- A non-production row must record a non-coverage status or blocker.
-- `Decision: coverage-complete` is invalid when any remainder row has a blocker.
+- 每个 mechanically candidate uncovered range 必须至少由一个 `rows[]` review range 覆盖。
+- production-obligation 行必须关联至少一个已知 `GA-####`，或记录 blocker。
+- non-production 行必须记录 non-coverage status 或 blocker。
+- 任一 remainder 行存在 blocker 时，`Decision: coverage-complete` 无效。
 
-`phase-works/phase-3/phase-3-trace/duplicate-ownership-review.md` must include:
+`phase-works/phase-3/phase-3-trace/duplicate-ownership-review.md` 必须包含：
 
 | Candidate ID | Source Ranges or Source Atoms | Candidate Type | Equivalent Obligation? | Resolution | Global Atom ID or Relation | Phase 5 Placement Needed? | Reason |
 | --- | --- | --- | --- | --- | --- | --- | --- |
 
-`phase-works/phase-3/phase-3-trace/atom-normalization-decision-log.md` must include:
+`phase-works/phase-3/phase-3-trace/atom-normalization-decision-log.md` 必须包含：
 
 | Review Item | Finding Class | Input Evidence | Decision | Output Artifact | Phase 5 Needed? | Reason |
 | --- | --- | --- | --- | --- | --- | --- |
 
-`phase-works/phase-3/coverage-review.md` must include:
+`phase-works/phase-3/coverage-review.md` 必须包含：
 
 | Source Document | Review File | Atom Coverage Summary | Missing Obligation Atoms | Duplicate/Ownership Findings | Non-Atom Ranges | Read Scope | Review Judgment |
 | --- | --- | --- | --- | --- | --- | --- | --- |
 
-It must also include:
+还必须包含：
 
 | Metric | Value | Evidence | Interpretation |
 | --- | --- | --- | --- |
 
-And a Phase 5 refit handoff table:
+以及 Phase 5 refit handoff table：
 
 | Handoff Item | Source Ranges or Atoms | Current Candidate Owners | Current Artifact Projection | Why Phase 5 Must Decide | Required Plan Refit Consideration |
 | --- | --- | --- | --- | --- | --- |
 
-## Decision Values
+## Decision 值
 
-`phase-works/phase-3/coverage-review.md` must end with exactly one decision:
+`phase-works/phase-3/coverage-review.md` 末尾必须且只能包含一个 decision：
 
 - `Decision: coverage-complete`
 - `Decision: blocked`
 
-Use `coverage-complete` only when every source document under the specified roots is manifest-classified, every production-meaningful source obligation has exactly one global atom or justified non-coverage status, every source range without atoms is classified as production-safe non-atom content in `source-remainder-review.json`, there are no unclassified atoms, no unresolved duplicate obligations, no broad atom compression findings left unsplit or justified, no blocking conflicts, and every Phase 5 placement question is explicitly handed off. Every global row must also satisfy the v2 capability field structure: direct spec rows use `new` / `modified` or rationale-backed `unresolved`, direct design/verification rows use `none` / `none`, and related capability arrays are unique, source-explicit, declared, and non-owning.
+只有满足以下条件时才使用 `coverage-complete`：指定根目录下每份 source document 都已完成 manifest classification；每项具有生产意义的 source obligation 都恰好有一个 global atom 或合理的 non-coverage status；每个没有 atom 的 source range 都在 `source-remainder-review.json` 中分类为 production-safe non-atom content；不存在 unclassified atom、unresolved duplicate obligation、未拆分或未合理说明的 broad atom compression finding、blocking conflict；每个 Phase 5 placement question 都显式 handoff。每个 global 行还必须满足 v2 Capability field structure：direct spec 行使用 `new` / `modified` 或具有 rationale 的 `unresolved`，direct design/verification 行使用 `none` / `none`，related Capability array 唯一、source-explicit、已声明且 non-owning。
 
-Additionally, use `coverage-complete` only when every source document listed in `phase-works/phase-3/source-doc-manifest.md` has a matching `phase-works/phase-3/source-doc-coverage/<source>.coverage.md` file and all Phase 3 trace files including `source-remainder-review.json` exist and reconcile with the final review.
+此外，只有 `phase-works/phase-3/source-doc-manifest.md` 中列出的每份 source document 都有匹配的 `phase-works/phase-3/source-doc-coverage/<source>.coverage.md` file，且包括 `source-remainder-review.json` 在内的所有 Phase 3 trace file 均存在并与 final review 一致时，才能使用 `coverage-complete`。
 
-`coverage-review.md` and `phase-3-agent-report.md` are required interface artifacts. JSON sidecars remain the canonical validator input; Markdown files are reviewer-facing mirrors and must not be used as a replacement for canonical JSON.
+`coverage-review.md` 和 `phase-3-agent-report.md` 是必需 interface artifact。JSON sidecar 仍是 canonical validator input；Markdown file 是面向 reviewer 的 mirror，不得替代 canonical JSON。
 
-Use `blocked` when source documents conflict, source roots are incomplete, source atom files are missing, atom evidence is too broad to normalize, or the user must decide a boundary before coverage can close.
+当 source document 冲突、source root 不完整、source atom file 缺失、atom evidence 过宽而无法规范化，或 coverage 闭合前必须由用户决定 boundary 时，使用 `blocked`。
 
-## Final Report
+## 最终报告
 
-`phase-works/phase-3/phase-3-agent-report.md` must summarize:
+`phase-works/phase-3/phase-3-agent-report.md` 必须概括：
 
-- source documents classified
-- per-source-document review files written
-- Phase 3 trace files written
-- global obligation atoms indexed
-- source documents covered by atoms
-- missing obligation atoms added, or confirmation that none remain
-- source ranges classified as non-atom content
-- duplicate and Change-ownership findings
-- broad atoms split or justified
-- non-coverage classifications
-- artifact projection distribution, capability-impact distribution, target/related-capability review, and any unresolved spec-target uncertainties
-- Phase 5 placement handoffs
-- conflicts resolved or remaining
-- confirmation that every production-meaningful obligation under the specified roots is covered by exactly one global atom or justified
-- confirmation that no raw helper output was used as a gate
-- confirmation that any line-range helper output, if used, was treated only as mechanical candidate input
-- confirmation that every Phase 3 artifact passed the Artifact Language Gate
+- 已分类的 source document
+- 已写入的 per-source-document review file
+- 已写入的 Phase 3 trace file
+- 已建立 index 的 global obligation atom
+- 由 atom 覆盖的 source document
+- 已添加的 missing obligation atom，或确认没有剩余项
+- 分类为 non-atom content 的 source range
+- duplicate 和 Change-ownership finding
+- 已拆分或已合理说明的 broad atom
+- non-coverage 分类
+- artifact projection distribution、capability-impact distribution、target/related-Capability review，以及任何 unresolved spec-target uncertainty
+- Phase 5 placement 交接
+- 已解决或剩余 conflict
+- 确认指定根目录下每项具有生产意义的 obligation 都由唯一 global atom 覆盖或得到合理说明
+- 确认未使用 raw helper output 作为 gate
+- 确认任何 line-range helper output（如使用）仅作为 mechanical candidate input
+- 确认每项 Phase 3 artifact 都通过 Artifact Language Gate
 
-The final agent reply should be short and in Chinese. Include the decision, changed files, missing atoms, duplicate/ownership findings, language-gate result, remaining blockers, and whether Phase 4 source-window grounding may proceed.
+final agent reply 应简短并使用中文，包含 decision、changed file、missing atom、duplicate/ownership finding、language-gate result、remaining blocker，以及是否可以继续 Phase 4 source-window grounding。

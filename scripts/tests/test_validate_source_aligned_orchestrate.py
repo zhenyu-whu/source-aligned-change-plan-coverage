@@ -1581,6 +1581,7 @@ class SourceAlignedValidatorTest(unittest.TestCase):
         )
         self.assertEqual(proc.returncode, 0, proc.stderr)
         plan = (output_dir / "phase-works/phase-5/change-plan.md").read_text(encoding="utf-8")
+        self.assertIn("## Capability Map", plan)
         self.assertIn("本计划没有业务 Capability delta", plan)
         self.assertIn("不生成空矩阵", plan)
         capability_views = list(
@@ -1772,6 +1773,62 @@ class SourceAlignedValidatorTest(unittest.TestCase):
         payload = json.loads(proc.stdout)
         self.assertEqual(payload["error-count"], 0, payload)
         self.assertGreater(payload["warning-count"], 0, payload)
+
+    def test_cli_help_is_chinese_and_flags_remain_stable(self) -> None:
+        scripts_and_markers = [
+            (self.script, "校验 source-aligned orchestrate trace sidecar。", "--strict-warnings"),
+            (self.refit_script, "根据已审阅的 mapping/config 校验并渲染", "--print-config-template"),
+            (SCRIPT_DIR / "render_source_aligned_orchestrate.py", "根据 canonical JSON sidecar 渲染", "--source-document"),
+            (SCRIPT_DIR / "phase3_line_range_audit.py", "审计 Phase 3 source atom", "--from-markdown"),
+        ]
+        for script, chinese_marker, stable_flag in scripts_and_markers:
+            with self.subTest(script=script.name):
+                proc = subprocess.run(
+                    [sys.executable, str(script), "--help"],
+                    text=True,
+                    capture_output=True,
+                    check=False,
+                )
+                self.assertEqual(proc.returncode, 0, proc.stderr)
+                self.assertIn(chinese_marker, proc.stdout)
+                self.assertIn(stable_flag, proc.stdout)
+
+    def test_cli_diagnostic_is_chinese_and_json_contract_is_stable(self) -> None:
+        missing = self.root / "missing-orchestrate"
+        proc = subprocess.run(
+            [
+                sys.executable,
+                str(self.script),
+                "--orchestrate-dir",
+                str(missing),
+                "--workspace-root",
+                str(self.root),
+                "--json",
+            ],
+            text=True,
+            capture_output=True,
+            check=False,
+        )
+        self.assertEqual(proc.returncode, 1)
+        payload = json.loads(proc.stdout)
+        self.assertEqual(set(payload), {"ok", "error-count", "warning-count", "issues"})
+        self.assertEqual(payload["issues"][0]["rule_id"], "orchestrate-dir")
+        self.assertEqual(payload["issues"][0]["severity"], "error")
+        self.assertIn("目录不存在", payload["issues"][0]["message"])
+
+    def test_rendered_markdown_localizes_prose_but_preserves_table_contract(self) -> None:
+        result = render_orchestrate(self.orchestrate, "phase3-global-index", write=True)
+        self.assertTrue(result["ok"], result)
+        rendered = (
+            self.orchestrate / "change-capability-anchors/obligation-atom-index.md"
+        ).read_text(encoding="utf-8")
+        self.assertIn("# obligation atom 索引", rendered)
+        self.assertIn("| Global Atom ID | Source Document | Lines | Atom Type |", rendered)
+        sidecar = json.loads(
+            (self.orchestrate / "change-capability-anchors/obligation-atom-index.json").read_text(encoding="utf-8")
+        )
+        self.assertEqual(sidecar["trace-schema"], GLOBAL_ATOM_INDEX_SCHEMA)
+        self.assertEqual(sidecar["trace-contract-version"], TRACE_CONTRACT_VERSION)
 
 
 if __name__ == "__main__":

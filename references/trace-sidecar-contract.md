@@ -1,20 +1,20 @@
-# Trace Sidecar Contract
+# trace sidecar contract 规范
 
 本文件是 `source-aligned-change-plan-coverage` 的强制 trace sidecar 协议。进入该 workflow 前必须读取。JSON trace sidecar 是 validator 的唯一 canonical 输入；renderer-backed Markdown artifact 只是从 JSON 机械生成的中文 reviewer 可读镜像，不作为 validator 的权威数据源。
 
-## Global Rules
+## 全局规则
 
-- Trace contract version: `source-aligned-trace-v2`。
+- trace contract version 为 `source-aligned-trace-v2`。
 - 所有 JSON key 必须使用 kebab-case。
 - 所有 ID 字段不得包含 Markdown 反引号。
 - 多 ID 字段必须使用数组，不得使用逗号字符串。
 - Line range 必须保留原始 `lines` 字段，并提供结构化 `line-ranges: [{"start": 1, "end": 2}]`。
 - 每个 trace JSON 必须包含 `trace-schema` 和 `trace-contract-version`。
 - Renderer-backed Markdown mirror 可包含中文解释，但必须由 canonical JSON 重新渲染得到，不得手工修补 canonical 字段。
-- Render contract version: `source-aligned-render-v2`。
+- render contract version 为 `source-aligned-render-v2`。
 - v2 是单轨契约，不提供旧 Capability owner 字段的兼容读取。canonical artifact 集合中若出现 `source-aligned-source-atoms-v1`、`source-aligned-global-atom-index-v1`、`source-aligned-source-to-global-map-v1`、`source-aligned-atom-plan-mapping-v1`、`source-aligned-final-packet-index-v1` 或 `source-aligned-render-v1`，必须拒绝；不得混用 v1/v2 字段或 schema。
 
-## Required Layout
+## 必需布局
 
 ```text
 openspec/orchestrate/
@@ -43,17 +43,17 @@ openspec/orchestrate/
         └── final-packet-index.json   # accepted/adjusted only
 ```
 
-## Manifest
+## manifest 规范
 
-`trace/manifest.json` schema is `source-aligned-orchestrate-manifest-v1`.
+`trace/manifest.json` 的 schema 为 `source-aligned-orchestrate-manifest-v1`。
 
-Manifest lifecycle:
+Manifest lifecycle 如下：
 
-1. During orchestration directory initialization, create or refresh `trace/manifest.json` as a skeleton manifest. Use `missing` for any phase whose trace sidecar does not exist yet, and include only artifact rows whose `trace-path` currently exists.
-2. Before every `validate_source_aligned_orchestrate.py --phase ...` run, refresh `trace/manifest.json` so every listed artifact row has the current sha256 of its JSON `trace-path`.
-3. After validator and independent reviewer pass, refresh `trace/manifest.json` again so `phase-statuses` records the canonical phase `status` or `decision` from trace sidecars. Do not use reviewer-loop bookkeeping values as phase decisions.
+1. 初始化 orchestration 目录时，创建或刷新 `trace/manifest.json` 作为 skeleton manifest。尚无 trace sidecar 的 Phase 使用 `missing`，并且只包含当前 `trace-path` 确实存在的 artifact 行。
+2. 每次运行 `validate_source_aligned_orchestrate.py --phase ...` 前刷新 `trace/manifest.json`，确保列出的每个 artifact 行都保存其 JSON `trace-path` 的当前 sha256。
+3. validator 和 independent reviewer 通过后再次刷新 `trace/manifest.json`，让 `phase-statuses` 记录 trace sidecar 中 canonical Phase `status` 或 `decision`。不得把 reviewer-loop bookkeeping value 用作 Phase decision。
 
-Required fields:
+必需字段：
 
 - `trace-schema`
 - `trace-contract-version`
@@ -61,9 +61,9 @@ Required fields:
 - `phase-statuses`
 - `artifacts[]`
 
-`phase-statuses` records canonical phase decisions from phase trace sidecars, not reviewer-loop workflow states. It must include `phase-1` through `phase-5`; use `missing` for phases with no trace sidecar. For Phase 1 and Phase 2, use the `status` value from `trace/phase-1.trace.json` and `trace/phase-2.trace.json`. For Phase 3, Phase 4, and Phase 5, use `decision` or `status` from the corresponding phase trace. If a phase trace sidecar exists, its canonical `status` or `decision` is required and `phase-statuses.phase-n` must match it exactly. When `trace/phase-5.trace.json.status` exists, `phase-statuses.phase-5` must be identical to it. For a proposal-ready handoff, both values must be `accepted` or `adjusted`; do not write `reviewer-passed`, `validator-passed`, `repair-not-needed`, `present`, or other workflow/status bookkeeping into any `phase-statuses` value.
+`phase-statuses` 记录 Phase trace sidecar 中的 canonical Phase decision，而不是 reviewer-loop workflow state。它必须包含 `phase-1` 至 `phase-5`；没有 trace sidecar 的 Phase 使用 `missing`。Phase 1 和 Phase 2 使用 `trace/phase-1.trace.json`、`trace/phase-2.trace.json` 的 `status`；Phase 3、Phase 4 和 Phase 5 使用相应 Phase trace 的 `decision` 或 `status`。Phase trace sidecar 一旦存在，就必须包含 canonical `status` 或 `decision`，且 `phase-statuses.phase-n` 必须与其完全一致。存在 `trace/phase-5.trace.json.status` 时，`phase-statuses.phase-5` 必须与其相同。proposal-ready handoff 要求两者都为 `accepted` 或 `adjusted`；不得把 `reviewer-passed`、`validator-passed`、`repair-not-needed`、`present` 或其他 workflow/status bookkeeping 写入任何 `phase-statuses` 值。
 
-Each artifact row must include:
+每个 artifact 行必须包含：
 
 - `artifact-path`
 - `trace-path`
@@ -72,11 +72,11 @@ Each artifact row must include:
 - `phase`
 - `role`
 
-`sha256` is computed over the JSON trace file at `trace-path`. `artifacts[]` must list only rows whose `trace-path` exists at the time the manifest is refreshed.
+`sha256` 根据 `trace-path` 指向的 JSON trace file 计算。刷新 manifest 时，`artifacts[]` 只能列出 `trace-path` 已存在的行。
 
-## Renderer Contract
+## renderer contract
 
-Renderer-backed mirrors use `source-aligned-render-v2` and are generated by:
+renderer-backed mirror 使用 `source-aligned-render-v2`，通过以下命令生成：
 
 ```bash
 python3 .codex/skills/source-aligned-change-plan-coverage/scripts/render_source_aligned_orchestrate.py \
@@ -85,13 +85,13 @@ python3 .codex/skills/source-aligned-change-plan-coverage/scripts/render_source_
   --write
 ```
 
-Supported mirrors are Phase 2 `<source>.atoms.md`, Phase 3 `obligation-atom-index.md`, `source-to-global-atom-map.md`, `source-remainder-review.md`, and Phase 5 `atom-plan-mapping.md`.
+支持的 mirror 包括 Phase 2 `<source>.atoms.md`，Phase 3 `obligation-atom-index.md`、`source-to-global-atom-map.md`、`source-remainder-review.md`，以及 Phase 5 `atom-plan-mapping.md`。
 
-Every rendered mirror ends with `Trace Appendix`, including trace file, trace schema, trace sha256, and render contract version. Validator compares actual Markdown to renderer output. If it reports `rendered-markdown-drift`, repair must update the canonical JSON sidecar or rerun the renderer; do not manually edit only Markdown.
+每个 rendered mirror 末尾都包含 `Trace Appendix`，列出 trace file、trace schema、trace sha256 和 render contract version。validator 会比较实际 Markdown 与 renderer output。如果报告 `rendered-markdown-drift`，repair 必须更新 canonical JSON sidecar 或重新运行 renderer；不得只手工编辑 Markdown。
 
-## Phase Schemas
+## Phase schema
 
-Phase trace schemas:
+Phase trace schema：
 
 - `source-aligned-phase-1-trace-v1`
 - `source-aligned-phase-2-trace-v1`
@@ -99,7 +99,7 @@ Phase trace schemas:
 - `source-aligned-phase-4-trace-v1`
 - `source-aligned-phase-5-trace-v1`
 
-Artifact schemas:
+artifact schema：
 
 - `source-aligned-source-atoms-v2`
 - `source-aligned-global-atom-index-v2`
@@ -111,30 +111,30 @@ Artifact schemas:
 
 上面列出的五个 v2 artifact schema 是发生字段变化的 schema，必须整体采用 v2。`manifest`、Phase trace、source remainder review、source window index 的 payload 未发生字段变化，因此继续使用各自现有的 `*-v1` schema 名称，但其 `trace-contract-version` 必须是 `source-aligned-trace-v2`；这不属于禁止的 v1/v2 capability-field 混用。
 
-## Required Models
+## 必需数据模型
 
-Phase 1 trace:
+Phase 1 trace：
 
-- `status`: exactly `initial-plan-written`
+- `status`：必须为 `initial-plan-written`
 - `source-documents[]`: `source-document`, `read-status`, `source-role`, `coarse-topics-paths`, `notes`, `line-count`, `source-sha256`
 - `change-plan`: `phase-plan-path`, `root-plan-path`, `root-plan-sha256`, `phase-plan-sha256`
 
-Phase 2 trace:
+Phase 2 trace：
 
-- `status`: exactly `source-atoms-written`
+- `status`：必须为 `source-atoms-written`
 - `work-queue-path`
 - `sources[]`
 - `phase-report-path`
 
-Phase 2 source atom sidecar:
+Phase 2 source atom sidecar：
 
 - `source-document`, `source-sha256`, `read-status`, `canonical-owner`
-- `source-atoms[]`: current ledger fields as kebab-case plus `line-ranges[]`; capability fields are `candidate-capability-impact`, `candidate-target-capability`, and array `candidate-related-capabilities[]`; do not emit `candidate-owner-capability`
-- `source-anchors[]`: current anchor table fields as kebab-case plus `line-ranges[]`
+- `source-atoms[]`：current ledger field 使用 kebab-case 并增加 `line-ranges[]`；Capability field 为 `candidate-capability-impact`、`candidate-target-capability` 和 array `candidate-related-capabilities[]`；不得输出 `candidate-owner-capability`
+- `source-anchors[]`：current anchor table field 使用 kebab-case 并增加 `line-ranges[]`
 - `section-inventory[]`
 - `blockers[]`
 
-Phase 2 capability field rules:
+Phase 2 Capability field 规则：
 
 - `candidate-capability-impact`: `new | modified | none | unresolved`。
 - `new | modified` 仅允许 `spec-requirement | spec-guard`，且 `candidate-target-capability` 必须是具体 capability（`candidate-new-capability` 仅允许与 `new` 配对）。
@@ -142,29 +142,29 @@ Phase 2 capability field rules:
 - `unresolved` 可带具体 target 或 `unresolved`，但 `rationale` 必须非空。
 - `candidate-related-capabilities` 必须是去重的已声明 capability id 数组，默认 `[]`，不得包含 target，也不得替代 target；关联必须由 source window 明示。
 
-Phase 3:
+Phase 3：
 
-- `obligation-atom-index.json`: `global-atoms[]` with exact `GA-####`, source fields, status, projection, owner Change, `capability-impact`, `target-capability`, `related-capabilities[]`, relation, `origins[]`, and `line-ranges[]`; do not emit `owner-capability`
-- `source-to-global-atom-map.json`: one row per Phase 2 atom/context row, preserving candidate capability fields and normalized `global-capability-impact`, `global-target-capability`, `global-related-capabilities[]`; exactly one mapping outcome: `global-atom-id`, `global-relation`, `non-coverage-status`, or `blocker`
-- `source-remainder-review.json`: `audit-documents[]` and `rows[]` for mechanical Phase 2 atom/anchor line coverage and semantic review of every candidate uncovered source range
-  - Each `audit-documents[]` row includes `source-document`, `source-sha256`, `line-count`, `evidence-ranges[]`, and `candidate-uncovered-ranges[]`
-  - Each `rows[]` row includes `source-document`, `lines`, `line-ranges[]`, `how-found`, `read-scope`, `semantic-classification`, `production-obligation`, `linked-global-atom-ids[]`, `non-coverage-status`, `blocker`, and `reason`
-- `phase-3.trace.json`: source classifications, review paths, normalization decisions, remainder review path, and decision value
+- `obligation-atom-index.json`：`global-atoms[]` 包含精确 `GA-####`、source field、status、projection、owner Change、`capability-impact`、`target-capability`、`related-capabilities[]`、relation、`origins[]` 和 `line-ranges[]`；不得输出 `owner-capability`
+- `source-to-global-atom-map.json`：每个 Phase 2 atom/context 行对应一行，保留 candidate Capability field 和规范化 `global-capability-impact`、`global-target-capability`、`global-related-capabilities[]`；mapping outcome 必须且只能是 `global-atom-id`、`global-relation`、`non-coverage-status` 或 `blocker` 之一
+- `source-remainder-review.json`：使用 `audit-documents[]` 和 `rows[]` 保存 mechanical Phase 2 atom/anchor line coverage，以及对每个 candidate uncovered source range 的 semantic review
+  - 每个 `audit-documents[]` 行包含 `source-document`、`source-sha256`、`line-count`、`evidence-ranges[]` 和 `candidate-uncovered-ranges[]`
+  - 每个 `rows[]` 行包含 `source-document`、`lines`、`line-ranges[]`、`how-found`、`read-scope`、`semantic-classification`、`production-obligation`、`linked-global-atom-ids[]`、`non-coverage-status`、`blocker` 和 `reason`
+- `phase-3.trace.json`：包含 source classification、review path、normalization decision、remainder review path 和 decision value
 
-Phase 3 capability field rules mirror Phase 2 with normalized names: `capability-impact`, `target-capability`, and `related-capabilities[]`. Direct spec rows use `new | modified` or rationale-backed `unresolved`; ordinary direct design/verification and non-direct rows use `none` / `none`. `related-capabilities[]` is non-owning and does not imply progression.
+Phase 3 Capability field 规则与 Phase 2 对应，但使用规范化名称：`capability-impact`、`target-capability` 和 `related-capabilities[]`。direct spec 行使用 `new | modified` 或具有 rationale 的 `unresolved`；普通 direct design/verification 行和 non-direct 行使用 `none` / `none`。`related-capabilities[]` 不具有 ownership，也不代表 progression。
 
-Phase 4:
+Phase 4：
 
 - `source-window-index.json`: `windows[]`, `semantic-profiles[]`, `grounding-issues[]`, `status`
-- Each window row must include `window-id`, `input-unit`, `unit-type`, `source-document`, `line-ranges[]`, `context-line-ranges[]`, `linked-global-atom-ids[]`, `dossier-path`, `source-sha256`, and `window-text-sha256`
+- 每个 window 行必须包含 `window-id`、`input-unit`、`unit-type`、`source-document`、`line-ranges[]`、`context-line-ranges[]`、`linked-global-atom-ids[]`、`dossier-path`、`source-sha256` 和 `window-text-sha256`
 
-Phase 5:
+Phase 5：
 
-- `atom-plan-mapping.json`: required for `accepted` or `adjusted`; one row for every global atom with final owner type/Change/projection/relation, `final-capability-impact`, `final-target-capability`, `related-capabilities[]`, decision, and reason. Executable direct rows use `final-owner-type: executable-change` and exactly one `final-owner-change`; do not emit `final-owner-capability` or `capability-advancement`.
-- `final-packet-index.json`: required for `accepted` or `adjusted`; per executable planned Change direct atom IDs, owner-scoped non-direct atom IDs, capability view paths derived from explicit mapping impact/target pairs, packet path, packet digest, and `change-kind`. `change-kind` must be `foundation` or `business`; at most one foundation packet is allowed and it must be the first packet. A zero-business-capability plan produces no business capability view paths; the Phase 5 refit config may use `capabilities: []`.
-- `phase-5.trace.json`: final status, atom-plan mapping path, final packet index path, complexity summaries, capability progression summaries, reviewer/validator gate outcomes
+- `atom-plan-mapping.json`：`accepted` 或 `adjusted` 时必需；每个 global atom 一行，包含 final owner type/Change/projection/relation、`final-capability-impact`、`final-target-capability`、`related-capabilities[]`、decision 和 reason。executable direct 行使用 `final-owner-type: executable-change` 和恰好一个 `final-owner-change`；不得输出 `final-owner-capability` 或 `capability-advancement`。
+- `final-packet-index.json`：`accepted` 或 `adjusted` 时必需；每个 executable planned Change 包含 direct atom ID、owner-scoped non-direct atom ID、从显式 mapping impact/target pair 派生的 Capability view path、packet path、packet digest 和 `change-kind`。`change-kind` 必须为 `foundation` 或 `business`；最多允许一个 foundation packet，且必须是第一个 packet。zero-business-Capability plan 不生成 business Capability view path；Phase 5 refit config 可以使用 `capabilities: []`。
+- `phase-5.trace.json`：包含 final status、atom-plan mapping path、final packet index path、complexity summary、Capability progression summary 和 reviewer/validator gate outcome
 
-Phase 5 capability field rules:
+Phase 5 Capability field 规则：
 
 - `final-capability-impact`: `new | modified | none | foundation-substrate`；`accepted | adjusted` 中禁止 `unresolved`。
 - `new | modified` 仅允许 direct `spec-requirement | spec-guard`，并要求具体 `final-target-capability`；`none` 要求 target `none`，普通 direct `design-obligation | verification-obligation` 必须使用 `none` / `none`。
@@ -172,9 +172,9 @@ Phase 5 capability field rules:
 - 同一 `(final-owner-change, final-target-capability)` 的 spec rows impact 必须一致；roadmap 首次出现某 target 必须显式为 `new`，后续必须显式为 `modified`。Renderer 只验证并呈现，不得从顺序猜测。
 - `related-capabilities[]` 必须是唯一的合法 kebab-case capability id、指向已声明的 Capability、source-explicit、与 target 不相同；不得产生 ownership、progression、capability view 或 advanced-capability complexity count。Validator 只检查数组结构、唯一性、ID 格式和不等于 target；独立 reviewer 审核 Capability 是否已声明以及 source-explicit 语义。
 
-## Validator Commands
+## validator 命令
 
-Run after each phase:
+每个 Phase 结束后运行：
 
 ```bash
 python3 .codex/skills/source-aligned-change-plan-coverage/scripts/validate_source_aligned_orchestrate.py \
@@ -183,7 +183,7 @@ python3 .codex/skills/source-aligned-change-plan-coverage/scripts/validate_sourc
   --json
 ```
 
-Run before handoff to `openspec-propose`:
+handoff 给 `openspec-propose` 前运行：
 
 ```bash
 python3 .codex/skills/source-aligned-change-plan-coverage/scripts/validate_source_aligned_orchestrate.py \
@@ -193,4 +193,4 @@ python3 .codex/skills/source-aligned-change-plan-coverage/scripts/validate_sourc
   --json
 ```
 
-Use `--strict-warnings` when a reviewer wants warning-free output to become a hard gate.
+如果 reviewer 希望将零 warning 输出设为 hard gate，使用 `--strict-warnings`。

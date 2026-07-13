@@ -1,9 +1,9 @@
 #!/usr/bin/env python3
-"""Mechanical Phase 3 line-range helper.
+"""Phase 3 line-range mechanical helper。
 
-This script parses Phase 2 source-first atom files, groups atom/anchor ranges by
-source document, merges line ranges, and emits candidate uncovered ranges and
-overlap clusters. It intentionally does not classify semantic meaning.
+解析 Phase 2 source-first atom file，按 source document 对 atom/anchor 范围分组，
+合并行范围，并输出 candidate uncovered range 和 overlap cluster。
+本工具刻意不对语义进行分类。
 """
 
 from __future__ import annotations
@@ -69,7 +69,7 @@ def normalize_spacing(value: str) -> str:
 
 
 def stable_identifier_list(value: object) -> List[str]:
-    """Normalize identifier arrays for deterministic mechanical audit output."""
+    """规范化 identifier array，生成确定性的 mechanical audit output。"""
     if isinstance(value, list):
         items = [normalize_cell(str(item)) for item in value]
     else:
@@ -113,7 +113,7 @@ def parse_source_rows(markdown_path: Path) -> List[EvidenceRow]:
             "candidate target capability",
             "candidate related capabilities",
         }.issubset(index):
-            raise ValueError(f"{markdown_path} obligation atom ledger must use the v2 capability fields")
+            raise ValueError(f"{markdown_path} obligation atom ledger 必须使用 v2 Capability field")
 
         origin = "atom" if has_atom_id else "anchor"
         for j in range(i + 2, len(lines)):
@@ -176,7 +176,7 @@ def parse_source_rows_from_trace(json_path: Path) -> List[EvidenceRow]:
     data = json.loads(json_path.read_text(encoding="utf-8"))
     if data.get("trace-schema") != SOURCE_ATOMS_SCHEMA or data.get("trace-contract-version") != TRACE_CONTRACT_VERSION:
         raise ValueError(
-            f"{json_path} must use {SOURCE_ATOMS_SCHEMA} / {TRACE_CONTRACT_VERSION}"
+            f"{json_path} 必须使用 {SOURCE_ATOMS_SCHEMA} / {TRACE_CONTRACT_VERSION}"
         )
     rows: List[EvidenceRow] = []
     for index, raw in enumerate(data.get("source-atoms", []), start=1):
@@ -242,9 +242,9 @@ def parse_line_ranges(row: EvidenceRow) -> Tuple[List[Tuple[int, int]], List[str
     warnings: List[str] = []
 
     if "`" in row.raw_lines:
-        warnings.append("line range should not be wrapped in markdown backticks")
+        warnings.append("行范围不应包含在 Markdown 反引号中")
     if "," in row.lines:
-        warnings.append("multiple line ranges should be separated with '; ', not ','")
+        warnings.append("多个行范围应使用 '; ' 分隔，不应使用 ','")
 
     parts = [part.strip() for part in re.split(r"[;,]", row.lines) if part.strip()]
     for part in parts:
@@ -253,18 +253,18 @@ def parse_line_ranges(row: EvidenceRow) -> Tuple[List[Tuple[int, int]], List[str
             start = int(canonical_match.group(1))
             end = int(canonical_match.group(2))
         else:
-            warnings.append(f"non-canonical range segment: {part}; expected L<start>-L<end>")
+            warnings.append(f"非 canonical range segment：{part}；预期格式为 L<start>-L<end>")
             match = LEGACY_RANGE_SEGMENT_RE.match(part)
             if not match:
-                errors.append(f"unsupported range segment: {part}")
+                errors.append(f"不支持的 range segment：{part}")
                 continue
             start = int(match.group(1))
             end = int(match.group(2) or match.group(1))
         if start > end:
-            warnings.append(f"range start greater than end, normalized mechanically: {part}")
+            warnings.append(f"range start 大于 end，已执行 mechanical normalization：{part}")
             start, end = end, start
         if start <= 0 or end <= 0:
-            errors.append(f"line numbers must be positive: {part}")
+            errors.append(f"行号必须为正数：{part}")
             continue
         ranges.append((start, end))
     return ranges, errors, warnings
@@ -350,12 +350,12 @@ def resolve_source_path(workspace_root: Path, source_document: str) -> Path:
 
 
 def main() -> int:
-    parser = argparse.ArgumentParser(description="Audit Phase 3 source atom line-range mechanics.")
-    parser.add_argument("--orchestrate-dir", default="openspec/orchestrate")
-    parser.add_argument("--workspace-root", default=".")
-    parser.add_argument("--pretty", action="store_true")
-    parser.add_argument("--from-trace", dest="from_trace", action="store_true", default=True, help="Read Phase 2 .atoms.json sidecars. This is the default.")
-    parser.add_argument("--from-markdown", dest="from_trace", action="store_false", help="Read rendered v2 Phase 2 .atoms.md files instead of JSON trace.")
+    parser = argparse.ArgumentParser(description="审计 Phase 3 source atom 的 line-range mechanics。")
+    parser.add_argument("--orchestrate-dir", default="openspec/orchestrate", help="orchestrate 目录路径")
+    parser.add_argument("--workspace-root", default=".", help="工作区根目录路径")
+    parser.add_argument("--pretty", action="store_true", help="格式化 JSON 输出")
+    parser.add_argument("--from-trace", dest="from_trace", action="store_true", default=True, help="读取 Phase 2 .atoms.json sidecar；这是默认行为。")
+    parser.add_argument("--from-markdown", dest="from_trace", action="store_false", help="读取 rendered v2 Phase 2 .atoms.md file，而不是 JSON trace。")
     args = parser.parse_args()
 
     orchestrate_dir = Path(args.orchestrate_dir)
@@ -373,7 +373,7 @@ def main() -> int:
         for row in source_rows:
             rows_read += 1
             if ";" in row.source_document:
-                malformed.append({"row": asdict(row), "errors": ["multiple source documents in one row"]})
+                malformed.append({"row": asdict(row), "errors": ["同一行包含多个 source document"]})
                 continue
             ranges, errors, warnings = parse_line_ranges(row)
             if warnings:
@@ -419,7 +419,7 @@ def main() -> int:
             "source_documents_with_ranges": len(documents),
             "malformed_rows": len(malformed),
             "range_format_warnings": len(range_format_warnings),
-            "note": "Mechanical candidates only; semantic review is required before any decision.",
+            "note": "这里只提供 mechanical candidate；作出任何 decision 前都必须执行 semantic review。",
         },
         "malformed_rows": malformed,
         "range_format_warnings": range_format_warnings,

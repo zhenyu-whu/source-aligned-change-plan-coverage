@@ -1,30 +1,30 @@
-# Phase 4: Source-Window Dossier and Semantic Profile Grounding
+# Phase 4：Source-Window Dossier 与 Semantic Profile Grounding
 
-Phase 4 runs after Phase 3 returns `Decision: coverage-complete`. It is an independent source-grounding phase, not a plan-refit phase.
+Phase 3 返回 `Decision: coverage-complete` 后运行 Phase 4。它是独立的 source-grounding Phase，不是 plan-refit Phase。
 
-Phase 4 exists because Phase 2/3 atom rows are sufficient for coverage and traceability, but they are often too compressed for engineering delivery judgment. This phase uses Phase 2/3 atom line ranges as an index to copy the original source windows into reviewer-facing dossiers grouped by input Change and stable input spec capability. It then writes semantic profiles that preserve the actual source meaning needed by Phase 5 plan refit and by human reviewers. Capability dossiers are supporting semantic views, never ownership surfaces.
+设置 Phase 4 的原因是：Phase 2/3 atom 行足以支持 coverage 和 traceability，但对于工程交付判断往往过于压缩。本 Phase 以 Phase 2/3 atom 行范围为索引，将原始 source window 复制到面向 reviewer 的 dossier，并按 input Change 和稳定的 input spec Capability 分组。随后编写 semantic profile，保留 Phase 5 plan refit 和人工 reviewer 所需的实际 source 含义。Capability dossier 只是辅助 semantic view，绝不是 ownership surface。
 
-Phase 4 MUST be performed by a fresh independent subagent. It must not rerun Phase 2 extraction, normalize atoms, decide final ownership, split/merge/reorder changes, or invent source obligations. If source windows reveal a missing, conflicting, or over-broad obligation that cannot be explained by existing Phase 3 atoms, Phase 4 must return `needs-coverage-recheck`.
+Phase 4 必须由 fresh independent subagent 执行。不得重新运行 Phase 2 extraction、规范化 atom、决定 final ownership、拆分/合并/重排 Change，也不得发明 source obligation。如果 source window 暴露出既有 Phase 3 atom 无法解释的 missing、conflicting 或 over-broad obligation，Phase 4 必须返回 `needs-coverage-recheck`。
 
-## Inputs
+## 输入
 
 - `openspec/orchestrate/change-plan.md`
 - `openspec/orchestrate/phase-works/phase-1/change-plan.md`
 - `openspec/orchestrate/phase-works/phase-3/source-doc-manifest.md`
 - `openspec/orchestrate/phase-works/phase-2/source-obligation-atoms/index.md`
-- `openspec/orchestrate/phase-works/phase-2/source-obligation-atoms/*.atoms.json` as canonical extraction evidence
-- `openspec/orchestrate/phase-works/phase-2/source-obligation-atoms/*.atoms.md` as reviewer mirrors
-- `openspec/orchestrate/change-capability-anchors/obligation-atom-index.json` as canonical global atom index
-- `openspec/orchestrate/change-capability-anchors/obligation-atom-index.md` as reviewer mirror
+- `openspec/orchestrate/phase-works/phase-2/source-obligation-atoms/*.atoms.json`，作为 canonical extraction evidence
+- `openspec/orchestrate/phase-works/phase-2/source-obligation-atoms/*.atoms.md`，作为 reviewer mirror
+- `openspec/orchestrate/change-capability-anchors/obligation-atom-index.json`，作为 canonical global atom index
+- `openspec/orchestrate/change-capability-anchors/obligation-atom-index.md`，作为 reviewer mirror
 - `openspec/orchestrate/phase-works/phase-3/coverage-review.md`
 - `openspec/orchestrate/phase-works/phase-3/source-doc-coverage/*.coverage.md`
-- `openspec/orchestrate/phase-works/phase-3/phase-3-trace/*.json` as canonical Phase 3 trace sidecars
-- `openspec/orchestrate/phase-works/phase-3/phase-3-trace/*.md` as reviewer mirrors
-- Original source document roots or exact source paths.
+- `openspec/orchestrate/phase-works/phase-3/phase-3-trace/*.json`，作为 canonical Phase 3 trace sidecar
+- `openspec/orchestrate/phase-works/phase-3/phase-3-trace/*.md`，作为 reviewer mirror
+- 原始 source document 根目录或精确 source path。
 
-## Outputs
+## 输出
 
-Write Phase 4 artifacts directly under `openspec/orchestrate/phase-works/phase-4/`. Do not create `pass-*`, `iteration-*`, attempt-numbered, or similarly iterative subdirectories.
+将 Phase 4 artifact 直接写入 `openspec/orchestrate/phase-works/phase-4/`。不得创建 `pass-*`、`iteration-*`、attempt-numbered 或类似的迭代子目录。
 
 - `openspec/orchestrate/phase-works/phase-4/input-change-plan.md`
 - `openspec/orchestrate/phase-works/phase-4/source-window-dossiers/index.md`
@@ -36,145 +36,145 @@ Write Phase 4 artifacts directly under `openspec/orchestrate/phase-works/phase-4
 - `openspec/orchestrate/phase-works/phase-4/phase-4-agent-report.md`
 - `openspec/orchestrate/trace/phase-4.trace.json`
 
-The scope rules below make the authority boundary explicit: `phase-works/phase-4/source-window-dossiers/` is copied review evidence, not a replacement for original source documents, source atom ledgers, the global atom index, or Phase 5 final packets.
+以下 scope rule 明确 authority boundary：`phase-works/phase-4/source-window-dossiers/` 是复制得到的 review evidence，不能替代原始 source document、source atom ledger、global atom index 或 Phase 5 final packet。
 
-After the writer finishes, Phase 4 must pass the reviewer/repair loop from `references/reviewer-repair-loop.md`: the main agent refreshes `trace/manifest.json`, runs the phase validator, spawns a fresh independent grounding reviewer subagent, spawns a fresh independent Phase 4 repair-writer subagent if artifact changes are needed, reruns validator after refreshing the manifest, spawns a fresh independent reviewer again after repair, then continues only after pass.
+writer 完成后，Phase 4 必须通过 `references/reviewer-repair-loop.md` 定义的 reviewer/repair loop：main agent 刷新 `trace/manifest.json`、运行 Phase validator、启动 fresh independent grounding reviewer subagent；如果需要修改 artifact，则启动 fresh independent Phase 4 repair-writer subagent；刷新 manifest 后重新运行 validator，repair 后再次启动 fresh independent reviewer；只有通过后才能继续。
 
-## Artifact Language Gate
+## Artifact 语言门禁
 
-Apply the skill-level Artifact Language Gate to every Phase 4 output. Keep fixed headings, table headers, enum/status values, atom ids, source paths, line ranges, capability ids, change slugs, code symbols, and exact source quotes as needed. Agent-authored semantic notes, judgments, rationale, issue descriptions, and report summaries must be Simplified Chinese.
+对每项 Phase 4 output 应用 skill-level Artifact Language Gate。按需保留固定 heading、table header、enum/status value、atom ID、source path、行范围、Capability ID、Change slug、code symbol 和精确 source quote。agent 编写的 semantic note、judgment、rationale、issue description 和 report summary 必须使用简体中文。
 
-## Scope Rules
+## Scope 规则
 
-Phase 4 may:
+Phase 4 可以：
 
-- copy original source windows selected from Phase 2/3 atom line ranges and nearby semantic context
-- group copied source windows by input Change and by eligible input capability
-- cite Phase 2 source atom ids, `GA-####` ids, Phase 3 status/projection/owner Change/capability impact/target/related capabilities, duplicate/remainder/contextual notes, and Phase 5 handoff markers
-- write source-window semantic profiles for every input change and input capability
-- record suspected split, merge, reorder, rename, foundation, capability-boundary, contextual, dependency, evidence-burden, or non-goal pressure for Phase 5
-- report missing or ambiguous source windows as grounding issues
+- 从 Phase 2/3 atom 行范围及附近 semantic context 中选择并复制原始 source window
+- 按 input Change 和符合条件的 input Capability 对复制的 source window 分组
+- 引用 Phase 2 source atom ID、`GA-####` ID、Phase 3 status/projection/owner Change/capability impact/target/related Capability、duplicate/remainder/contextual note 和 Phase 5 handoff marker
+- 为每个 input Change 和 input Capability 编写 source-window semantic profile
+- 记录供 Phase 5 处理的 suspected split、merge、reorder、rename、foundation、capability-boundary、contextual、dependency、evidence-burden 或 non-goal pressure
+- 将缺失或含糊的 source window 报告为 grounding issue
 
-Phase 4 must not:
+Phase 4 不得：
 
-- rerun Phase 2 extraction or Phase 3 normalization
-- edit source documents, Phase 2 source atom files, Phase 3 coverage files, or the global atom index
-- create, split, merge, delete, or renumber atoms
-- decide final owner Change, final capability impact/target/related capabilities, final atom relation, or final artifact projection
-- update root `openspec/orchestrate/change-plan.md`
-- generate final change packets, final capability views, or `change-capability-anchors/index.md`
-- decide that the initial plan is accepted or adjusted
-- use copied source windows as permission to invent source obligations outside Phase 3
+- 重新运行 Phase 2 extraction 或 Phase 3 normalization
+- 编辑 source document、Phase 2 source atom file、Phase 3 coverage file 或 global atom index
+- 创建、拆分、合并、删除 atom 或重新编号
+- 决定 final owner Change、final capability impact/target/related Capability、final atom relation 或 final artifact projection
+- 更新根 `openspec/orchestrate/change-plan.md`
+- 生成 final Change packet、final Capability view 或 `change-capability-anchors/index.md`
+- 决定接受或调整初始计划
+- 将复制的 source window 视为可以在 Phase 3 范围外发明 source obligation 的授权
 
-If Phase 4 cannot ground a source-window dossier because line ranges, source paths, or atom mappings are missing or contradictory, it must record the issue. If targeted inspection cannot resolve the issue without changing Phase 3 normalization, return `needs-coverage-recheck`.
+如果行范围、source path 或 atom mapping 缺失或相互矛盾，导致 Phase 4 无法 grounding 某个 source-window dossier，必须记录该问题。如果 targeted inspection 无法在不修改 Phase 3 normalization 的前提下解决问题，返回 `needs-coverage-recheck`。
 
-## Source-Window Dossier Method
+## Source-Window Dossier 方法
 
-Create the capability dossier set only from: capabilities in the Phase 1/current Capability Map, concrete Phase 3 `target-capability` values, and Phase 3 `related-capabilities[]` links that are explicit in the cited source windows. Do not create a capability dossier from a module/provider/storage/deployment/verification label, an inferred association, a change-only `none` target, or a free-form mention.
+只能根据以下内容创建 Capability dossier 集合：Phase 1/当前 Capability Map 中的 Capability、Phase 3 的具体 `target-capability` 值，以及引用 source window 明确表达的 Phase 3 `related-capabilities[]` 链接。不得根据 module/provider/storage/deployment/verification label、推断的关联、仅归属 Change 的 `none` target 或自由文本提及创建 Capability dossier。
 
-For every input Change and every eligible input capability, collect the relevant Phase 2/3 atoms and copy their original source windows into dossier files. Group Change dossiers by candidate Change ownership before Phase 5 refit. Group capability dossiers by target impact first and source-explicit related evidence second, and visibly label related-only rows as `non-owning-supporting-evidence` so a reviewer can see what the initial plan meant without interpreting association as ownership or progression.
+对每个 input Change 和符合条件的 input Capability，收集相关 Phase 2/3 atom，并将其原始 source window 复制到 dossier file。Phase 5 refit 前，按 candidate Change ownership 对 Change dossier 分组。Capability dossier 优先按 target impact 分组，其次按 source-explicit related evidence 分组；显式将 related-only 行标记为 `non-owning-supporting-evidence`，使 reviewer 能看清初始计划的含义，又不会把关联误解为 ownership 或 progression。
 
-Window selection rules:
+window selection 规则：
 
-- Include exact atom line ranges.
-- Include the nearest section heading/path when available.
-- Include adjacent lines needed to understand entry, fact, projection, failure/recovery, verification, auth/privacy, data, API, UI, worker, persistence, or external integration semantics.
-- Include neighboring contextual, duplicate, remainder, or Phase 5 handoff evidence when it affects the same local source meaning.
-- Prefer compact windows that preserve semantic completeness; do not copy an entire large source document unless the section is too interdependent to review safely in a smaller window.
-- Preserve line numbers and original wording. Add Chinese semantic notes beside copied windows, not inside the quoted source text.
+- 包含精确的 atom 行范围。
+- 如果存在，包含最近的 section heading/path。
+- 包含理解 entry、fact、projection、failure/recovery、verification、auth/privacy、data、API、UI、worker、persistence 或 external integration semantics 所需的相邻行。
+- 当邻近的 contextual、duplicate、remainder 或 Phase 5 handoff evidence 影响同一局部 source 含义时，将其纳入。
+- 优先使用保持语义完整的紧凑 window；除非 section 之间高度耦合、无法在更小 window 中安全 review，否则不要复制整份大型 source document。
+- 保留行号和原始措辞。将中文 semantic note 写在复制 window 旁边，不得写入引用的 source text 内部。
 
-Each `by-input-change/<input-change-slug>.md` dossier must include:
+每个 `by-input-change/<input-change-slug>.md` dossier 必须包含：
 
-- input change id/name and Phase 1 closed-loop hypothesis
-- related input capabilities
-- source-window inventory grouped by source document and source section
-- copied original line-numbered source windows with exact line ranges and local context
-- linked `GA-####` ids and Phase 2 source atom ids when available
-- Phase 3 status/projection/owner for each atom
-- Phase 3 capability impact, target capability, and source-explicit related capabilities for each atom
-- neighboring contextual, duplicate, remainder, or Phase 5 handoff evidence
-- preliminary semantic profile: business outcome, entry, fact, projection, failure/recovery, verification surface, manual acceptance scenario, and suspected Phase 5 refit pressure
+- input Change ID/name 和 Phase 1 closed-loop hypothesis
+- 相关 input Capability
+- 按 source document 和 source section 分组的 source-window inventory
+- 复制的、带原始行号和精确行范围及局部 context 的 source window
+- 可用时关联 `GA-####` ID 和 Phase 2 source atom ID
+- 每个 atom 的 Phase 3 status/projection/owner
+- 每个 atom 的 Phase 3 capability impact、target Capability 和 source-explicit related Capability
+- 邻近 contextual、duplicate、remainder 或 Phase 5 handoff evidence
+- preliminary semantic profile：business outcome、entry、fact、projection、failure/recovery、verification surface、manual acceptance scenario 和 suspected Phase 5 refit pressure
 
-Each `by-input-capability/<input-capability-slug>.md` dossier must include:
+每个 `by-input-capability/<input-capability-slug>.md` dossier 必须包含：
 
-- input capability id/name and Phase 1 behavior-boundary hypothesis
-- related input changes in roadmap order
-- copied source windows grouped by change and source document
-- target `new` / `modified` spec atom groupings, plus separately labeled contextual, dependency, evidence, non-goal, and `non-owning-supporting-evidence` related atom groupings
-- behavior-boundary semantic profile: what behavior it owns, what it must not own, where it first becomes directly testable, and which later changes appear to add source-backed deltas
-- explicit confirmation that related-only rows do not create ownership, progression, capability views, or advanced-capability complexity counts
+- input Capability ID/name 和 Phase 1 behavior-boundary hypothesis
+- 按 roadmap 顺序排列的相关 input Change
+- 按 Change 和 source document 分组的复制 source window
+- target `new` / `modified` spec atom 分组，以及单独标注的 contextual、dependency、evidence、non-goal 和 `non-owning-supporting-evidence` related atom 分组
+- behavior-boundary semantic profile：它拥有何种行为、不得拥有何种行为、何时首次可直接测试，以及哪些后续 Change 看起来增加了 source-backed delta
+- 显式确认 related-only 行不会产生 ownership、progression、Capability view 或 advanced-Capability complexity count
 
-Also write `source-window-dossiers/source-window-index.json` according to `references/trace-sidecar-contract.md`. It is the canonical machine-readable index of dossier windows, linked `GA-####` ids, source hashes, line ranges, window text hashes, semantic profiles, grounding issues, and Phase 4 status.
+同时按照 `references/trace-sidecar-contract.md` 写入 `source-window-dossiers/source-window-index.json`。它是 dossier window、关联 `GA-####` ID、source hash、行范围、window text hash、semantic profile、grounding issue 和 Phase 4 status 的 canonical machine-readable index。
 
-When Phase 4 status is `grounded`, `source-window-index.json` must contain a non-empty `windows[]` array and every window must point to an existing dossier. When status is `needs-coverage-recheck` or `blocked`, `windows[]` may be empty, but `grounding-issues[]` must be non-empty and explain the source-backed reason the phase cannot produce grounded dossiers safely.
+Phase 4 status 为 `grounded` 时，`source-window-index.json` 必须包含非空 `windows[]` array，且每个 window 都指向现有 dossier。status 为 `needs-coverage-recheck` 或 `blocked` 时，`windows[]` 可以为空，但 `grounding-issues[]` 必须非空，并说明本 Phase 无法安全生成 grounded dossier 的 source-backed 原因。
 
-## Semantic Profile Review
+## semantic profile 审阅
 
-Write `source-window-semantic-profile-review.md` with one row per input change and input capability:
+编写 `source-window-semantic-profile-review.md`，每个 input Change 和 input Capability 各占一行：
 
 | Input Unit | Unit Type | Source Windows | Atom Groups | Actual Source Semantics | Engineering Delivery Signal | Manual Acceptance Scenario | Phase 5 Refit Pressure |
 | --- | --- | --- | --- | --- | --- | --- | --- |
 
-Rules:
+规则：
 
-- Derive each semantic profile from copied source windows, not only `Source Fact` summaries.
-- For an input change, identify whether the source windows describe a reviewable implementation unit: entry, fact, projection, failure path, and verification truth can be delivered together.
-- For an input capability, identify whether the source windows describe a durable behavior boundary rather than a temporary implementation module, page, source section, or one-change alias.
-- If source windows show several capabilities are directly required for one truthful business loop, record that Phase 5 should keep those deltas together unless a source-window-backed split preserves independent acceptance.
-- If source windows show one input change mixes multiple independently acceptable business outcomes, record split pressure for Phase 5.
-- If source windows show technical preparation without an independently runnable operational loop, record foundation/fold-in/context/evidence pressure for Phase 5.
-- If a profile cannot be safely derived because the evidence is missing, broad, conflicting, or unclear, record a grounding issue instead of guessing.
+- 根据复制的 source window 推导每个 semantic profile，不得只依赖 `Source Fact` summary。
+- 对 input Change，判断 source window 是否描述了可 review 的 implementation unit：entry、fact、projection、failure path 和 verification truth 能否一并交付。
+- 对 input Capability，判断 source window 描述的是持久 behavior boundary，还是临时 implementation module、页面、source section 或 one-Change alias。
+- 如果 source window 表明一个真实 business loop 直接需要多个 Capability，记录 Phase 5 应保留这些 delta 的整体性；只有 source-window-backed split 能保持独立 acceptance 时才可拆分。
+- 如果 source window 表明一个 input Change 混合了多个可独立 acceptance 的 business outcome，记录 Phase 5 split pressure。
+- 如果 source window 只显示 technical preparation，而没有可独立运行的 operational loop，记录供 Phase 5 处理的 foundation/fold-in/context/evidence pressure。
+- 如果 evidence 缺失、过宽、冲突或不明确，无法安全推导 profile，则记录 grounding issue，不得猜测。
 
-## Grounding Issues
+## grounding 问题
 
-Write `source-window-grounding-issues.md`:
+编写 `source-window-grounding-issues.md`：
 
 | Issue | Source Evidence | Affected Input Unit | Affected Atoms | Impact on Phase 5 | Required Next Step |
 | --- | --- | --- | --- | --- | --- |
 
-Use this file for:
+使用该文件记录：
 
-- source path or line range mismatches
-- missing source windows
-- source windows that imply a missing global atom
-- broad atoms whose original source window contains multiple obligations that Phase 3 did not split
-- contradictory candidate Change placement, capability target, or source-explicit related-capability evidence
-- input changes/capabilities with no source-window support
-- cases where a human product decision is required before Phase 5 can refit safely
+- source path 或行范围不匹配
+- source window 缺失
+- source window 暗示缺少 global atom
+- 原始 source window 包含多个 obligation、但 Phase 3 未拆分的 broad atom
+- 相互矛盾的 candidate Change placement、Capability target 或 source-explicit related-Capability evidence
+- 没有 source-window 支撑的 input Change/Capability
+- Phase 5 能够安全 refit 前需要人工 product decision 的情形
 
-## Phase 4 Report
+## Phase 4 报告
 
-`phase-works/phase-4/phase-4-agent-report.md` must include:
+`phase-works/phase-4/phase-4-agent-report.md` 必须包含：
 
 | Grounding Finding | Source Ranges or Atoms | Input Unit | Files Written | Phase 5 Impact | Remaining Gap or Blocker |
 | --- | --- | --- | --- | --- | --- |
 
-It must also include:
+还必须包含：
 
-- source documents read
-- input changes and input capabilities covered
-- source-window dossier counts by input change and capability
-- atom coverage count represented in dossiers
-- semantic profile summary
-- grounding issues summary
-- confirmation that Phase 4 did not edit Phase 2/3 evidence or the global atom index
-- confirmation that Phase 4 did not decide final Change ownership or final capability impact/target/related fields
-- confirmation that every Phase 4 artifact passed the Artifact Language Gate
-- confirmation that `source-window-index.json` and `trace/phase-4.trace.json` were written and passed validator
-- next required step: `Start Phase 5`, `Run Phase 3 again`, or `Blocked`
+- 已阅读的 source document
+- 已覆盖的 input Change 和 input Capability
+- 按 input Change 和 Capability 统计的 source-window dossier 数量
+- dossier 中表示的 atom coverage count
+- semantic profile 摘要
+- grounding 问题摘要
+- 确认 Phase 4 未编辑 Phase 2/3 evidence 或 global atom index
+- 确认 Phase 4 未决定 final Change ownership 或 final capability impact/target/related field
+- 确认每项 Phase 4 artifact 都通过 Artifact Language Gate
+- 确认已写入 `source-window-index.json` 和 `trace/phase-4.trace.json` 并通过 validator
+- 下一必需步骤：`Start Phase 5`、`Run Phase 3 again` 或 `Blocked`
 
-## Completion
+## 完成条件
 
-Phase 4 ends with exactly one status in `phase-works/phase-4/phase-4-agent-report.md`:
+Phase 4 结束时，`phase-works/phase-4/phase-4-agent-report.md` 必须且只能包含以下一个 status：
 
 - `Phase 4 Status: grounded`
 - `Phase 4 Status: needs-coverage-recheck`
 - `Phase 4 Status: blocked`
 
-Use `grounded` when every input change and input capability has reviewer-facing source-window dossiers, semantic profiles are written, grounding issues are either absent or safe for Phase 5 to consider, and no Phase 3 normalization recheck is required.
+如果每个 input Change 和 input Capability 都具有面向 reviewer 的 source-window dossier，semantic profile 已写入，grounding issue 不存在或可由 Phase 5 安全处理，并且无需 Phase 3 normalization recheck，使用 `grounded`。
 
-Use `needs-coverage-recheck` when source windows expose missing, over-broad, conflicting, or semantically unclear source obligations that Phase 3 must normalize before plan refit can be final.
+如果 source window 暴露出 missing、over-broad、conflicting 或语义不清的 source obligation，必须先由 Phase 3 规范化才能最终完成 plan refit，使用 `needs-coverage-recheck`。
 
-Use `blocked` when source boundaries, missing source documents, product decisions, or broad reanalysis prevent safe source-window grounding.
+如果 source boundary、缺失的 source document、product decision 或广泛 reanalysis 阻止安全的 source-window grounding，使用 `blocked`。
 
-After `grounded`, Phase 5 may start. After `needs-coverage-recheck`, the main agent must spawn a fresh Phase 3 review subagent, then a fresh Phase 4 grounding subagent. Do not start Phase 5 directly from `needs-coverage-recheck` or `blocked`.
+达到 `grounded` 后可以启动 Phase 5。出现 `needs-coverage-recheck` 后，main agent 必须先启动 fresh Phase 3 review subagent，再启动 fresh Phase 4 grounding subagent。不得从 `needs-coverage-recheck` 或 `blocked` 直接启动 Phase 5。

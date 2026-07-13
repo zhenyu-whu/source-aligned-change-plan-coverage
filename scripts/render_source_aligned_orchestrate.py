@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
-"""Render source-aligned Markdown mirrors from canonical JSON sidecars."""
+"""根据 canonical JSON sidecar 渲染 source-aligned Markdown mirror。"""
 
 from __future__ import annotations
 
@@ -83,7 +83,7 @@ def code_list(value: object) -> str:
 
 
 def stable_code_list(value: object) -> str:
-    """Render identifier arrays deterministically without duplicate entries."""
+    """以确定性顺序渲染 identifier 数组，并移除重复项。"""
     if isinstance(value, list):
         items = sorted({squash(item) for item in value if squash(item)})
         escaped_items = [item.replace("|", "\\|") for item in items]
@@ -92,7 +92,7 @@ def stable_code_list(value: object) -> str:
 
 
 def capability_target(value: object) -> str:
-    """Make change-only capability targets explicit in reviewer-facing mirrors."""
+    """在面向 reviewer 的 mirror 中显式标注仅属于 Change 的 capability target。"""
     target = squash(value)
     if not target or target.lower() == "none":
         return code("None/change-only")
@@ -139,19 +139,19 @@ def trace_appendix(trace_path: Path, trace_schema: str, repo_root: Path) -> str:
 def read_json(path: Path) -> Dict[str, object]:
     data = json.loads(path.read_text(encoding="utf-8"))
     if not isinstance(data, dict):
-        raise ValueError(f"{path} must contain a JSON object")
+        raise ValueError(f"{path} 必须包含 JSON object")
     return data
 
 
 def require_trace_contract(data: Dict[str, object], path: Path, trace_schema: str) -> None:
     actual_schema = squash(data.get("trace-schema"))
     if actual_schema != trace_schema:
-        raise ValueError(f"{path} trace-schema must be {trace_schema}, got {actual_schema or 'missing'}")
+        raise ValueError(f"{path} 的 trace-schema 必须为 {trace_schema}，实际为 {actual_schema or 'missing'}")
     actual_contract = squash(data.get("trace-contract-version"))
     if actual_contract != TRACE_CONTRACT_VERSION:
         raise ValueError(
-            f"{path} trace-contract-version must be {TRACE_CONTRACT_VERSION}, "
-            f"got {actual_contract or 'missing'}"
+            f"{path} 的 trace-contract-version 必须为 {TRACE_CONTRACT_VERSION}，"
+            f"实际为 {actual_contract or 'missing'}"
         )
 
 
@@ -183,18 +183,18 @@ def render_phase2_source_atoms(orchestrate_dir: Path, json_path: Path) -> str:
     source_document = squash(data.get("source-document"))
     source_role = squash(data.get("source-role")) or manifest_source_role(orchestrate_dir, source_document) or "None"
     lines: List[str] = [
-        f"# Phase 2 Source Obligation Atoms: {Path(source_document).with_suffix('').as_posix().replace('/', '--')}",
+        f"# Phase 2 Source Obligation Atoms：{Path(source_document).with_suffix('').as_posix().replace('/', '--')}",
         "",
-        "## Source Metadata",
+        "## 来源元数据",
         "",
-        f"- Source Path: {code(source_document)}",
-        f"- Source Role: {md(source_role)}",
-        f"- Read Status: {code(data.get('read-status'))}",
-        f"- Line Count: {code(source_line_count(repo_root, source_document))}",
-        f"- Source SHA-256: {code(data.get('source-sha256'))}",
-        f"- Canonical Owner: {code(data.get('canonical-owner'))}",
+        f"- 来源路径：{code(source_document)}",
+        f"- 来源角色：{md(source_role)}",
+        f"- 读取状态：{code(data.get('read-status'))}",
+        f"- 行数：{code(source_line_count(repo_root, source_document))}",
+        f"- 来源 SHA-256：{code(data.get('source-sha256'))}",
+        f"- Canonical owner：{code(data.get('canonical-owner'))}",
         "",
-        "## Phase 1 Candidate Changes/Capabilities Considered",
+        "## Phase 1 已考虑的候选 Change/Capability",
         "",
     ]
     considered = data.get("phase-1-candidate-changes-capabilities-considered")
@@ -204,14 +204,14 @@ def render_phase2_source_atoms(orchestrate_dir: Path, json_path: Path) -> str:
                 change = code(item.get("change"))
                 caps = code_list(item.get("capabilities"))
                 note = md(item.get("note"))
-                lines.append(f"- {change}: capabilities {caps}。{note}")
+                lines.append(f"- {change}：Capability {caps}。{note}")
             else:
                 lines.append(f"- {md(item)}")
     elif considered:
         lines.append(md(considered))
     else:
         lines.append("- `None`")
-    lines.extend(["", "## Source Section Inventory", ""])
+    lines.extend(["", "## 来源章节清单", ""])
     lines.append(
         render_table(
             ["Source Section or Range", "Read Status", "Production Meaning", "Atom IDs", "Non-Atom Classification", "Reason"],
@@ -229,7 +229,7 @@ def render_phase2_source_atoms(orchestrate_dir: Path, json_path: Path) -> str:
             ),
         ).rstrip()
     )
-    lines.extend(["", "## Obligation Atom Candidate Ledger", ""])
+    lines.extend(["", "## obligation atom 候选台账", ""])
     lines.append(
         render_table(
             [
@@ -274,7 +274,7 @@ def render_phase2_source_atoms(orchestrate_dir: Path, json_path: Path) -> str:
             ),
         ).rstrip()
     )
-    lines.extend(["", "## Source Anchor Table", ""])
+    lines.extend(["", "## source anchor 表", ""])
     lines.append(
         render_table(
             [
@@ -306,10 +306,10 @@ def render_phase2_source_atoms(orchestrate_dir: Path, json_path: Path) -> str:
         ).rstrip()
     )
     notes = [
-        ("Source Remainder Notes", data.get("source-remainder-notes")),
-        ("Ownership Ambiguity Notes", data.get("ownership-ambiguity-notes")),
-        ("Candidate Missing Plan Boundaries", data.get("candidate-missing-plan-boundaries")),
-        ("Blockers", data.get("blockers")),
+        ("来源剩余内容说明", data.get("source-remainder-notes")),
+        ("所有权歧义说明", data.get("ownership-ambiguity-notes")),
+        ("候选缺失 plan 边界", data.get("candidate-missing-plan-boundaries")),
+        ("阻塞项", data.get("blockers")),
     ]
     for heading, value in notes:
         lines.extend(["", f"## {heading}", ""])
@@ -319,7 +319,7 @@ def render_phase2_source_atoms(orchestrate_dir: Path, json_path: Path) -> str:
             lines.append(md(value))
         else:
             lines.append("- `None`")
-    lines.extend(["", "## Language Self-Check", "", md(data.get("language-self-check") or "该 Markdown mirror 由 canonical JSON sidecar 机械渲染。")])
+    lines.extend(["", "## 语言自检", "", md(data.get("language-self-check") or "该 Markdown mirror 由 canonical JSON sidecar 机械渲染。")])
     return "\n".join(lines).rstrip() + "\n" + trace_appendix(json_path, SOURCE_ATOMS_SCHEMA, repo_root)
 
 
@@ -328,7 +328,7 @@ def render_global_index(orchestrate_dir: Path, json_path: Path) -> str:
     data = read_json(json_path)
     require_trace_contract(data, json_path, GLOBAL_ATOM_INDEX_SCHEMA)
     body = [
-        "# Obligation Atom Index",
+        "# obligation atom 索引",
         "",
         render_table(
             [
@@ -383,7 +383,7 @@ def render_source_map(orchestrate_dir: Path, json_path: Path) -> str:
     data = read_json(json_path)
     require_trace_contract(data, json_path, SOURCE_TO_GLOBAL_MAP_SCHEMA)
     body = [
-        "# Source To Global Atom Map",
+        "# source atom 到 global atom 的映射",
         "",
         render_table(
             [
@@ -439,7 +439,7 @@ def render_remainder_review(orchestrate_dir: Path, json_path: Path) -> str:
     repo_root = repo_root_for(orchestrate_dir)
     data = read_json(json_path)
     require_trace_contract(data, json_path, SOURCE_REMAINDER_REVIEW_SCHEMA)
-    body = ["# Source Remainder Review", "", "## Audit Documents", ""]
+    body = ["# 来源剩余内容审阅", "", "## 审计文档", ""]
     body.append(
         render_table(
             ["Source Document", "Line Count", "Evidence Ranges", "Candidate Uncovered Ranges"],
@@ -455,7 +455,7 @@ def render_remainder_review(orchestrate_dir: Path, json_path: Path) -> str:
             ),
         ).rstrip()
     )
-    body.extend(["", "## Semantic Review Rows", ""])
+    body.extend(["", "## 语义审阅记录", ""])
     body.append(
         render_table(
             [
@@ -496,7 +496,7 @@ def render_atom_plan_mapping(orchestrate_dir: Path, json_path: Path) -> str:
     data = read_json(json_path)
     require_trace_contract(data, json_path, ATOM_PLAN_MAPPING_SCHEMA)
     body = [
-        "# Atom Plan Mapping",
+        "# atom plan 映射",
         "",
         render_table(
             [
@@ -571,7 +571,7 @@ def render_jobs(orchestrate_dir: Path, artifact: str, source_document: str = "")
 
 def render_orchestrate(orchestrate_dir: Path, artifact: str, source_document: str = "", write: bool = False) -> Dict[str, object]:
     if artifact not in SUPPORTED_ARTIFACTS:
-        raise ValueError(f"unsupported artifact: {artifact}")
+        raise ValueError(f"不支持的 artifact：{artifact}")
     results: List[Dict[str, object]] = []
     drift_count = 0
     warnings: List[str] = []
@@ -617,20 +617,20 @@ def render_orchestrate(orchestrate_dir: Path, artifact: str, source_document: st
 
 
 def main() -> int:
-    parser = argparse.ArgumentParser(description="Render source-aligned Markdown mirrors from canonical JSON sidecars.")
-    parser.add_argument("--orchestrate-dir", default="openspec/orchestrate")
-    parser.add_argument("--artifact", choices=sorted(SUPPORTED_ARTIFACTS), default="all-supported")
-    parser.add_argument("--source-document", default="")
-    parser.add_argument("--write", action="store_true")
-    parser.add_argument("--json", action="store_true")
+    parser = argparse.ArgumentParser(description="根据 canonical JSON sidecar 渲染 source-aligned Markdown mirror。")
+    parser.add_argument("--orchestrate-dir", default="openspec/orchestrate", help="orchestrate 目录路径")
+    parser.add_argument("--artifact", choices=sorted(SUPPORTED_ARTIFACTS), default="all-supported", help="要渲染的 artifact")
+    parser.add_argument("--source-document", default="", help="可选的来源文档路径筛选条件")
+    parser.add_argument("--write", action="store_true", help="将渲染结果写入 Markdown 文件")
+    parser.add_argument("--json", action="store_true", help="以 JSON 输出结果")
     args = parser.parse_args()
 
     result = render_orchestrate(Path(args.orchestrate_dir), args.artifact, args.source_document, args.write)
     if args.json:
         print(json.dumps(result, ensure_ascii=False, indent=2, sort_keys=True))
     else:
-        action = "wrote" if args.write else "checked"
-        print(f"{action} {result['rendered-files']} files; drift-count={result['drift-count']}")
+        action = "已写入" if args.write else "已检查"
+        print(f"{action} {result['rendered-files']} 个文件；drift-count={result['drift-count']}")
         for warning in result["warnings"]:
             print(f"warning: {warning}")
     return 0 if result["ok"] else 1

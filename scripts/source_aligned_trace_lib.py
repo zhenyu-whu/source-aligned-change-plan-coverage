@@ -1,9 +1,9 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
-"""Shared helpers for source-aligned trace sidecars.
+"""source-aligned trace sidecar 的共享 helper。
 
-The helpers are intentionally stdlib-only because this skill is designed to run
-inside a repository without installing extra Python packages.
+本技能需要在未安装额外 Python package 的 repository 中运行，
+因此这些 helper 刻意只使用 stdlib。
 """
 
 from __future__ import annotations
@@ -84,7 +84,7 @@ class IssueReporter:
 
 
 def split_md_row(line: str) -> Optional[List[str]]:
-    """Split a Markdown table row while preserving pipes in code spans."""
+    """拆分 Markdown table 行，同时保留 code span 中的竖线。"""
     text = line.strip()
     if not text.startswith("|"):
         return None
@@ -219,9 +219,9 @@ def parse_line_ranges(value: object) -> Tuple[str, List[Dict[str, int]], List[st
     ranges: List[Dict[str, int]] = []
 
     if "`" in raw:
-        warnings.append("line range should not be wrapped in markdown backticks")
+        warnings.append("行范围不应包含在 Markdown 反引号中")
     if "," in normalized:
-        warnings.append("multiple line ranges should be separated with '; ', not ','")
+        warnings.append("多个行范围应使用 '; ' 分隔，不应使用 ','")
 
     for part in [normalize_code(part.strip()) for part in re.split(r"[;,]", normalized) if part.strip()]:
         match = CANONICAL_RANGE_RE.match(part)
@@ -231,22 +231,22 @@ def parse_line_ranges(value: object) -> Tuple[str, List[Dict[str, int]], List[st
         else:
             legacy = LEGACY_RANGE_RE.match(part)
             if not legacy:
-                errors.append(f"unsupported range segment: {part}")
+                errors.append(f"不支持的 range segment：{part}")
                 continue
             start = int(legacy.group(1))
             end = int(legacy.group(2) or legacy.group(1))
-            warnings.append(f"non-canonical range segment: {part}; expected L<start>-L<end>")
+            warnings.append(f"非 canonical range segment：{part}；预期格式为 L<start>-L<end>")
         if start <= 0 or end <= 0:
-            errors.append(f"line numbers must be positive: {part}")
+            errors.append(f"行号必须为正数：{part}")
             continue
         if start > end:
             start, end = end, start
-            warnings.append(f"range start greater than end, normalized mechanically: {part}")
+            warnings.append(f"range start 大于 end，已执行 mechanical normalization：{part}")
         ranges.append({"start": start, "end": end})
 
     canonical = "; ".join(f"L{item['start']}-L{item['end']}" for item in ranges)
     if not ranges and normalized:
-        errors.append(f"no valid line range parsed from: {normalized}")
+        errors.append(f"未解析到有效行范围：{normalized}")
     return canonical, ranges, warnings, errors
 
 
@@ -360,7 +360,7 @@ def sha256_text(text: str) -> str:
 def read_json(path: Path) -> Dict[str, object]:
     data = json.loads(path.read_text(encoding="utf-8"))
     if not isinstance(data, dict):
-        raise ValueError(f"{path} must contain a JSON object")
+        raise ValueError(f"{path} 必须包含 JSON object")
     return data
 
 
@@ -373,7 +373,7 @@ def validate_kebab_keys(value: object, reporter: IssueReporter, file: Path | str
     if isinstance(value, dict):
         for key, child in value.items():
             if not KEBAB_CASE_RE.match(str(key)):
-                reporter.error("json-kebab-case", file, f"{path}.{key} is not kebab-case")
+                reporter.error("json-kebab-case", file, f"{path}.{key} 不是 kebab-case")
             validate_kebab_keys(child, reporter, file, f"{path}.{key}")
     elif isinstance(value, list):
         for index, child in enumerate(value):

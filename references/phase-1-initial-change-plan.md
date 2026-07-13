@@ -1,312 +1,312 @@
-# Phase 1: Initial Source-Aligned Change Plan
+# Phase 1：初始 source-aligned Change 计划
 
-Phase 1 creates the initial top-level OpenSpec change/capability framework from a full read of the user-specified source documents. The framework is a source-informed slicing hypothesis that Phase 5 may refit after obligation atoms are normalized and Phase 4 source-window grounding is complete. It must not create concrete OpenSpec changes, proposals, specs, designs, tasks, acceptance artifacts, obligation atom ledgers, line-range anchors, coverage statuses, or a backlog of evidence items waiting for Phase 2.
+Phase 1 在完整阅读用户指定的 source document 后，创建初始顶层 OpenSpec Change/Capability framework。该 framework 是由 source 支撑的 slicing hypothesis；obligation atom 完成规范化且 Phase 4 source-window grounding 完成后，Phase 5 可以对其 refit。Phase 1 不得创建具体 OpenSpec Change、proposal、spec、design、task、acceptance artifact、obligation atom ledger、line-range anchor、coverage status，也不得建立等待 Phase 2 处理的 evidence item backlog。
 
-Write the Phase 1 plan snapshot to:
+将 Phase 1 plan snapshot 写入：
 
 ```text
 openspec/orchestrate/phase-works/phase-1/change-plan.md
 ```
 
-Also promote the same initial latest-effective plan to:
+同时将同一份初始 latest-effective plan 提升到：
 
 ```text
 openspec/orchestrate/change-plan.md
 ```
 
-Write the initial full-source manifest to:
+将初始 full-source manifest 写入：
 
 ```text
 openspec/orchestrate/phase-works/phase-1/source-doc-manifest.md
 ```
 
-Write the Phase 1 report to:
+将 Phase 1 report 写入：
 
 ```text
 openspec/orchestrate/phase-works/phase-1/phase-1-agent-report.md
 ```
 
-Write the canonical Phase 1 trace sidecar to:
+将 canonical Phase 1 trace sidecar 写入：
 
 ```text
 openspec/orchestrate/trace/phase-1.trace.json
 ```
 
-After the writer finishes, Phase 1 must pass the reviewer/repair loop from `references/reviewer-repair-loop.md`: the main agent runs the phase validator, spawns a fresh independent Phase 1 reviewer subagent, spawns a fresh independent Phase 1 repair-writer subagent if artifact changes are needed, reruns validator, spawns a fresh independent reviewer again after repair, then continues only after pass.
+writer 完成后，Phase 1 必须通过 `references/reviewer-repair-loop.md` 定义的 reviewer/repair loop：main agent 运行 Phase validator、启动 fresh independent Phase 1 reviewer subagent；如果需要修改 artifact，则启动 fresh independent Phase 1 repair-writer subagent；重新运行 validator，repair 后再次启动 fresh independent reviewer；只有通过后才能继续。
 
-## Artifact Language Gate
+## Artifact 语言门禁
 
-Apply the skill-level Artifact Language Gate to every Phase 1 output. Keep fixed headings, table headers, field labels, capability ids, change slugs, paths, commands, and exact source terms as required, but write all agent-authored explanations in Simplified Chinese. This includes assumptions, conflicts, behavior-boundary descriptions, capability increment cells, roadmap field values, risk-check answers, source-evidence hint explanations, archive-readiness notes, and the Phase 1 report.
+对每项 Phase 1 output 应用 skill-level Artifact Language Gate。按需保留固定 heading、table header、field label、Capability ID、Change slug、path、command 和精确 source term，但所有 agent 编写的 explanation 都必须使用简体中文。这包括 assumption、conflict、behavior-boundary description、Capability increment cell、roadmap field value、risk-check answer、source-evidence hint explanation、archive-readiness note 和 Phase 1 report。
 
-After writing each Phase 1 artifact, perform the language self-check from the skill gate. If any explanation sentence remains English-dominant after ignoring IDs, paths, commands, code, and fixed terms, rewrite it before finishing Phase 1.
+每次写入 Phase 1 artifact 后，执行 skill gate 中的 language self-check。忽略 ID、path、command、code 和固定 term 后，如果仍存在英文主导的 explanation sentence，必须在 Phase 1 结束前改写。
 
-## Goal
+## 目标
 
-Plan a set of scientific, verifiable, iterative OpenSpec changes from a full reading of the user-specified source documents.
+完整阅读用户指定的 source document，并规划一组科学、可验证、可迭代的 OpenSpec Change。
 
-Each change should represent a reviewable, implementable, verifiable, archivable system behavior change. Do not mechanically split by technical module, database table, page, component, SDK, queue, or prototype scenario.
+每个 Change 都应表示可 review、可实现、可验证、可 archive 的系统行为变化。不得按 technical module、database table、页面、component、SDK、queue 或 prototype scenario 机械拆分。
 
-Use only the documents or directories the user specifies. Enumerate and read every source document body before producing the initial framework. Do not read or rely on the current `openspec/` directory, existing specs, existing changes, archive history, or custom artifacts unless the user explicitly includes them as input.
+只使用用户指定的文档或目录。生成初始 framework 前，枚举并阅读每份 source document 的正文。除非用户明确将其纳入 input，否则不得读取或依赖当前 `openspec/` 目录、现有 spec、现有 Change、archive history 或 custom artifact。
 
-If the specified source set is too large to read safely, return a blocker instead of sampling. The Phase 1 framework is only valid when it is based on a full-source read.
+如果指定 source set 过大，无法安全完整阅读，则返回 blocker，不得抽样。Phase 1 framework 只有在基于 full-source read 时才有效。
 
-## Change-Capability Model
+## Change/Capability 模型
 
-Use this model throughout the plan:
+在整个计划中使用以下模型：
 
-- A change is a vertical business or system loop. It should move the product or system through a concrete, reviewable outcome.
-- A capability is a long-lived spec behavior boundary that should remain meaningful as `openspec/specs/<capability>/spec.md` after multiple changes are implemented and archived. It usually matures across multiple changes.
-- Repository/module boundaries, storage/provider/deployment choices, internal API organization, migration mechanics, and verification strategy are not capabilities by themselves. Keep such technical architecture content in the owning Change's design/tasks/evidence scope unless the source defines a durable normative system behavior suitable for a spec boundary.
-- Discover capabilities before planning changes, but do not generate changes mechanically from the capability list. Slice changes from truthful user/system loops, then project only the spec deltas each loop creates or modifies.
-- A change may advance multiple capabilities when those increments are required by the same functional loop. The goal is not to maximize capability coverage per change.
-- A capability is usually advanced by multiple changes over time.
-- Do not create a one-to-one roadmap where each change merely implements one capability. If a candidate roadmap trends that way, reslice changes around user/system loops and keep capabilities as cross-cutting behavior boundaries.
-- The anti one-to-one rule prevents capability-driven roadmaps. It does not forbid small focused vertical changes that primarily advance one capability when they are derived from a real user or system loop.
-- A capability id must not merely restate a single change outcome. If a capability is advanced by only one change and its id shares the dominant nouns or verbs of that change slug, treat it as a boundary smell: merge it into a broader durable capability, rename it around a long-lived behavior boundary, or record a source-backed reason why it is genuinely terminal.
-- Do not split or rename capabilities to make each change advance only one capability. Cross-cutting capabilities such as identity, privacy, realtime state, version history, entitlement, failure recovery, export delivery, or observability should remain visible across multiple loops when the same loop directly changes them.
-- Each change implements only the capability increments needed for that change's closed loop. Later changes may strengthen, broaden, or harden the same capability.
-- A change-capability relation has only two allowed values:
-  - `New`: the change first creates that capability/spec boundary.
-  - `Modified`: the change changes requirements or scenarios for an existing capability/spec boundary.
-- A valid technical or architecture-oriented change may have both `New: None` and `Modified: None` when it creates no spec delta. It must still be implementable, verifiable, archive-ready, and must not invent a Capability merely to fill the matrix.
-- Do not model consumed, preserved, reused, or dependency-only capabilities as change-capability relations. Mention them in dependencies or notes only when useful, not in the capability progression matrix.
-- Name capabilities as stable English kebab-case ids, such as `account-access-continuity` or `async-work-execution-recovery`. Do not use module names, table names, page names, external-service names, or localized display names as capability ids.
+- Change 是 vertical business/system loop，应推动产品或系统达到具体且可 review 的 outcome。
+- Capability 是长期存在的 spec behavior boundary；多个 Change 实现并 archive 后，它仍应作为 `openspec/specs/<capability>/spec.md` 保持意义。Capability 通常会跨多个 Change 逐步成熟。
+- repository/module boundary、storage/provider/deployment choice、internal API organization、migration mechanics 和 verification strategy 本身都不是 Capability。除非 source 定义了适合作为 spec boundary 的持久 normative system behavior，否则将这些 technical architecture 内容保留在 owner Change 的 design/task/evidence scope 中。
+- 先发现 Capability，再规划 Change，但不得根据 Capability list 机械生成 Change。依据真实的 user/system loop 切分 Change，然后只投影每个 loop 创建或修改的 spec delta。
+- 当多个 Capability increment 都是同一 functional loop 的直接必要条件时，一个 Change 可以推进多个 Capability。目标不是最大化每个 Change 的 Capability coverage。
+- 一个 Capability 通常会随时间由多个 Change 推进。
+- 不得创建每个 Change 只实现一个 Capability 的 one-to-one roadmap。如果 candidate roadmap 出现这种趋势，围绕 user/system loop 重新切分 Change，并将 Capability 保持为 cross-cutting behavior boundary。
+- anti one-to-one 规则用于防止 capability-driven roadmap；它不禁止来源于真实 user/system loop、主要推进一个 Capability 的小型聚焦 vertical Change。
+- Capability ID 不得只是改写单个 Change outcome。如果某 Capability 仅由一个 Change 推进，且其 ID 与该 Change slug 共享主要名词或动词，将其视为 boundary smell：合并进更宽泛、持久的 Capability，围绕长期 behavior boundary 重命名，或记录 source-backed 原因说明它为何确实是 terminal boundary。
+- 不得通过拆分或重命名 Capability，让每个 Change 只推进一个 Capability。当同一 loop 直接改变 identity、privacy、realtime state、version history、entitlement、failure recovery、export delivery 或 observability 等 cross-cutting Capability 时，它们应在多个 loop 中持续可见。
+- 每个 Change 只实现其 closed loop 所需的 Capability increment；后续 Change 可以继续增强、扩展或 harden 同一 Capability。
+- Change/Capability relation 只允许两个值：
+  - `New`：该 Change 首次创建此 Capability/spec boundary。
+  - `Modified`：该 Change 修改现有 Capability/spec boundary 的 requirement 或 scenario。
+- 合法的 technical 或 architecture-oriented Change 在不产生 spec delta 时，可以同时使用 `New: None` 和 `Modified: None`。它仍必须可实现、可验证、archive-ready，并且不得为了填充 matrix 而发明 Capability。
+- 不得把仅消费、preserve、复用或 dependency-only 的 Capability 建模为 Change/Capability relation。仅在有用时在 dependency 或 note 中提及，不得写入 Capability progression matrix。
+- Capability 使用稳定的英文 kebab-case ID，例如 `account-access-continuity` 或 `async-work-execution-recovery`。不得使用 module name、table name、page name、external-service name 或本地化 display name 作为 Capability ID。
 
-## Change Complexity Calibration
+## Change complexity 校准
 
-Do not optimize for either the fewest changes or the most changes. Optimize for reviewable implementation complexity.
+既不要追求最少 Change，也不要追求最多 Change；应针对可 review 的 implementation complexity 优化。
 
-A change should deliver one clear, verifiable functional point or system behavior point. It may touch multiple capabilities only when those capability increments are directly necessary for that functional point. Do not treat the number of capability columns touched by a change as implementation cost by itself; split by independently verifiable functional points, not by capability columns.
+一个 Change 应交付一个清晰、可验证的 functional point 或 system behavior point。只有当多个 Capability increment 是该 functional point 的直接必要条件时，Change 才可以涉及多个 Capability。不得把 Change 涉及的 Capability column 数量本身当作 implementation cost；应按可独立验证的 functional point 拆分，而不是按 Capability column 拆分。
 
-Split a candidate change when it contains multiple functional points that can each be implemented, verified, reviewed, and archived independently while still satisfying the Closed-loop Test.
+如果 candidate Change 包含多个 functional point，且每个 point 都能独立实现、验证、review 和 archive，同时仍满足 Closed-loop Test，则拆分该 Change。
 
-A smaller change is valid even if it primarily advances one capability, as long as it is derived from a user/system loop rather than mechanically from the capability list.
+只要小型 Change 来源于 user/system loop，而不是由 Capability list 机械生成，即使它主要推进一个 Capability 也仍然有效。
 
-Do not merge independently verifiable behavior merely to avoid a one-to-one appearance in the capability matrix.
+不得仅为避免 Capability matrix 呈现 one-to-one 外观而合并可独立验证的行为。
 
-For the first feature change after a foundation candidate, prefer the thinnest real product or system loop that can be archived without pretending later infrastructure is complete.
+对 foundation candidate 之后的第一个 feature Change，优先选择最薄但真实、可 archive 的产品或系统 loop，不得假装后续 infrastructure 已完成。
 
-### Change Ordering Principle
+### Change 排序原则
 
-Order changes by behavior maturity, not prerequisite availability.
+按 behavior maturity 排序 Change，而不是按 prerequisite availability 排序。
 
-For typical web systems, prefer the earliest thin user-visible behavior loop: a real page or user-facing entry point that is usable end to end, including user action, system fact, visible result, basic failure handling, and verification. This is not a static UI shell; it must be a minimum real behavior that a human can accept.
+对典型 web system，优先安排最早的薄 user-visible behavior loop：真实页面或 user-facing entry point 可以端到端使用，包含 user action、system fact、visible result、基本 failure handling 和 verification。它不能只是静态 UI shell，必须是人工可 acceptance 的最小真实行为。
 
-Earlier changes should establish only the facts, contracts, and support needed to make the current behavior truthful. Later changes should broaden, automate, integrate, harden, govern, observe, or operate behavior that already exists.
+较早 Change 只建立使当前行为真实所需的 fact、contract 和 support。后续 Change 再扩展、自动化、集成、harden、治理、观测或运营已存在的行为。
 
-Do not implement complex permission models, governance workflows, quota policies, audit systems, admin operations, or observability layers before there is a concrete behavior for them to protect, govern, limit, audit, operate, or observe.
+在尚无具体行为可供保护、治理、限制、审计、运营或观测前，不得先实现复杂 permission model、governance workflow、quota policy、audit system、admin operation 或 observability layer。
 
-Introduce only the minimal access/context assumptions needed to make the current behavior truthful. A supporting capability comes earlier only when it is necessary for that behavior's truthful acceptance, or when the supporting capability is itself an independently acceptable operational/system behavior.
+只引入使当前行为真实所需的最小 access/context assumption。supporting Capability 只有在当前行为的真实 acceptance 确实需要它，或它本身就是可独立 acceptance 的 operational/system behavior 时，才应更早出现。
 
-### Split Challenge
+### 拆分质询
 
-Before accepting each candidate change, ask:
+接受每个 candidate Change 前，回答：
 
-1. What is the single functional point this change proves?
-2. Does the change include another behavior that could be shipped and verified separately?
-3. Can part of this change be archived earlier without fake stubs or low-level-only proof?
-4. Are multiple entry points, failure modes, or projections being combined only because they share infrastructure?
-5. Is the change introducing infrastructure-heavy concerns before the functional point actually needs their full behavior?
+1. 该 Change 证明的唯一 functional point 是什么？
+2. 该 Change 是否包含可单独交付和验证的其他行为？
+3. 是否可以在不使用虚假 stub 或仅低层 proof 的情况下，更早 archive 该 Change 的一部分？
+4. 是否仅因共享 infrastructure，便把多个 entry point、failure mode 或 projection 合并在一起？
+5. 该 Change 是否在 functional point 真正需要完整行为前，提前引入 infrastructure-heavy concern？
 
-If the answer to 2, 3, 4, or 5 is yes, split the change unless the plan explains why the combined scope is necessary for one coherent closed loop.
+如果第 2、3、4 或 5 项答案为是，拆分该 Change；除非计划能说明合并 scope 为何是形成 coherent closed loop 的必要条件。
 
-### Capability Shape Challenge
+### Capability 形态质询
 
-Before accepting the initial framework, review the capability map and progression matrix as a whole:
+接受初始 framework 前，整体 review Capability map 和 progression matrix：
 
-1. Does each capability describe a durable behavior boundary that can plausibly mature across multiple changes?
-2. Do more than half of the planned changes have exactly one non-empty capability cell? If yes, inspect whether the roadmap has become capability-driven and reslice unless each exception is source-backed.
-3. Do many capabilities have exactly one advancing/baseline change, or does a capability slug paraphrase its first advancing change slug? If yes, merge, rename, or broaden those capabilities unless they are genuinely terminal source-backed boundaries.
-4. Did any user/system loop lose directly necessary identity, privacy, realtime, versioning, entitlement, failure recovery, export, or observability increments only to make the row narrower? If yes, restore those direct increments to the loop.
-5. Would the same source obligation be easier for a later `openspec-propose` agent to understand as one vertical loop with several capability deltas? If yes, keep the loop and document the cross-capability coupling.
+1. 每个 Capability 是否描述可跨多个 Change 合理成熟的持久 behavior boundary？
+2. 是否超过一半的 planned Change 恰好只有一个非空 Capability cell？如果是，检查 roadmap 是否已变成 capability-driven；除非每个例外都有 source 支撑，否则重新切分。
+3. 是否有许多 Capability 只有一个 advancing/baseline Change，或 Capability slug 只是改写其第一个 advancing Change slug？如果是，合并、重命名或扩展这些 Capability；除非它们确实是 source-backed terminal boundary。
+4. 是否有 user/system loop 仅为缩窄 matrix 行，丢失了直接必要的 identity、privacy、realtime、versioning、entitlement、failure recovery、export 或 observability increment？如果是，将这些 direct increment 恢复到 loop 中。
+5. 如果把同一 source obligation 表示为具有多个 Capability delta 的一个 vertical loop，后续 `openspec-propose` agent 是否更容易理解？如果是，保留该 loop 并记录 cross-Capability coupling。
 
-## Change Slicing
+## Change 切分
 
-Prefer changes sliced by verifiable business or system loops.
+优先按可验证的 business/system loop 切分 Change。
 
-Every executable business change candidate must satisfy the Closed-loop Test:
+每个 executable business Change candidate 都必须满足 Closed-loop Test：
 
-- Entry: a clear entry point such as page, API, CLI, worker job, webhook, admin operation, or scheduled task.
-- Fact: a clear system fact is created or changed, such as data record, file, event, state, ledger entry, or external receipt.
-- Projection: the result is observable through UI, API response, stream event, notification, download link, log, or audit view.
-- Failure: at least one failure path is explicit, with explainable, recoverable, or blocked state.
-- Verification: executable proof exists, such as unit, contract, integration, E2E, visual smoke, manual checklist, fixture replay, or dry run.
+- Entry：具有清晰 entry point，例如页面、API、CLI、worker job、webhook、admin operation 或 scheduled task。
+- Fact：创建或改变清晰的 system fact，例如 data record、file、event、state、ledger entry 或 external receipt。
+- Projection：可通过 UI、API response、stream event、notification、download link、log 或 audit view 观察结果。
+- Failure：至少明确一个 failure path，且具备可解释、可恢复或 blocked state。
+- Verification：存在 executable proof，例如 unit、contract、integration、E2E、visual smoke、manual checklist、fixture replay 或 dry run。
 
-If a candidate change only proves that a low-level component exists, it cannot stand alone as an executable business change. It may be recorded as a foundation candidate for Phase 2/3 slicing and Phase 4 grounding, but Phase 5 decides whether it qualifies as the first executable foundation change. It must remain zero-domain engineering substrate and must not be counted as business capability `New` / `Modified` progression.
+如果 candidate Change 只能证明 low-level component 存在，它就不能作为独立 executable business Change。可以将其记录为供 Phase 2/3 slicing 和 Phase 4 grounding 使用的 foundation candidate，但由 Phase 5 决定它是否符合第一个 executable foundation Change 的条件。它必须保持 zero-domain engineering substrate，且不得计入 business Capability 的 `New` / `Modified` progression。
 
-## Foundation Candidate
+## Foundation 候选项
 
-A foundation candidate is allowed only when all conditions hold:
+只有同时满足以下条件时才允许 foundation candidate：
 
-1. Without it, no later closed-loop change can reasonably start.
-2. It is the only pre-business foundation candidate in the initial roadmap.
-3. It is a zero-domain engineering bootstrap.
-4. It produces a stable reusable engineering boundary.
-5. It names the runtime or integration-level proof expectation that would validate the substrate if implemented.
-6. It names the first closed-loop business/user workflow that will build on it.
-7. The plan does not contain consecutive pure foundation candidates.
+1. 缺少它时，任何后续 closed-loop Change 都无法合理启动。
+2. 它是初始 roadmap 中唯一的 pre-business foundation candidate。
+3. 它是 zero-domain engineering bootstrap。
+4. 它产生稳定、可复用的 engineering boundary。
+5. 它说明实现后用于验证 substrate 的 runtime 或 integration-level proof expectation。
+6. 它指出第一个构建在其上的 closed-loop business/user workflow。
+7. 计划中不存在连续的纯 foundation candidate。
 
-The Phase 1 foundation candidate may include only engineering substrate needed before the first real workflow:
+Phase 1 foundation candidate 只能包含第一个真实 workflow 之前必需的 engineering substrate：
 
-- repository/package directories
-- root scripts
+- repository/package 目录
+- 根级脚本
 - lint/typecheck/test harness
-- env validation
-- local dependency manifests
-- migration tooling, but not business schema
-- empty web/worker smoke entrypoints
-- empty adapter seams whose behavior is not yet domain-specific
+- env 校验
+- 本地依赖 manifest
+- migration 工具，但不包括业务 schema
+- 空的 web/worker smoke 入口
+- 行为尚未体现 domain 特性的空 adapter seam
 
-The Phase 1 foundation candidate must not include:
+Phase 1 foundation candidate 不得包含：
 
-- business/domain table creation or table ownership beyond migration tooling
-- domain commands, use-cases, policies, or repositories
-- user-facing API routes or DTOs
-- domain-specific worker or async semantics, job state machines, recovery loops, or business queues
-- domain events, stream messages, outbox events, or realtime business messages
-- identity, authorization, tenancy, entitlement, or account mapping tied to domain semantics
-- domain entities, lifecycle objects, collection/accounting/delivery/export concepts, or history/versioning rules
-- workflow-specific observability, privacy, recovery, responsive, design-system, or verification behavior that belongs to the first workflow that needs it
+- 超出 migration 工具范围的 business/domain table 创建或 table ownership
+- domain command、use case、policy 或 repository
+- 面向用户的 API route 或 DTO
+- domain-specific worker 或 async 语义、job state machine、recovery loop 或业务 queue
+- domain event、stream message、outbox event 或 realtime 业务消息
+- 与 domain 语义绑定的 identity、authorization、tenancy、entitlement 或 account mapping
+- domain entity、lifecycle object、collection/accounting/delivery/export 概念或 history/versioning 规则
+- 属于首个需要它的 workflow 的专用 observability、privacy、recovery、responsive、design-system 或 verification 行为
 
-Source-backed domain behavior found during Phase 1 should be sliced into business change candidates or recorded as non-canonical ownership hints for Phase 2. Do not hide it inside a foundation/spine change.
+Phase 1 发现的 source-backed domain behavior 应切分到 business Change candidate，或记录为 Phase 2 的 non-canonical ownership hint。不得将其隐藏在 foundation/spine Change 内。
 
-Phase 1 must not promise that the foundation candidate will become an executable final change. Phase 5 owns that decision. If it qualifies, Phase 5 renders it as the first executable foundation change packet with `change-kind: foundation`, `final-target-capability: runtime-substrate-foundation`, and `final-capability-impact: foundation-substrate`; otherwise Phase 5 must move, defer, contextualize, or block it. Business roadmap progression starts with the first `change-kind: business` packet.
+Phase 1 不得承诺 foundation candidate 会成为 executable final Change，该 decision 属于 Phase 5。如果符合条件，Phase 5 将其渲染为第一个 executable foundation Change packet，并使用 `change-kind: foundation`、`final-target-capability: runtime-substrate-foundation` 和 `final-capability-impact: foundation-substrate`；否则 Phase 5 必须移动、defer、contextualize 或阻塞它。business roadmap progression 从第一个 `change-kind: business` packet 开始。
 
-## Workflow
+## 工作流
 
-1. Enumerate every source document under the user-specified roots or exact paths.
-2. Read every enumerated source document body. Do not sample, skim only filenames, or defer full reading to Phase 2.
-3. Write `phase-works/phase-1/source-doc-manifest.md` with every source document, read status, high-level source role, and coarse topic/path hints.
-4. Extract core user or system paths, long-lived normative behaviors, constraints, and architecture decisions from the complete source read.
-5. Express each path as: entry -> behavior -> system fact -> visible result -> failure recovery.
-6. Identify stable spec capabilities first, using English kebab-case ids. Require each capability to justify a durable `openspec/specs/<capability>/spec.md` boundary that remains useful after multiple changes; reject module, storage, deployment, provider, component, or verification-only labels.
-7. Generate candidate vertical changes from user/system loops, not from the capability list.
-8. Filter, merge, or reslice candidates using the Closed-loop Test, Change Complexity Calibration, Split Challenge, Capability Shape Challenge, and anti one-to-one mapping rule.
-9. Order changes by behavior maturity and real engineering dependencies, prioritizing the earliest minimal runnable loop over future-prerequisite availability.
-10. Project each ordered change onto the capability map: classify every actual spec delta as `New` or `Modified`, and use `None` for both when the change is change-only architecture/design/verification work.
-11. Build a capability progression matrix that shows only those `New` / `Modified` spec deltas.
-12. Mark key scenarios, non-goals, risks, conflicts, and deferred content from the input documents.
-13. Add concise `Source evidence` hints only to justify the planned slice. These hints may name source paths, headings, section numbers, decision IDs, route/page/object names, APIs, commands, DTOs, entities, tables, jobs, events, assets, environments, or verification anchors.
-14. Keep Phase 1 evidence hints short and non-canonical. Do not extract or enumerate every source-backed requirement, and do not create obligation atom ledgers, line ranges, anchor tables, coverage statuses, "pending Phase 2" evidence lists, or evidence counts. Phase 2 owns source-first atom extraction, Phase 3 owns coverage normalization, Phase 4 owns source-window grounding, and Phase 5 owns final plan refit.
-15. Write `trace/phase-1.trace.json` according to `references/trace-sidecar-contract.md`. The main orchestrating agent refreshes `trace/manifest.json` and runs `validate_source_aligned_orchestrate.py --phase phase-1` after the writer finishes.
+1. 枚举用户指定根目录或精确 path 下的每份 source document。
+2. 阅读每份已枚举 source document 的正文。不得抽样、只浏览 filename，也不得把完整阅读推迟到 Phase 2。
+3. 写入 `phase-works/phase-1/source-doc-manifest.md`，列出每份 source document、read status、high-level source role 和 coarse topic/path hint。
+4. 从完整 source 阅读结果中提取核心 user/system path、长期 normative behavior、constraint 和 architecture decision。
+5. 将每条 path 表达为：entry -> behavior -> system fact -> visible result -> failure recovery。
+6. 先识别稳定的 spec Capability，并使用英文 kebab-case ID。每个 Capability 都必须证明存在持久的 `openspec/specs/<capability>/spec.md` boundary，在多个 Change 后仍有价值；拒绝 module、storage、deployment、provider、component 或 verification-only label。
+7. 从 user/system loop 生成 candidate vertical Change，不得从 Capability list 生成。
+8. 使用 Closed-loop Test、Change Complexity Calibration、Split Challenge、Capability Shape Challenge 和 anti one-to-one mapping rule 过滤、合并或重新切分 candidate。
+9. 按 behavior maturity 和真实 engineering dependency 排序 Change；优先最早的 minimal runnable loop，而不是未来 prerequisite availability。
+10. 将每个已排序 Change 投影到 Capability map：把每个实际 spec delta 分类为 `New` 或 `Modified`；如果 Change 仅包含 architecture/design/verification 工作，则两者均使用 `None`。
+11. 建立只显示这些 `New` / `Modified` spec delta 的 Capability progression matrix。
+12. 标记 input document 中的关键 scenario、non-goal、risk、conflict 和 deferred content。
+13. 仅为证明计划切分合理性而添加简洁的 `Source evidence` hint。hint 可以列出 source path、heading、section number、decision ID、route/page/object name、API、command、DTO、entity、table、job、event、asset、environment 或 verification anchor。
+14. Phase 1 evidence hint 保持简短且 non-canonical。不得提取或枚举每项 source-backed requirement，不得创建 obligation atom ledger、行范围、anchor table、coverage status、"pending Phase 2" evidence list 或 evidence count。Phase 2 负责 source-first atom extraction，Phase 3 负责 coverage normalization，Phase 4 负责 source-window grounding，Phase 5 负责 final plan refit。
+15. 按照 `references/trace-sidecar-contract.md` 写入 `trace/phase-1.trace.json`。writer 完成后，由 main orchestrating agent 刷新 `trace/manifest.json` 并运行 `validate_source_aligned_orchestrate.py --phase phase-1`。
 
-## Output
+## 输出
 
-Produce `openspec/orchestrate/phase-works/phase-1/source-doc-manifest.md` with:
+生成 `openspec/orchestrate/phase-works/phase-1/source-doc-manifest.md`，其中包含：
 
 | Source Document | Read Status | Source Role | Coarse Topics / Paths | Notes |
 | --- | --- | --- | --- | --- |
 
-Rules:
+规则：
 
-- Every user-specified source document must appear exactly once.
-- `Read Status` must be `read-full` for source documents used by this workflow.
-- Non-source artifacts may be listed as `non-source-artifact` only when they are under a specified root and are not meaningful source docs.
-- Do not add coverage status, atom counts, or line-range coverage in Phase 1.
+- 每份用户指定的 source document 必须恰好出现一次。
+- 本工作流使用的 source document，其 `Read Status` 必须为 `read-full`。
+- 仅当 non-source artifact 位于指定根目录下且不属于有意义的 source document 时，才可列为 `non-source-artifact`。
+- Phase 1 不得添加 coverage status、atom count 或 line-range coverage。
 
-Produce `openspec/orchestrate/phase-works/phase-1/change-plan.md`, then promote the same latest-effective content to `openspec/orchestrate/change-plan.md`, with:
+生成 `openspec/orchestrate/phase-works/phase-1/change-plan.md`，再将同一份 latest-effective content 提升到 `openspec/orchestrate/change-plan.md`，内容包括：
 
-### Inputs
+### 输入
 
-- Documents specified and read
-- Potentially relevant documents not read
-- Assumptions and conflicts
+- 已指定并阅读的 document
+- 可能相关但未阅读的 document
+- assumption 和 conflict
 
-### Slicing Principles
+### 切分原则
 
-- Change slicing principles used for this plan
-- Rejected slicing approaches and reasons
-- Explicit statement that changes are vertical loops and capabilities are long-lived behavior boundaries
+- 本计划使用的 Change slicing principle
+- 被拒绝的 slicing approach 及原因
+- 明确说明 Change 是 vertical loop，Capability 是长期 behavior boundary
 
-### Capability Map
+### Capability 映射
 
 | Capability | Behavior boundary | First change | Later expansion |
 | --- | --- | --- | --- |
 
-Rules:
+规则：
 
-- Capability values must be English kebab-case ids in backticks.
-- Behavior boundary explains the durable spec behavior and why `openspec/specs/<capability>/spec.md` remains valuable after the planned changes, not the implementation module.
-- Later expansion should show that the capability can mature across later changes.
-- If `Later expansion` is `None` or only repeats the first change for many capabilities, the plan must explain why those capabilities are genuinely terminal instead of one-change aliases.
-- If the complete source set contains no business spec delta, keep the `Capability Map` heading and write `无业务 Capability delta` instead of inventing a capability or rendering a malformed empty table.
+- Capability value 必须是反引号包裹的英文 kebab-case ID。
+- Behavior boundary 说明持久 spec behavior，以及为何计划中的 Change 完成后 `openspec/specs/<capability>/spec.md` 仍有价值；不得描述 implementation module。
+- Later expansion 应体现 Capability 可在后续 Change 中继续成熟。
+- 如果许多 Capability 的 `Later expansion` 为 `None`，或只重复第一个 Change，计划必须解释这些 Capability 为何确实是 terminal boundary，而不是 one-Change alias。
+- 如果完整 source set 不包含 business spec delta，保留 `Capability Map` heading 并写入 `无业务 Capability delta`；不得发明 Capability 或渲染格式错误的空表。
 
-### Capability Progression Matrix
+### Capability progression 矩阵
 
-Create a matrix after the Capability Map:
+在 Capability Map 后创建 matrix：
 
 | Change | `capability-a` | `capability-b` | `capability-c` |
 | --- | --- | --- | --- |
-| `change-name` | Concrete capability increment delivered by this change |  | Concrete capability increment delivered by this change |
+| `change-name` | 该 Change 交付的具体 Capability increment |  | 该 Change 交付的具体 Capability increment |
 
-Rules:
+规则：
 
-- Each row is one change.
-- Each column is one capability from the Capability Map.
-- Each non-empty cell describes the specific functional increment this change contributes to that capability.
-- Leave the cell blank when the change does not create or modify that capability.
-- A change with `New: None` and `Modified: None` has a fully blank matrix row; do not synthesize a capability for architecture, design, or verification work.
-- If there are no capabilities, keep the `Capability Progression Matrix` heading and write `无业务 Capability delta` instead of emitting an empty capability table.
-- Do not fill cells with generic reuse, generic test coverage, or "uses existing capability"; only direct capability advancement belongs in the matrix.
-- Do not prefix matrix cells with `New:` or `Modified:`; use each Change Roadmap entry's explicit `New` / `Modified` lists as the Phase 1 relation source. The first listed delta for a capability must be `New`, and later listed deltas must be `Modified`; no renderer should guess or silently repair these labels from matrix order.
-- Keep cell text concise enough for review.
-- If the matrix is mostly diagonal, has many single-cell rows paired with single-change capabilities, or visually resembles a change list duplicated as capabilities, revise the change/capability model before Phase 1 finishes.
+- 每行对应一个 Change。
+- 每列对应 Capability Map 中的一个 Capability。
+- 每个非空 cell 描述该 Change 为对应 Capability 提供的具体 functional increment。
+- Change 不创建或修改某 Capability 时，将 cell 留空。
+- `New: None` 且 `Modified: None` 的 Change 使用全空 matrix 行；不得为 architecture、design 或 verification 工作合成 Capability。
+- 不存在 Capability 时，保留 `Capability Progression Matrix` heading 并写入 `无业务 Capability delta`，不得输出空 Capability table。
+- 不得使用通用 reuse、通用 test coverage 或 "uses existing capability" 填充 cell；matrix 只包含 direct Capability advancement。
+- 不得在 matrix cell 前添加 `New:` 或 `Modified:`；以每个 Change Roadmap 条目显式的 `New` / `Modified` list 作为 Phase 1 relation source。某 Capability 首次列出的 delta 必须为 `New`，后续 delta 必须为 `Modified`；任何 renderer 都不得根据 matrix 顺序猜测或静默修复 label。
+- cell text 应足够简洁，便于 review。
+- 如果 matrix 大部分呈 diagonal、包含许多与 single-Change Capability 配对的 single-cell 行，或视觉上像是把 Change list 复制成 Capability，应在 Phase 1 结束前修订 Change/Capability 模型。
 
-### Change Roadmap
+### Change roadmap
 
-For each change:
+每个 Change 包含：
 
-- Change name:
-- Closed-loop outcome:
-- Source evidence hints (Phase 1, non-canonical):
-- Capability changes:
-  - New: use capability ids from the Capability Map, or write `None`.
-  - Modified: use capability ids from the Capability Map, or write `None`.
-- In scope:
-- Out of scope:
-- Vertical slice:
-  - Entry:
-  - Fact:
-  - Projection:
-  - Failure:
-  - Verification:
-- Dependencies:
-- Archive readiness:
+- Change 名称：
+- 闭环结果：
+- 来源 evidence hint（Phase 1，non-canonical）：
+- Capability 变更：
+  - New：使用 Capability Map 中的 Capability ID，或写入 `None`。
+  - Modified：使用 Capability Map 中的 Capability ID，或写入 `None`。
+- 范围内：
+- 范围外：
+- vertical slice：
+  - 入口：
+  - 事实：
+  - projection：
+  - 失败：
+  - 验证：
+- 依赖：
+- 归档就绪性：
 
-### Risk Checks
+### 风险检查
 
-Answer:
+回答：
 
-1. Are there consecutive low-level changes with no observable behavior?
-2. Does every executable business change have a closed loop?
-3. Are any capabilities named by technical module, storage/provider/deployment choice, or verification strategy instead of a durable `openspec/specs/<capability>/spec.md` behavior boundary?
-4. Are any key input scenarios unmapped to a change?
-5. Can any change only be verified by "code exists" rather than behavior proof?
-6. Does the plan imply a one-to-one mapping between changes and capabilities?
-7. Does every change-capability relation use only `New` or `Modified`, with blanks and roadmap `None` where a change does not create or modify a spec capability?
-8. Does any change combine multiple independently verifiable functional points that could be implemented and archived separately?
-9. Does the first feature change after a foundation candidate introduce infrastructure-heavy concerns before its functional point needs their full behavior?
-10. Does the plan merge behavior only to avoid a one-to-one appearance in the capability matrix?
-11. Are any initial change/capability boundaries marked as hypotheses that may need Phase 5 refit after atom extraction and Phase 4 source-window grounding?
-12. Do many capability ids paraphrase the change slug that first establishes their spec baseline?
-13. Are cross-cutting production concerns being moved into separate capability-shaped changes even though they directly affect the same user/system loop?
-14. If more than half of executable business changes advance only one capability, is there source-backed evidence that those are genuinely separate loops rather than a diagonalized roadmap?
-15. If a foundation candidate exists, is it strictly a zero-domain engineering bootstrap?
-16. Did Phase 1 avoid placing domain-specific schemas, entities, commands, user-facing APIs, worker or async business semantics, domain events, identity/authorization/account mappings, entitlement/accounting/delivery/export concepts, lifecycle/versioning rules, privacy, recovery, responsive, design-system, observability, or other workflow-specific behavior into foundation scope?
-17. Are source-backed domain obligations represented as business change candidates or Phase 2 ownership context for the first workflow that needs them?
-18. Does the roadmap order any permission, governance, quota, audit, admin, observability, or operation capability before the concrete behavior it protects, governs, limits, audits, operates, or observes, without proving that capability is independently acceptable?
-19. For typical web systems, does the early roadmap produce a thin user-visible end-to-end behavior rather than a static UI shell or prerequisite collection?
-20. Did Phase 1 identify stable capabilities before slicing loop-based changes, while avoiding generation of changes from the capability list itself?
-21. Did any change-only architecture/design/verification scope cause the plan to invent a Capability instead of leaving both `New` and `Modified` as `None`?
+1. 是否存在连续的、没有 observable behavior 的 low-level Change？
+2. 每个 executable business Change 是否都有 closed loop？
+3. 是否有 Capability 按 technical module、storage/provider/deployment choice 或 verification strategy 命名，而不是持久的 `openspec/specs/<capability>/spec.md` behavior boundary？
+4. 是否有关键 input scenario 未映射到 Change？
+5. 是否有 Change 只能通过“code 存在”验证，而无法通过 behavior proof 验证？
+6. 计划是否暗示 Change 与 Capability 之间存在 one-to-one mapping？
+7. 每个 Change/Capability relation 是否只使用 `New` 或 `Modified`，且 Change 不创建或修改 spec Capability 时使用空 cell 和 roadmap `None`？
+8. 是否有 Change 合并了多个可独立验证、实现并 archive 的 functional point？
+9. foundation candidate 后的第一个 feature Change 是否在 functional point 需要完整行为前引入 infrastructure-heavy concern？
+10. 计划是否仅为避免 Capability matrix 呈现 one-to-one 外观而合并行为？
+11. 是否将初始 Change/Capability boundary 标为 hypothesis，说明 atom extraction 和 Phase 4 source-window grounding 后可能需要 Phase 5 refit？
+12. 是否有许多 Capability ID 只是改写首次建立其 spec baseline 的 Change slug？
+13. cross-cutting production concern 是否被移入独立的 capability-shaped Change，尽管它们直接影响同一 user/system loop？
+14. 如果超过一半 executable business Change 只推进一个 Capability，是否有 source-backed evidence 证明它们确实是独立 loop，而不是 diagonalized roadmap？
+15. 如果存在 foundation candidate，它是否严格属于 zero-domain engineering bootstrap？
+16. Phase 1 是否避免将 domain-specific schema、entity、command、user-facing API、worker/async business semantics、domain event、identity/authorization/account mapping、entitlement/accounting/delivery/export concept、lifecycle/versioning rule、privacy、recovery、responsive、design-system、observability 或其他 workflow-specific behavior 放入 foundation scope？
+17. source-backed domain obligation 是否表示为 business Change candidate，或首个需要它的 workflow 的 Phase 2 ownership context？
+18. roadmap 是否在具体行为存在前安排 permission、governance、quota、audit、admin、observability 或 operation Capability，却没有证明该 Capability 可独立 acceptance？
+19. 对典型 web system，早期 roadmap 是否生成薄的 user-visible end-to-end behavior，而不是静态 UI shell 或 prerequisite collection？
+20. Phase 1 是否在切分 loop-based Change 前识别稳定 Capability，同时避免从 Capability list 本身生成 Change？
+21. 是否有仅归属 Change 的 architecture/design/verification scope 导致计划发明 Capability，而不是让 `New` 和 `Modified` 都保持 `None`？
 
-## Phase Report
+## Phase 报告
 
-`phase-works/phase-1/phase-1-agent-report.md` must briefly list:
+`phase-works/phase-1/phase-1-agent-report.md` 必须简要列出：
 
-- source documents read
-- generated plan path
-- notable assumptions or conflicts
-- whether any change lacks useful source hints; do not enumerate every pending evidence item
-- confirmation that every source document in the manifest was read in full
-- confirmation that the Phase 1 artifacts passed the Artifact Language Gate
-- blockers, or `无`
+- 已阅读的 source document
+- 生成的 plan path
+- 值得注意的 assumption 或 conflict
+- 是否有 Change 缺少有用的 source hint；不得枚举每项 pending evidence item
+- 确认 manifest 中每份 source document 均已完整阅读
+- 确认 Phase 1 artifact 通过 Artifact Language Gate
+- blocker，或 `无`

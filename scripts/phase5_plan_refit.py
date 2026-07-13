@@ -1,11 +1,10 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
-"""Mechanical Phase 5 plan-refit renderer.
+"""Phase 5 plan refit 的机械渲染器。
 
-This helper is intentionally deterministic. A Phase 5 subagent still owns the
-semantic refit decisions: final change list, capability list, atom mapping,
-split decisions, and blockers. This script only validates those reviewed inputs
-and renders the repetitive Phase 5 ledgers, packets, reviews, and reports.
+该辅助工具刻意保持确定性。Phase 5 subagent 仍负责语义 refit 决策，包括 final Change
+列表、Capability 列表、atom mapping、拆分决策和阻塞项。本脚本仅校验经过审阅的输入，
+并渲染重复性的 Phase 5 台账、packet、审阅文档和报告。
 """
 
 from __future__ import annotations
@@ -413,7 +412,7 @@ def normalize_mapping(
     mapping: Dict[str, MappingRow],
     changes: Sequence[ChangeDef],
 ) -> Dict[str, MappingRow]:
-    del changes  # v2 renderer must preserve reviewed terminal fields; it does not infer owners or impacts.
+    del changes  # v2 renderer 必须保留已审阅的终态字段，不推断 owner 或 impact。
     for atom_id, row in mapping.items():
         if row.final_owner_type == "foundation-reference" or row.final_relation == "foundation-reference":
             raise ValueError(f"{atom_id} 使用了已废弃的 foundation-reference owner/relation")
@@ -730,16 +729,16 @@ def render_change_plan(
 ) -> str:
     all_direct_items = [item for items in by_change.values() for item in items]
     progression_capabilities = active_capabilities(capabilities, all_direct_items)
-    lines: List[str] = ["# Source-Aligned Phase 5 Change Plan\n\n", "## Inputs\n\n"]
+    lines: List[str] = ["# source-aligned Phase 5 Change 计划\n\n", "## 输入\n\n"]
     lines.append(
-        f"- Source documents read: {config.get('source_documents_read', '`openspec/orchestrate/phase-works/phase-3/source-doc-manifest.md` 中源文档已由 Phase 2/3 覆盖。')}\n"
+        f"- 已读取的来源文档：{config.get('source_documents_read', '`openspec/orchestrate/phase-works/phase-3/source-doc-manifest.md` 中源文档已由 Phase 2/3 覆盖。')}\n"
     )
-    lines.append("- Phase 3 global atom index path: `openspec/orchestrate/change-capability-anchors/obligation-atom-index.md`。\n")
-    lines.append("- Phase 4 source-window dossiers: `openspec/orchestrate/phase-works/phase-4/source-window-dossiers/index.md`。\n")
-    lines.append("- Phase 4 semantic profile review: `openspec/orchestrate/phase-works/phase-4/source-window-semantic-profile-review.md`。\n")
-    lines.append(f"- Phase 5 work path: `{work_dir.as_posix()}/`。\n")
+    lines.append("- Phase 3 global atom index 路径：`openspec/orchestrate/change-capability-anchors/obligation-atom-index.md`。\n")
+    lines.append("- Phase 4 source-window dossier：`openspec/orchestrate/phase-works/phase-4/source-window-dossiers/index.md`。\n")
+    lines.append("- Phase 4 semantic profile 审阅：`openspec/orchestrate/phase-works/phase-4/source-window-semantic-profile-review.md`。\n")
+    lines.append(f"- Phase 5 工作路径：`{work_dir.as_posix()}/`。\n")
     lines.append(
-        f"- Assumptions and conflicts: {config.get('assumptions_and_conflicts', 'Phase 3 已给出 `Decision: coverage-complete`；Phase 5 未新增 atom，也未改写 Phase 2/3 证据。')}\n"
+        f"- 假设与冲突：{config.get('assumptions_and_conflicts', 'Phase 3 已给出 `Decision: coverage-complete`；Phase 5 未新增 atom，也未改写 Phase 2/3 证据。')}\n"
     )
 
     lines.append("\n## Capability Map\n\n")
@@ -789,7 +788,7 @@ def render_change_plan(
                 if not items:
                     cells.append("")
                 elif change.kind == FOUNDATION_CHANGE_KIND and cap.slug == FOUNDATION_CAPABILITY:
-                    cells.append(f"Foundation substrate: {ids_for(items, 4)}")
+                    cells.append(f"foundation substrate：{ids_for(items, 4)}")
                 else:
                     impact = items[0].mapping.final_capability_impact.capitalize()
                     cells.append(f"{impact}: {ids_for(items, 4)}")
@@ -811,56 +810,56 @@ def render_change_plan(
         business_caps = sorted(set(new_caps + modified_caps))
         gate = "foundation-executable" if change.kind == FOUNDATION_CHANGE_KIND else "business-executable"
         dep = "无" if change == changes[0] else "依赖前序 final change 已归档的 baseline；具体 upstream baseline 见 change packet。"
-        lines.append(f"\n### Change name: `{change.slug}`\n\n")
-        lines.append(f"- Closed-loop outcome: {md(change.outcome)}\n")
-        lines.append("- Source-window grounding:\n")
-        lines.append("  - Input source-window dossiers: `openspec/orchestrate/phase-works/phase-4/source-window-dossiers/`。\n")
-        lines.append("  - Source-backed semantic profile: `openspec/orchestrate/phase-works/phase-4/source-window-semantic-profile-review.md`。\n")
-        lines.append("  - Refit trace: `openspec/orchestrate/phase-works/phase-5/source-window-refit-trace.md`。\n")
-        lines.append(f"- Direct atom groups: {atom_groups(items)}。\n")
-        lines.append("- Capability changes:\n")
+        lines.append(f"\n### Change 名称：`{change.slug}`\n\n")
+        lines.append(f"- 闭环结果：{md(change.outcome)}\n")
+        lines.append("- source-window grounding：\n")
+        lines.append("  - 输入 source-window dossier：`openspec/orchestrate/phase-works/phase-4/source-window-dossiers/`。\n")
+        lines.append("  - source-backed semantic profile：`openspec/orchestrate/phase-works/phase-4/source-window-semantic-profile-review.md`。\n")
+        lines.append("  - refit trace：`openspec/orchestrate/phase-works/phase-5/source-window-refit-trace.md`。\n")
+        lines.append(f"- direct atom 分组：{atom_groups(items)}。\n")
+        lines.append("- Capability 变更：\n")
         lines.append("  - New: " + (", ".join(code(cap) for cap in new_caps) if new_caps else "`None`") + "\n")
         lines.append("  - Modified: " + (", ".join(code(cap) for cap in modified_caps) if modified_caps else "`None`") + "\n")
         if change.kind == FOUNDATION_CHANGE_KIND:
-            lines.append(f"  - Foundation substrate: `{FOUNDATION_CAPABILITY}`\n")
-            lines.append(f"- In scope: {md(change.title)} 对应 direct atom 表中的工程底座、启动、配置、脚本、生成链路或本地 smoke 义务。\n")
+            lines.append(f"  - foundation substrate：`{FOUNDATION_CAPABILITY}`\n")
+            lines.append(f"- 范围内：{md(change.title)} 对应 direct atom 表中的工程底座、启动、配置、脚本、生成链路或本地 smoke 义务。\n")
         else:
-            lines.append(f"- In scope: {md(change.title)} 对应 direct atom 表中的行为、设计、guard 和验证义务。\n")
-        lines.append("- Out of scope: 不直接拥有未映射到本 change 的未来 atom；依赖、上下文、非目标和横切证据策略仅按 packet 中的 context/evidence burden 消费。\n")
-        lines.append("- Vertical slice:\n")
+            lines.append(f"- 范围内：{md(change.title)} 对应 direct atom 表中的行为、设计、guard 和验证义务。\n")
+        lines.append("- 范围外：不直接拥有未映射到本 Change 的未来 atom；依赖、上下文、非目标和横切证据策略仅按 packet 中的 context/evidence burden 消费。\n")
+        lines.append("- vertical slice：\n")
         if change.kind == FOUNDATION_CHANGE_KIND:
-            lines.append("  - Entry: repo/workspace、app skeleton、脚本、配置、生成链路或本地运行入口可被执行。\n")
-            lines.append("  - Fact: 只表达当前工程底座已可构建、启动、健康检查、生成或迁移回读的可观察事实。\n")
-            lines.append("  - Projection: 只落到 health/readiness、script output、generated artifact、migration readback、package boundary 或 CI/local smoke。\n")
-            lines.append("  - Failure: 底座启动、配置、生成、迁移或 package boundary 失败会产生可诊断信号。\n")
+            lines.append("  - 入口：repo/workspace、app skeleton、脚本、配置、生成链路或本地运行入口可被执行。\n")
+            lines.append("  - 事实：只表达当前工程底座已可构建、启动、健康检查、生成或迁移回读的可观察事实。\n")
+            lines.append("  - projection：只落到 health/readiness、script output、generated artifact、migration readback、package boundary 或 CI/local smoke。\n")
+            lines.append("  - 失败：底座启动、配置、生成、迁移或 package boundary 失败会产生可诊断信号。\n")
         else:
-            lines.append("  - Entry: 由该 change 的闭环入口触发，详见 final packet direct atom 表。\n")
-            lines.append("  - Fact: 只持久化该闭环需要的 domain fact、snapshot、action、version、entitlement、project 或 export 事实。\n")
-            lines.append("  - Projection: 只展示该闭环产生的页面、对象、线程、列表、状态或下载结果。\n")
-            lines.append("  - Failure: 失败路径不污染既有稳定事实，并保留可重试或可回流上下文。\n")
-        lines.append(f"  - Verification: {md(evidence_types(items))}。\n")
-        lines.append(f"- Dependencies: {dep}\n")
-        lines.append("- Contextual atoms / downstream design constraints: 见 final packet context table 和 `atom-plan-mapping.md`。\n")
-        lines.append("- Non-goals: 只保留与本闭环相关的全局/局部非目标 guard，不扩展 prototype-only 页面、scene、fixture 或 mock 资产。\n")
-        lines.append("- Complexity budget:\n")
-        lines.append(f"  - Direct atom count: `{len(items)}`\n")
-        lines.append("  - Capabilities advanced: " + (", ".join(code(cap) for cap in business_caps) if business_caps else "`None`") + "\n")
+            lines.append("  - 入口：由该 Change 的闭环入口触发，详见 final packet direct atom 表。\n")
+            lines.append("  - 事实：只持久化该闭环需要的 domain fact、snapshot、action、version、entitlement、project 或 export 事实。\n")
+            lines.append("  - projection：只展示该闭环产生的页面、对象、线程、列表、状态或下载结果。\n")
+            lines.append("  - 失败：失败路径不污染既有稳定事实，并保留可重试或可回流上下文。\n")
+        lines.append(f"  - 验证：{md(evidence_types(items))}。\n")
+        lines.append(f"- 依赖：{dep}\n")
+        lines.append("- contextual atom / downstream design constraint：见 final packet context table 和 `atom-plan-mapping.md`。\n")
+        lines.append("- 非目标：只保留与本闭环相关的全局/局部非目标 guard，不扩展 prototype-only 页面、scene、fixture 或 mock 资产。\n")
+        lines.append("- complexity budget：\n")
+        lines.append(f"  - direct atom 数量：`{len(items)}`\n")
+        lines.append("  - 推进的 Capability：" + (", ".join(code(cap) for cap in business_caps) if business_caps else "`None`") + "\n")
         if change.kind == FOUNDATION_CHANGE_KIND:
-            lines.append(f"  - Foundation substrate capability: `{FOUNDATION_CAPABILITY}`\n")
-        lines.append("  - Surface families: 该 change 的入口、页面/对象、domain command、worker 或列表/导出面；超过目标时见 complexity review。\n")
-        lines.append(f"  - Evidence types: {md(evidence_types(items))}\n")
-        lines.append(f"  - Executable roadmap status: `{gate}`\n")
-        lines.append(f"  - Budget status: `{budget_status(items)}`\n")
-        lines.append("  - Split/defer analysis: Phase 5 已按 atom 级闭环、失败路径和验证面记录拆分、保留或阻断判断。\n")
-        lines.append("- Archive readiness: direct atom 表中的成功、失败、guard 和验证义务可在一个 focused OpenSpec change 中提案、实现、验证和归档。\n")
+            lines.append(f"  - foundation substrate Capability：`{FOUNDATION_CAPABILITY}`\n")
+        lines.append("  - surface family：该 Change 的入口、页面/对象、domain command、worker 或列表/导出面；超过目标时见 complexity review。\n")
+        lines.append(f"  - 证据类型：{md(evidence_types(items))}\n")
+        lines.append(f"  - executable roadmap 状态：`{gate}`\n")
+        lines.append(f"  - budget 状态：`{budget_status(items)}`\n")
+        lines.append("  - split/defer 分析：Phase 5 已按 atom 级闭环、失败路径和验证面记录拆分、保留或阻断判断。\n")
+        lines.append("- 归档就绪性：direct atom 表中的成功、失败、guard 和验证义务可在一个 focused OpenSpec Change 中提案、实现、验证和归档。\n")
 
-    lines.append("\n## Phase 5 Risk Checks\n\n")
+    lines.append("\n## Phase 5 风险检查\n\n")
     lines.append("1. final executable roadmap 可从至多一个 foundation change 开始；若存在，它必须位于第一位且只拥有工程底座义务。\n")
     lines.append("2. 计划不是 capability-driven 对角矩阵；长期 capability 可在多个业务闭环中演进。\n")
     lines.append("3. 过大的 Phase 1 change 已按可保存、可验证、可归档的闭环拆分。\n")
     lines.append("4. `design-obligation` 与 `verification-obligation` 保留原 projection，没有因为 direct ownership 被强制改成 `spec-requirement`。\n")
     lines.append("5. prototype-only、fixture、scene、mock asset 和非目标 row 只作为 guard/context 消费。\n")
-    lines.append("\n## Phase 5 Language Self-Check\n\n")
+    lines.append("\n## Phase 5 语言自检\n\n")
     lines.append("已忽略反引号内 ID、路径、命令、代码/API/DB/package 符号、固定 enum/status、relation token 和精确 source phrase 后检查；本文由代理撰写的解释内容均为简体中文。\n")
     return "".join(lines)
 
@@ -871,7 +870,7 @@ def render_capability_review(
     cap_changes: Dict[str, List[str]],
 ) -> str:
     progression_capabilities = active_capabilities(capabilities, direct_items)
-    lines = ["# Capability Progression Review\n\n"]
+    lines = ["# Capability progression 审阅\n\n"]
     if not progression_capabilities:
         lines.append("本计划没有业务 Capability delta；无需生成 Capability progression 空表。\n")
     else:
@@ -902,7 +901,7 @@ def render_capability_review(
         )
         adjustment = "重算 New/Modified 标签；依赖、上下文、证据和非目标未计入 capability advancement。"
         lines.append(f"| `{cap.slug}` | {md(fam_text)} | {md(seq)} | {md(required)} | {md(problem)} | {md(adjustment)} |\n")
-    lines.append("\n## Language Self-Check\n\n本文解释内容已按 Artifact Language Gate 检查为简体中文。\n")
+    lines.append("\n## 语言自检\n\n本文解释内容已按 Artifact Language Gate 检查为简体中文。\n")
     return "".join(lines)
 
 
@@ -918,7 +917,7 @@ def render_complexity_review(
         if item.get("change") and item.get("decision")
     }
     lines = [
-        "# Change Complexity Review\n\n",
+        "# Change complexity 审阅\n\n",
         "| Change | Direct Atom Count | Artifact Projection Mix | Atom Groups | New Capabilities | Modified Capabilities | Primary Functional Points | Entry/Fact/Projection Count | Failure/Recovery Count | Evidence Types | Surface Families | Executable Roadmap Status | Budget Status | Complexity Decision |\n",
         "| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |\n",
     ]
@@ -962,7 +961,7 @@ def render_complexity_review(
 
     split_analyses = optional_list(config, "split_analyses")
     if split_analyses:
-        lines.append("\n## Required Split Analysis\n\n")
+        lines.append("\n## 必需的拆分分析\n\n")
         lines.append("| Change | Trigger | Candidate Split | Atoms / Capabilities Moved | New Closed-loop Outcome | Verification Surface | Decision | Reason |\n")
         lines.append("| --- | --- | --- | --- | --- | --- | --- | --- |\n")
         for item in split_analyses:
@@ -971,7 +970,7 @@ def render_complexity_review(
                 f"{md(item.get('atoms_moved', ''))} | {md(item.get('new_outcome', ''))} | {md(item.get('verification_surface', ''))} | "
                 f"{code(item.get('decision', ''))} | {md(item.get('reason', ''))} |\n"
             )
-    lines.append("\n## Language Self-Check\n\n本文解释内容已按 Artifact Language Gate 检查为简体中文。\n")
+    lines.append("\n## 语言自检\n\n本文解释内容已按 Artifact Language Gate 检查为简体中文。\n")
     return "".join(lines)
 
 
@@ -989,7 +988,7 @@ def render_decision_log(config: Dict[str, object]) -> str:
             }
         ]
     lines = [
-        "# Plan Refit Decision Log\n\n",
+        "# plan refit 决策日志\n\n",
         "| Decision Item | Input Evidence | Candidate Options | Decision | Output Artifact | Reason |\n",
         "| --- | --- | --- | --- | --- | --- |\n",
     ]
@@ -998,14 +997,14 @@ def render_decision_log(config: Dict[str, object]) -> str:
             f"| {code(item.get('item', ''))} | {md(item.get('input_evidence', ''))} | {md(item.get('candidate_options', ''))} | "
             f"{code(item.get('decision', ''))} | {md(item.get('output_artifact', ''))} | {md(item.get('reason', ''))} |\n"
         )
-    lines.append("\n## Language Self-Check\n\n本文解释内容已按 Artifact Language Gate 检查为简体中文。\n")
+    lines.append("\n## 语言自检\n\n本文解释内容已按 Artifact Language Gate 检查为简体中文。\n")
     return "".join(lines)
 
 
 def render_source_window_refit_trace(config: Dict[str, object], changes: Sequence[ChangeDef], by_change: Dict[str, List[FinalAtom]]) -> str:
     rows = optional_list(config, "source_window_refit_trace")
     lines = [
-        "# Source-Window Refit Trace\n\n",
+        "# source-window refit 追踪\n\n",
         "本文件记录 Phase 5 如何使用 Phase 4 source-window dossiers 和语义画像重构最终 change/capability 计划。\n\n",
         "| Input Change / Capability | Source Window Evidence | Input Atoms | Final Change / Capability | Atom Movement | Relation Changes | Engineering Reason |\n",
         "| --- | --- | --- | --- | --- | --- | --- |\n",
@@ -1029,7 +1028,7 @@ def render_source_window_refit_trace(config: Dict[str, object], changes: Sequenc
                 "context/dependency/evidence/non-goal 见 mapping relation。 | "
                 f"{md(change.outcome)} 形成可实现、可验证、可归档的工程交付闭环。 |\n"
             )
-    lines.append("\n## Language Self-Check\n\n本文解释内容已按 Artifact Language Gate 检查为简体中文。\n")
+    lines.append("\n## 语言自检\n\n本文解释内容已按 Artifact Language Gate 检查为简体中文。\n")
     return "".join(lines)
 
 
@@ -1038,7 +1037,7 @@ def render_adjustments(config: Dict[str, object], status: str) -> Optional[str]:
     if status not in {"adjusted", "needs-coverage-recheck", "blocked"} and not adjustments:
         return None
     lines = [
-        "# Change Plan Adjustments\n\n",
+        "# Change 计划调整\n\n",
         "| Adjustment | Previous Plan Element | New Plan Element | Atom Groups Moved | Coverage Recheck Needed | Reason |\n",
         "| --- | --- | --- | --- | --- | --- |\n",
     ]
@@ -1051,8 +1050,8 @@ def render_adjustments(config: Dict[str, object], status: str) -> Optional[str]:
     if not adjustments:
         lines.append("| `none` | `None` | `None` | 未移动 atom。 | `No` | Phase 5 未调整有效计划。 |\n")
     next_action = config.get("next_action", "Phase 5 状态已闭合；下一步可以从 final change packets 启动 `openspec-propose`。")
-    lines.append(f"\n## Next Action\n\n{next_action}\n")
-    lines.append("\n## Language Self-Check\n\n本文解释内容已按 Artifact Language Gate 检查为简体中文。\n")
+    lines.append(f"\n## 下一步行动\n\n{next_action}\n")
+    lines.append("\n## 语言自检\n\n本文解释内容已按 Artifact Language Gate 检查为简体中文。\n")
     return "".join(lines)
 
 
@@ -1066,16 +1065,16 @@ def render_packet(
     items = by_change[change.slug]
     gate = "foundation-executable" if change.kind == FOUNDATION_CHANGE_KIND else "business-executable"
     lines = [
-        f"# Change Packet: `{change.slug}`\n\n",
-        f"- Change name: `{change.slug}`\n",
-        f"- Closed-loop outcome: {md(change.outcome)}\n",
-        "- Global atom index: `openspec/orchestrate/change-capability-anchors/obligation-atom-index.md`\n",
-        "- Source-window grounding: `openspec/orchestrate/phase-works/phase-4/source-window-dossiers/`；语义画像见 `openspec/orchestrate/phase-works/phase-4/source-window-semantic-profile-review.md`。\n",
-        f"- Source-window refit trace: `{work_dir.as_posix()}/source-window-refit-trace.md`\n",
-        f"- Phase 5 mapping: `{work_dir.as_posix()}/atom-plan-mapping.md`\n",
-        f"- Complexity budget status: `{budget_status(items)}`；direct atom count=`{len(items)}`。\n",
-        f"- Executable roadmap status: `{gate}`。\n",
-        "- Blockers: `None`\n\n",
+        f"# Change packet：`{change.slug}`\n\n",
+        f"- Change 名称：`{change.slug}`\n",
+        f"- 闭环结果：{md(change.outcome)}\n",
+        "- global atom index：`openspec/orchestrate/change-capability-anchors/obligation-atom-index.md`\n",
+        "- source-window grounding：`openspec/orchestrate/phase-works/phase-4/source-window-dossiers/`；语义画像见 `openspec/orchestrate/phase-works/phase-4/source-window-semantic-profile-review.md`。\n",
+        f"- source-window refit trace：`{work_dir.as_posix()}/source-window-refit-trace.md`\n",
+        f"- Phase 5 mapping：`{work_dir.as_posix()}/atom-plan-mapping.md`\n",
+        f"- complexity budget 状态：`{budget_status(items)}`；direct atom 数量=`{len(items)}`。\n",
+        f"- executable roadmap 状态：`{gate}`。\n",
+        "- 阻塞项：`None`\n\n",
         "## Final Direct Owner Atoms\n\n",
         "| Global Atom ID | Source Document | Lines | Atom Type | Source Fact | Normativity | Artifact Projection | Projection Rationale | Capability Impact | Target Capability | Related Capabilities | Atom Relation | Roles | Propose Use | Evidence Need |\n",
         "| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |\n",
@@ -1092,7 +1091,7 @@ def render_packet(
             f"`{target}` | {md(related)} | `direct` | `direct-owner` | "
             f"{md(source.propose_use)} | `{source.evidence_need}` |\n"
         )
-    lines.append("\n## Contextual Atoms And Future Constraints\n\n")
+    lines.append("\n## contextual atom 与未来约束\n\n")
     lines.append("| Global Atom ID / Relation | Source Document | Lines | Context Type | Affects Current Design Because | Handling |\n")
     lines.append("| --- | --- | --- | --- | --- | --- |\n")
     context_items = by_context[change.slug]
@@ -1115,21 +1114,21 @@ def render_packet(
             else "无；这是第一个 executable business change。\n"
         )
     )
-    lines.append("\n## Upstream Realized Baseline\n\n")
+    lines.append("\n## 上游已实现 baseline\n\n")
     lines.append(baseline)
-    lines.append("\n## Downstream Constraints\n\n")
+    lines.append("\n## 下游约束\n\n")
     lines.append("后续 change 可消费本 packet 已实现的 domain fact、guard、snapshot、action、version、project、entitlement 或 export baseline，但不得把未来义务反向计入本 change direct scope。\n")
-    lines.append("\n## Explicit Non-Goals\n\n")
+    lines.append("\n## 显式非目标\n\n")
     lines.append("不实现 prototype-only scene、fixture、mock asset、未列入 MVP 的页面/对象、协作、团队权限、版本树、多图画布或完整科研设计平台。\n")
-    lines.append("\n## Evidence Burden\n\n")
+    lines.append("\n## 证据负担\n\n")
     lines.append("证据必须覆盖 direct atom 表中的成功、失败、guard、设计和验证义务；横切 viewport/object/state 证据按 Phase 5 mapping 作为 evidence burden 分散到相关业务闭环。\n")
-    lines.append("\n## Language Self-Check\n\n本文解释内容已按 Artifact Language Gate 检查为简体中文。\n")
+    lines.append("\n## 语言自检\n\n本文解释内容已按 Artifact Language Gate 检查为简体中文。\n")
     return "".join(lines)
 
 
 def render_capability_view(change: ChangeDef, cap: str, items: Sequence[FinalAtom]) -> str:
     lines = [
-        f"# Capability View: `{cap}` in `{change.slug}`\n\n",
+        f"# Capability view：`{change.slug}` 中的 `{cap}`\n\n",
         "本文件是 final change packet 的派生视图，不改变 atom ID、来源行号、projection 或事实文本。\n\n",
         "| Capability | Change | Capability Impact | Global Atom ID | Source Document | Lines | Atom Type | Source Fact | Normativity | Artifact Projection | Relation | Propose Use | Evidence Need |\n",
         "| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |\n",
@@ -1142,7 +1141,7 @@ def render_capability_view(change: ChangeDef, cap: str, items: Sequence[FinalAto
             f"`{source.source_document}` | `{source.lines}` | `{source.atom_type}` | "
             f"{md(source.source_fact)} | `{source.normativity}` | `{mapping.final_projection}` | `direct` | {md(source.propose_use)} | `{source.evidence_need}` |\n"
         )
-    lines.append("\n## Language Self-Check\n\n本文解释内容已按 Artifact Language Gate 检查为简体中文。\n")
+    lines.append("\n## 语言自检\n\n本文解释内容已按 Artifact Language Gate 检查为简体中文。\n")
     return "".join(lines)
 
 
@@ -1152,7 +1151,7 @@ def render_anchor_index(
     by_context: Dict[str, List[FinalAtom]],
 ) -> str:
     lines = [
-        "# Change Capability Anchors Index\n\n",
+        "# Change Capability anchor 索引\n\n",
         "本索引只把 final direct `new` / `modified` spec atoms 计为 business capabilities advanced；foundation view、dependency、context、evidence-only、non-goal 和 upstream baseline 均不计入能力进展。\n\n",
         "| Change | Change Packet | Capability Views | Direct Atoms | Contextual Atoms | Capabilities Advanced | Complexity Budget | Evidence Burden | Blockers |\n",
         "| --- | --- | --- | --- | --- | --- | --- | --- | --- |\n",
@@ -1180,7 +1179,7 @@ def render_anchor_index(
             f"{md(advanced)} | `{budget_status(items)}` | "
             f"{md(evidence_types(items))} | `None` |\n"
         )
-    lines.append("\n## Language Self-Check\n\n本文解释内容已按 Artifact Language Gate 检查为简体中文。\n")
+    lines.append("\n## 语言自检\n\n本文解释内容已按 Artifact Language Gate 检查为简体中文。\n")
     return "".join(lines)
 
 
@@ -1194,7 +1193,7 @@ def render_human_plan(
     all_direct_items = [item for items in by_change.values() for item in items]
     progression_capabilities = active_capabilities(capabilities, all_direct_items)
     lines = [
-        "# Change Capability Human Plan\n\n",
+        "# Change Capability 人工可读计划\n\n",
         "本文件是便于人工阅读的 Phase 5 结果摘要；source of truth 仍是 global atom index、Phase 5 mapping 和 final change packets。\n\n",
         "| Change | Closed-loop Outcome | Direct Atom Groups | Complexity Budget | Contextual Atoms / Future Constraints | Upstream Realized Baseline | Downstream Constraints | Non-Goals | Evidence Burden | Ledger Links |\n",
         "| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |\n",
@@ -1209,7 +1208,7 @@ def render_human_plan(
             f"后续只消费已归档 baseline，不反向吸收未来 direct scope。 | prototype-only、非 MVP 页面/对象和全局 scope creep 均排除。 | "
             f"{md(evidence_types(items))} | `change-capability-anchors/{change.slug}/{change.slug}.md` |\n"
         )
-    lines.append("\n## Capability Progression Narrative\n\n")
+    lines.append("\n## Capability progression 说明\n\n")
     if not progression_capabilities:
         lines.append("本计划没有业务 Capability delta；Change 仍按其 direct design/verification atoms 完整交付。\n")
     else:
@@ -1232,7 +1231,7 @@ def render_human_plan(
             f"{md(cap.boundary)} direct atom 按 roadmap 顺序推进，首个 direct owner 与所有 Phase 5 surface 一致。 | "
             "dependency、context、evidence-only 和 non-goal 未计入 New/Modified。 |\n"
         )
-    lines.append("\n## Language Self-Check\n\n本文解释内容已按 Artifact Language Gate 检查为简体中文。\n")
+    lines.append("\n## 语言自检\n\n本文解释内容已按 Artifact Language Gate 检查为简体中文。\n")
     return "".join(lines)
 
 
@@ -1243,7 +1242,7 @@ def render_alignment_report(
 ) -> str:
     progression_capabilities = active_capabilities(capabilities, direct_items)
     lines = [
-        "# Alignment Final Report\n\n",
+        "# 最终对齐报告\n\n",
         "Phase 5 最终一致性检查基于 executable direct atom ownership、change plan、progression matrix、roadmap、anchor index、change packets、capability views 和 human plan。\n\n",
     ]
     if not progression_capabilities:
@@ -1268,15 +1267,15 @@ def render_alignment_report(
         first = owners[0] if owners else "None"
         later = ", ".join(code(owner) for owner in owners[1:]) if len(owners) > 1 else "`None`"
         lines.append(f"| `{cap.slug}` | `{first}` | `{first}` | `{first}` | `{first}` | `{first}` | {later} | `ok` | 不需要修复。 |\n")
-    lines.append("\n## Direct Ownership Checks\n\n")
-    lines.append(f"- Executable direct atoms: `{len(direct_items)}`。每个 executable direct atom 在 mapping 中只有一个 final owner change。\n")
+    lines.append("\n## direct ownership 检查\n\n")
+    lines.append(f"- executable direct atom：`{len(direct_items)}` 个。每个 executable direct atom 在 mapping 中只有一个 final owner Change。\n")
     lines.append("- Final direct projections 仅使用 `spec-requirement`、`spec-guard`、`design-obligation`、`verification-obligation`。\n")
     lines.append("- `design-obligation` 和 `verification-obligation` 使用 `impact=none`、`target=none`，仍由 Change 直接拥有。\n")
     lines.append("- `related-capabilities` 只保留 source-explicit 非拥有型关联，不进入 progression 或 capability views。\n")
     lines.append("- Final matrix 避免了一对一 capability roadmap；多个 capability 可在多个业务闭环中重复演进。\n")
     lines.append("- Foundation candidate 如存在，已输出为第一位 executable foundation change packet；`runtime-substrate-foundation` 可出现在 packet/capability view，但不计入业务 capability progression。\n")
-    lines.append("- Phase 3 recheck required: `No`。\n")
-    lines.append("\n## Language Self-Check\n\n本文解释内容已按 Artifact Language Gate 检查为简体中文。\n")
+    lines.append("- 是否需要 Phase 3 recheck：`No`。\n")
+    lines.append("\n## 语言自检\n\n本文解释内容已按 Artifact Language Gate 检查为简体中文。\n")
     return "".join(lines)
 
 
@@ -1289,7 +1288,7 @@ def render_phase5_report(
 ) -> str:
     findings = optional_list(config, "report_findings")
     lines = [
-        "# Phase 5 Agent Report\n\n",
+        "# Phase 5 agent 报告\n\n",
         f"Phase 5 Status: {status}\n\n",
         "| Refit Finding | Source Ranges or Atoms | Plan Decision | Files Written | Atom Resolution | Remaining Gap or Blocker |\n",
         "| --- | --- | --- | --- | --- | --- |\n",
@@ -1313,17 +1312,17 @@ def render_phase5_report(
             "atom-driven planning graph 已覆盖全部 global atom rows，并记录最终 owner、projection、relation 和中文理由。",
             "capability progression 已从 final spec capability impact/target 重算。",
             "final direct atom 均有 exactly one final owner change，且没有 direct atom 使用 `contextual-only` projection。",
-            "Phase 3 recheck required: `No`。",
+            "是否需要 Phase 3 recheck：`No`。",
         ]
-    lines.append("\n## Required Confirmations\n\n")
+    lines.append("\n## 必需确认项\n\n")
     for item in confirmations:
         lines.append(f"- {md(item)}\n")
 
-    lines.append("\n## Direct Atom Summary\n\n")
+    lines.append("\n## direct atom 摘要\n\n")
     for change in changes:
         lines.append(f"- `{change.slug}`: `{len(by_change[change.slug])}` 个 direct atom，budget=`{budget_status(by_change[change.slug])}`。\n")
 
-    lines.append("\n## Files Written\n\n")
+    lines.append("\n## 已写入文件\n\n")
     for path in [
         "openspec/orchestrate/phase-works/phase-5/input-change-plan.md",
         "openspec/orchestrate/phase-works/phase-5/source-window-refit-trace.md",
@@ -1342,7 +1341,7 @@ def render_phase5_report(
         "openspec/orchestrate/phase-works/phase-5/alignment-final-report.md",
     ]:
         lines.append(f"- `{path}`\n")
-    lines.append("\n## Language Self-Check\n\n本文解释内容已按 Artifact Language Gate 检查为简体中文。\n")
+    lines.append("\n## 语言自检\n\n本文解释内容已按 Artifact Language Gate 检查为简体中文。\n")
     return "".join(lines)
 
 
@@ -1568,16 +1567,16 @@ def print_config_template(final_atoms: Sequence[FinalAtom]) -> None:
 
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
-        description="Validate and render mechanical Phase 5 plan-refit artifacts from a reviewed mapping/config."
+        description="根据已审阅的 mapping/config 校验并渲染机械派生的 Phase 5 plan-refit artifact。"
     )
-    parser.add_argument("--orchestrate-dir", default="openspec/orchestrate", type=Path)
-    parser.add_argument("--mapping", type=Path, help="Reviewed v2 phase-works/phase-5/atom-plan-mapping.json.")
-    parser.add_argument("--config", type=Path, help="Reviewed Phase 5 JSON config. Defaults to mapping sibling phase5-refit.config.json.")
-    parser.add_argument("--output-orchestrate-dir", type=Path, help="Write outputs to this orchestrate dir instead of --orchestrate-dir.")
-    parser.add_argument("--write", action="store_true", help="Write rendered artifacts. Without this flag the script only checks inputs.")
-    parser.add_argument("--no-root-update", action="store_true", help="Do not update output root change-plan.md.")
-    parser.add_argument("--validate-rendered", action="store_true", help="Validate final packets, capability views, and anchor index against atom-plan-mapping JSON.")
-    parser.add_argument("--print-config-template", action="store_true", help="Print a JSON config template inferred from mapping and exit.")
+    parser.add_argument("--orchestrate-dir", default="openspec/orchestrate", type=Path, help="orchestrate 目录路径")
+    parser.add_argument("--mapping", type=Path, help="已审阅的 v2 phase-works/phase-5/atom-plan-mapping.json。")
+    parser.add_argument("--config", type=Path, help="已审阅的 Phase 5 JSON config；默认使用 mapping 同目录的 phase5-refit.config.json。")
+    parser.add_argument("--output-orchestrate-dir", type=Path, help="将输出写入该 orchestrate 目录，而不是 --orchestrate-dir。")
+    parser.add_argument("--write", action="store_true", help="写入渲染后的 artifact；不指定时只检查输入。")
+    parser.add_argument("--no-root-update", action="store_true", help="不更新输出根目录中的 change-plan.md。")
+    parser.add_argument("--validate-rendered", action="store_true", help="依据 atom-plan-mapping JSON 校验 final packet、capability view 和 anchor index。")
+    parser.add_argument("--print-config-template", action="store_true", help="输出根据 mapping 推断的 JSON config 模板并退出。")
     return parser
 
 
@@ -1645,7 +1644,7 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
         if is_executable_direct(item) and changes_by_slug.get(item.mapping.final_change, ChangeDef("", "", "", "")).kind == FOUNDATION_CHANGE_KIND
     )
     print(
-        f"Phase 5 check passed: atoms={len(final_atoms)} executable-direct={direct_count} "
+        f"Phase 5 检查通过：atoms={len(final_atoms)} executable-direct={direct_count} "
         f"foundation-direct={foundation_count} changes={len(planned_changes(changes))} capabilities={len(capabilities)}"
     )
     for warning in warnings:
