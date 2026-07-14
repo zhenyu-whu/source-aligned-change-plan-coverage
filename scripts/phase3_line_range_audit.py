@@ -2,7 +2,7 @@
 """Phase 3 line-range mechanical helper。
 
 解析 Phase 2 source-first atom file，按 source document 对 atom 范围分组，
-合并行范围，并输出 candidate uncovered range 和 overlap cluster。
+合并行范围，并输出 candidate uncovered range。
 本工具刻意不对语义进行分类。
 """
 
@@ -38,10 +38,6 @@ class EvidenceRow:
     row_id: str
     lines: str
     raw_lines: str
-    source_fact: str
-    status: str
-    candidate_owner_change: str
-    candidate_target_capability: str
 
 
 @dataclass
@@ -115,11 +111,6 @@ def parse_source_rows(markdown_path: Path) -> List[EvidenceRow]:
                 continue
 
             row_id = normalize_cell(get_cell(cells, index, "source atom id"))
-            source_fact = get_cell(cells, index, "source fact")
-            status = get_cell(cells, index, "candidate status")
-            owner_change = get_cell(cells, index, "candidate owner change")
-            target_capability = get_cell(cells, index, "candidate target capability")
-
             if not row_id:
                 continue
 
@@ -132,10 +123,6 @@ def parse_source_rows(markdown_path: Path) -> List[EvidenceRow]:
                     row_id=row_id,
                     lines=line_spec,
                     raw_lines=raw_line_spec,
-                    source_fact=source_fact,
-                    status=status,
-                    candidate_owner_change=owner_change,
-                    candidate_target_capability=target_capability,
                 )
             )
     return rows
@@ -189,10 +176,6 @@ def parse_source_rows_from_trace(json_path: Path) -> List[EvidenceRow]:
                 row_id=row_id,
                 lines=line_spec,
                 raw_lines=line_spec,
-                source_fact=str(raw.get("source-fact", "")),
-                status=str(raw.get("candidate-status", "")),
-                candidate_owner_change=str(raw.get("candidate-owner-change", "")),
-                candidate_target_capability=str(raw.get("candidate-target-capability", "")),
             )
         )
     return rows
@@ -259,49 +242,6 @@ def uncovered_ranges(merged: List[Tuple[int, int]], line_count: int) -> List[Tup
     return [(item["start"], item["end"]) for item in uncovered]
 
 
-def intersect_ranges(left: ParsedRange, right: ParsedRange) -> Optional[Tuple[int, int]]:
-    start = max(left.start, right.start)
-    end = min(left.end, right.end)
-    if start <= end:
-        return start, end
-    return None
-
-
-def overlap_groups(ranges: List[ParsedRange]) -> List[Dict[str, object]]:
-    groups: List[Dict[str, object]] = []
-    sorted_ranges = sorted(
-        ranges,
-        key=lambda item: (item.start, item.end, item.row.origin, item.row.row_id),
-    )
-    for index, current in enumerate(sorted_ranges):
-        for other in sorted_ranges[index + 1 :]:
-            if other.start > current.end:
-                break
-            intersection = intersect_ranges(current, other)
-            if not intersection:
-                continue
-            if current.row.file == other.row.file and current.row.row_id == other.row.row_id:
-                continue
-            overlap_start, overlap_end = intersection
-            groups.append(
-                {
-                    "overlap_lines": [overlap_start, overlap_end],
-                    "participants": [
-                        {
-                            "origin": item.row.origin,
-                            "row_id": item.row.row_id,
-                            "lines": [item.start, item.end],
-                            "status": item.row.status,
-                            "candidate_owner_change": item.row.candidate_owner_change,
-                            "candidate_target_capability": item.row.candidate_target_capability,
-                        }
-                        for item in (current, other)
-                    ],
-                }
-            )
-    return groups
-
-
 def resolve_source_path(workspace_root: Path, source_document: str) -> Path:
     source_path = Path(source_document)
     if source_path.is_absolute():
@@ -362,15 +302,11 @@ def main() -> int:
                     "lines": [item.start, item.end],
                     "origin": item.row.origin,
                     "row_id": item.row.row_id,
-                    "status": item.row.status,
-                    "candidate_owner_change": item.row.candidate_owner_change,
-                    "candidate_target_capability": item.row.candidate_target_capability,
                 }
                 for item in sorted(parsed_ranges, key=lambda value: (value.start, value.end))
             ],
             "merged_covered_ranges": merged,
             "candidate_uncovered_ranges": uncovered_ranges(merged, line_count) if line_count is not None else [],
-            "overlap_groups": overlap_groups(parsed_ranges),
         }
 
     result = {
@@ -380,7 +316,7 @@ def main() -> int:
             "source_documents_audited": len(documents),
             "malformed_rows": len(malformed),
             "range_format_warnings": len(range_format_warnings),
-            "note": "这里只提供 mechanical candidate；作出任何 decision 前都必须执行 semantic review。",
+            "note": "这里只提供 mechanical coverage candidate；只允许读取 uncovered range 进行遗漏补提取和处置。",
         },
         "malformed_rows": malformed,
         "range_format_warnings": range_format_warnings,

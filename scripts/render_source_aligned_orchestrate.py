@@ -13,9 +13,8 @@ from source_aligned_trace_lib import (
     ATOM_PLAN_MAPPING_SCHEMA,
     CAPABILITY_BASELINE_SCHEMA,
     GLOBAL_ATOM_INDEX_SCHEMA,
+    PHASE3_COVERAGE_REVIEW_SCHEMA,
     SOURCE_ATOMS_SCHEMA,
-    SOURCE_REMAINDER_REVIEW_SCHEMA,
-    SOURCE_TO_GLOBAL_MAP_SCHEMA,
     TRACE_CONTRACT_VERSION,
     line_ranges_label,
     sha256_file,
@@ -23,12 +22,11 @@ from source_aligned_trace_lib import (
 )
 
 
-RENDER_CONTRACT_VERSION = "source-aligned-render-v4"
+RENDER_CONTRACT_VERSION = "source-aligned-render-v5"
 SUPPORTED_ARTIFACTS = {
     "phase2-source-atoms",
     "phase3-global-index",
-    "phase3-source-map",
-    "phase3-remainder-review",
+    "phase3-coverage-review",
     "phase5-atom-plan-mapping",
     "phase5-capability-baseline",
     "all-supported",
@@ -263,44 +261,11 @@ def render_global_index(orchestrate_dir: Path, json_path: Path) -> str:
         "# obligation atom 索引",
         "",
         render_table(
-            [
-                "Global Atom ID",
-                "Source Document",
-                "Lines",
-                "Atom Type",
-                "Source Fact",
-                "Normativity",
-                "Coverage Status",
-                "Artifact Projection",
-                "Owner Change",
-                "Capability Impact",
-                "Target Capability",
-                "Related Capabilities",
-                "Source Atom Origins",
-                "Atom Relation",
-                "Propose Use",
-                "Evidence Need",
-                "Review Judgment",
-            ],
+            ["Global Atom ID", "Evidence Reference"],
             (
                 [
                     code(row.get("global-atom-id")),
-                    code(row.get("source-document")),
-                    lines_from(row),
-                    code(row.get("atom-type")),
-                    md(row.get("source-fact")),
-                    code(row.get("normativity")),
-                    code(row.get("coverage-status")),
-                    code(row.get("artifact-projection")),
-                    code(row.get("owner-change")),
-                    code(row.get("capability-impact")),
-                    capability_target(row.get("target-capability")),
-                    stable_code_list(row.get("related-capabilities")),
-                    code_list(row.get("source-atom-origins") or row.get("origins")),
-                    code(row.get("atom-relation")),
-                    md(row.get("propose-use")),
-                    code(row.get("evidence-need")),
-                    md(row.get("review-judgment")),
+                    code(json.dumps(row.get("evidence-ref"), ensure_ascii=False, sort_keys=True)),
                 ]
                 for row in data.get("global-atoms", [])
                 if isinstance(row, dict)
@@ -310,113 +275,91 @@ def render_global_index(orchestrate_dir: Path, json_path: Path) -> str:
     return "\n".join(body).rstrip() + "\n" + trace_appendix(json_path, GLOBAL_ATOM_INDEX_SCHEMA, repo_root)
 
 
-def render_source_map(orchestrate_dir: Path, json_path: Path) -> str:
+def render_coverage_review(orchestrate_dir: Path, json_path: Path) -> str:
     repo_root = repo_root_for(orchestrate_dir)
     data = read_json(json_path)
-    require_trace_contract(data, json_path, SOURCE_TO_GLOBAL_MAP_SCHEMA)
-    body = [
-        "# source atom 到 global atom 的映射",
-        "",
-        render_table(
-            [
-                "Source Document",
-                "Source Atom ID",
-                "Lines",
-                "Candidate Status",
-                "Candidate Artifact Projection",
-                "Candidate Owner Change",
-                "Candidate Target Capability",
-                "Global Atom ID",
-                "Global Relation",
-                "Global Capability Impact",
-                "Global Target Capability",
-                "Global Related Capabilities",
-                "Non-Coverage Status",
-                "Blocker",
-                "Review Decision",
-                "Reason",
-            ],
-            (
-                [
-                    code(row.get("source-document")),
-                    code(row.get("source-atom-id")),
-                    lines_from(row),
-                    code(row.get("candidate-status")),
-                    code(row.get("candidate-artifact-projection")),
-                    code(row.get("candidate-owner-change")),
-                    capability_target(row.get("candidate-target-capability")),
-                    code(row.get("global-atom-id")),
-                    code(row.get("global-relation")),
-                    code(row.get("global-capability-impact")),
-                    capability_target(row.get("global-target-capability")),
-                    stable_code_list(row.get("global-related-capabilities")),
-                    code(row.get("non-coverage-status")),
-                    md(row.get("blocker")),
-                    code(row.get("review-decision")),
-                    md(row.get("reason")),
-                ]
-                for row in data.get("rows", [])
-                if isinstance(row, dict)
-            ),
-        ).rstrip(),
-    ]
-    return "\n".join(body).rstrip() + "\n" + trace_appendix(json_path, SOURCE_TO_GLOBAL_MAP_SCHEMA, repo_root)
-
-
-def render_remainder_review(orchestrate_dir: Path, json_path: Path) -> str:
-    repo_root = repo_root_for(orchestrate_dir)
-    data = read_json(json_path)
-    require_trace_contract(data, json_path, SOURCE_REMAINDER_REVIEW_SCHEMA)
-    body = ["# 来源剩余内容审阅", "", "## 审计文档", ""]
+    require_trace_contract(data, json_path, PHASE3_COVERAGE_REVIEW_SCHEMA)
+    body = ["# Phase 3 覆盖审计", "", f"Decision: `{squash(data.get('decision'))}`", "", "## 文档覆盖", ""]
     body.append(
         render_table(
-            ["Source Document", "Line Count", "Evidence Ranges", "Candidate Uncovered Ranges"],
+            ["Source Document", "Line Count", "Source SHA256", "Phase 2 Artifact", "Phase 2 SHA256", "Covered Ranges", "Candidate Uncovered Ranges"],
             (
                 [
                     code(row.get("source-document")),
                     code(row.get("line-count")),
-                    md("; ".join(lines_from(item) for item in row.get("evidence-ranges", []) if isinstance(item, dict))),
+                    code(row.get("source-sha256")),
+                    code(row.get("phase-2-atom-path")),
+                    code(row.get("phase-2-atom-sha256")),
+                    md("; ".join(lines_from(item) for item in row.get("covered-ranges", []) if isinstance(item, dict))),
                     md("; ".join(lines_from(item) for item in row.get("candidate-uncovered-ranges", []) if isinstance(item, dict))),
                 ]
-                for row in data.get("audit-documents", [])
+                for row in data.get("documents", [])
                 if isinstance(row, dict)
             ),
         ).rstrip()
     )
-    body.extend(["", "## 语义审阅记录", ""])
+    body.extend(["", "## 遗漏补提取", ""])
     body.append(
         render_table(
-            [
-                "Source Document",
-                "Lines",
-                "How Found",
-                "Read Scope",
-                "Semantic Classification",
-                "Production Obligation",
-                "Linked Global Atom IDs",
-                "Non-Coverage Status",
-                "Blocker",
-                "Reason",
-            ],
+            ["Gap Atom ID", "Source Document", "Lines", "Source Fact", "Atom Type", "Normativity", "Review Judgment"],
+            (
+                [
+                    code(row.get("gap-atom-id")),
+                    code(row.get("source-document")),
+                    lines_from(row),
+                    md(row.get("source-fact")),
+                    code(row.get("atom-type")),
+                    code(row.get("normativity")),
+                    md(row.get("review-judgment")),
+                ]
+                for row in data.get("gap-atoms", [])
+                if isinstance(row, dict)
+            ),
+        ).rstrip()
+    )
+    body.extend(["", "## 未覆盖范围处置", ""])
+    body.append(
+        render_table(
+            ["Disposition ID", "Source Document", "Lines", "Classification", "Linked Gap Atom IDs", "Reason"],
+            (
+                [
+                    code(row.get("disposition-id")),
+                    code(row.get("source-document")),
+                    lines_from(row),
+                    code(row.get("classification")),
+                    code_list(row.get("linked-gap-atom-ids")),
+                    md(row.get("reason")),
+                ]
+                for row in data.get("remainder-dispositions", [])
+                if isinstance(row, dict)
+            ),
+        ).rstrip()
+    )
+    body.extend(["", "## 重新提取来源", ""])
+    body.append(
+        render_table(
+            ["Source Document", "Source Atom IDs", "Lines", "Reason"],
             (
                 [
                     code(row.get("source-document")),
-                    lines_from(row),
-                    code(row.get("how-found")),
-                    md(row.get("read-scope")),
-                    code(row.get("semantic-classification")),
-                    code(row.get("production-obligation")),
-                    code_list(row.get("linked-global-atom-ids")),
-                    code(row.get("non-coverage-status")),
-                    md(row.get("blocker")),
+                    code_list(row.get("source-atom-ids")),
+                    md("; ".join(lines_from(item) for item in row.get("line-ranges", []) if isinstance(item, dict))),
                     md(row.get("reason")),
                 ]
-                for row in data.get("rows", [])
+                for row in data.get("recheck-sources", [])
                 if isinstance(row, dict)
             ),
         ).rstrip()
     )
-    return "\n".join(body).rstrip() + "\n" + trace_appendix(json_path, SOURCE_REMAINDER_REVIEW_SCHEMA, repo_root)
+    summary = data.get("summary") if isinstance(data.get("summary"), dict) else {}
+    body.extend(["", "## 统计摘要", ""])
+    body.append(
+        render_table(
+            ["Metric", "Value"],
+            ([code(key), code(value)] for key, value in sorted(summary.items())),
+        ).rstrip()
+    )
+    return "\n".join(body).rstrip() + "\n" + trace_appendix(json_path, PHASE3_COVERAGE_REVIEW_SCHEMA, repo_root)
 
 
 def render_atom_plan_mapping(orchestrate_dir: Path, json_path: Path) -> str:
@@ -429,10 +372,9 @@ def render_atom_plan_mapping(orchestrate_dir: Path, json_path: Path) -> str:
         render_table(
             [
                 "Global Atom ID",
+                "Evidence Reference",
                 "Source Document",
                 "Lines",
-                "Phase 3 Owner / Status",
-                "Phase 3 Artifact Projection",
                 "Final Owner Type",
                 "Final Owner Change",
                 "Final Capability Impact",
@@ -446,10 +388,9 @@ def render_atom_plan_mapping(orchestrate_dir: Path, json_path: Path) -> str:
             (
                 [
                     code(row.get("global-atom-id")),
+                    code(json.dumps(row.get("evidence-ref"), ensure_ascii=False, sort_keys=True)),
                     code(row.get("source-document")),
                     lines_from(row),
-                    md(row.get("phase-3-owner-status")),
-                    code(row.get("phase-3-artifact-projection")),
                     code(row.get("final-owner-type")),
                     code(row.get("final-owner-change")),
                     code(row.get("final-capability-impact")),
@@ -525,14 +466,10 @@ def render_jobs(orchestrate_dir: Path, artifact: str, source_document: str = "")
         path = orchestrate_dir / "change-capability-anchors/obligation-atom-index.json"
         if path.exists():
             jobs.append({"json-path": path, "md-path": path.with_suffix(".md"), "renderer": render_global_index})
-    if artifact in {"phase3-source-map", "all-supported"}:
-        path = orchestrate_dir / "phase-works/phase-3/phase-3-trace/source-to-global-atom-map.json"
+    if artifact in {"phase3-coverage-review", "all-supported"}:
+        path = orchestrate_dir / "phase-works/phase-3/coverage-review.json"
         if path.exists():
-            jobs.append({"json-path": path, "md-path": path.with_suffix(".md"), "renderer": render_source_map})
-    if artifact in {"phase3-remainder-review", "all-supported"}:
-        path = orchestrate_dir / "phase-works/phase-3/phase-3-trace/source-remainder-review.json"
-        if path.exists():
-            jobs.append({"json-path": path, "md-path": path.with_suffix(".md"), "renderer": render_remainder_review})
+            jobs.append({"json-path": path, "md-path": path.with_suffix(".md"), "renderer": render_coverage_review})
     if artifact in {"phase5-atom-plan-mapping", "all-supported"}:
         path = orchestrate_dir / "phase-works/phase-5/atom-plan-mapping.json"
         if path.exists():

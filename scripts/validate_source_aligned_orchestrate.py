@@ -20,15 +20,13 @@ from source_aligned_trace_lib import (
     GLOBAL_ATOM_INDEX_SCHEMA,
     KEBAB_CASE_RE,
     MANIFEST_SCHEMA,
+    PHASE3_COVERAGE_REVIEW_SCHEMA,
     PHASE_TRACE_SCHEMAS,
     SOURCE_ATOMS_SCHEMA,
-    SOURCE_REMAINDER_REVIEW_SCHEMA,
-    SOURCE_TO_GLOBAL_MAP_SCHEMA,
     SOURCE_WINDOW_INDEX_SCHEMA,
     TRACE_CONTRACT_VERSION,
     IssueReporter,
     cell,
-    coverage_file_name,
     extract_ga_ids,
     line_range_label,
     line_ranges_label,
@@ -37,8 +35,10 @@ from source_aligned_trace_lib import (
     range_covered_by,
     read_json,
     sha256_file,
+    sha256_text,
     source_atom_file_name,
     source_line_count,
+    source_text_for_ranges,
     table_rows,
     uncovered_line_ranges,
     validate_kebab_keys,
@@ -50,8 +50,7 @@ from render_source_aligned_orchestrate import (
     render_capability_baseline,
     render_global_index,
     render_phase2_source_atoms,
-    render_remainder_review,
-    render_source_map,
+    render_coverage_review,
 )
 
 NO_OWNER_VALUES = {"", "None", "none", "null", "NULL"}
@@ -107,7 +106,9 @@ PHASE2_TOP_LEVEL_FIELDS = {
     "blockers",
     "language-self-check",
 }
-PHASE3_DIRECT_STATUSES = {"direct", "direct-candidate"}
+PHASE3_GAP_ID_RE = re.compile(r"^P3-GAP-\d{4}$")
+PHASE3_DISPOSITION_ID_RE = re.compile(r"^RD-\d{4}$")
+PHASE3_DISPOSITIONS = {"missing-obligation", "safe-non-obligation", "requires-reextract", "blocked"}
 LEGACY_CAPABILITY_FIELDS = {
     "candidate-owner-capability",
     "owner-capability",
@@ -130,7 +131,7 @@ NON_FINAL_PHASE5_STATUSES = {"needs-coverage-recheck", "blocked"}
 PHASE_ALLOWED_TRACE_STATUSES = {
     "phase-1": {"initial-plan-written"},
     "phase-2": {"source-atoms-written"},
-    "phase-3": {"coverage-complete", "blocked"},
+    "phase-3": {"coverage-complete", "needs-extraction-recheck", "blocked"},
     "phase-4": {"grounded", *NON_FINAL_PHASE4_STATUSES},
     "phase-5": {*FINAL_PHASE5_STATUSES, *NON_FINAL_PHASE5_STATUSES},
 }
@@ -524,13 +525,8 @@ def expected_manifest_artifacts(orchestrate_dir: Path, repo_root: Path) -> Dict[
             "phase-3",
         ),
         (
-            orchestrate_dir / "phase-works/phase-3/phase-3-trace/source-to-global-atom-map.json",
-            SOURCE_TO_GLOBAL_MAP_SCHEMA,
-            "phase-3",
-        ),
-        (
-            orchestrate_dir / "phase-works/phase-3/phase-3-trace/source-remainder-review.json",
-            SOURCE_REMAINDER_REVIEW_SCHEMA,
+            orchestrate_dir / "phase-works/phase-3/coverage-review.json",
+            PHASE3_COVERAGE_REVIEW_SCHEMA,
             "phase-3",
         ),
         (orchestrate_dir / "trace/phase-3.trace.json", PHASE_TRACE_SCHEMAS["phase-3"], "phase-3"),
@@ -617,13 +613,33 @@ def validate_manifest(orchestrate_dir: Path, repo_root: Path, reporter: IssueRep
                 path,
                 f"缺少 {rel(trace_path, repo_root)} 时，phase-statuses.{phase_name} 必须为 missing，实际为 {phase_status}",
             )
-    phase5_status = phase_status_value(phase_statuses.get("phase-5"))
-    if complete and phase5_status not in FINAL_PHASE5_STATUSES:
-        reporter.error(
-            "manifest-phase5-complete-status",
-            path,
-            f"--complete 要求 phase-statuses.phase-5 为 accepted/adjusted，实际为 {phase5_status or 'missing'}",
-        )
+    if complete:
+        terminal_statuses = {
+            "phase-1": {"initial-plan-written"},
+            "phase-2": {"source-atoms-written"},
+            "phase-3": {"coverage-complete"},
+            "phase-4": {"grounded"},
+            "phase-5": FINAL_PHASE5_STATUSES,
+        }
+        for phase_name, allowed in terminal_statuses.items():
+            actual = phase_status_value(phase_statuses.get(phase_name))
+            if actual not in allowed:
+                reporter.error(
+                    "manifest-complete-phase-status",
+                    path,
+                    f"--complete 要求 phase-statuses.{phase_name} 为 {sorted(allowed)}，实际为 {actual or 'missing'}",
+                )
+        phase3_trace_path = orchestrate_dir / "trace/phase-3.trace.json"
+        if phase3_trace_path.exists():
+            phase3_trace = read_json(phase3_trace_path)
+            reviewer_loop = phase3_trace.get("reviewer-loop")
+            reviewer_status = normalize_code(reviewer_loop.get("status")) if isinstance(reviewer_loop, dict) else ""
+            if reviewer_status != "passed":
+                reporter.error(
+                    "manifest-complete-phase3-reviewer",
+                    path,
+                    f"--complete 要求 Phase 3 reviewer-loop.status=passed，实际为 {reviewer_status or 'missing'}",
+                )
     artifacts = data.get("artifacts")
     if not isinstance(artifacts, list):
         reporter.error("manifest-artifacts", path, "artifacts 必须是 array")
@@ -1056,6 +1072,18 @@ def validate_phase_2(orchestrate_dir: Path, repo_root: Path, reporter: IssueRepo
 def load_global_atoms(orchestrate_dir: Path, reporter: IssueReporter) -> Dict[str, Dict[str, object]]:
     path = orchestrate_dir / "change-capability-anchors/obligation-atom-index.json"
     data = json_obj(path, reporter, GLOBAL_ATOM_INDEX_SCHEMA)
+    if data:
+        exact_fields(
+            data,
+            {"trace-schema", "trace-contract-version", "artifact-path", "global-atoms"},
+            path,
+            reporter,
+            "phase3-global-index-fields",
+            "global index",
+        )
+        expected_artifact = "openspec/orchestrate/change-capability-anchors/obligation-atom-index.md"
+        if data.get("artifact-path") != expected_artifact:
+            reporter.error("phase3-global-index-artifact-path", path, f"artifact-path 应为 {expected_artifact}")
     atoms: Dict[str, Dict[str, object]] = {}
     rows = data.get("global-atoms")
     if not isinstance(rows, list):
@@ -1090,34 +1118,17 @@ def validate_global_index_mirror(orchestrate_dir: Path, reporter: IssueReporter)
     )
 
 
-def validate_source_map_mirror(orchestrate_dir: Path, reporter: IssueReporter) -> None:
-    json_path = orchestrate_dir / "phase-works/phase-3/phase-3-trace/source-to-global-atom-map.json"
-    md_path = orchestrate_dir / "phase-works/phase-3/phase-3-trace/source-to-global-atom-map.md"
-    if not json_path.exists():
-        return
-    validate_rendered_markdown(
-        orchestrate_dir,
-        json_path,
-        md_path,
-        render_source_map,
-        reporter,
-        "phase3-source-map",
-    )
-
-
-def validate_remainder_review_mirror(orchestrate_dir: Path, reporter: IssueReporter) -> None:
-    json_path = orchestrate_dir / "phase-works/phase-3/phase-3-trace/source-remainder-review.json"
-    md_path = orchestrate_dir / "phase-works/phase-3/phase-3-trace/source-remainder-review.md"
-    if not json_path.exists():
-        return
-    validate_rendered_markdown(
-        orchestrate_dir,
-        json_path,
-        md_path,
-        render_remainder_review,
-        reporter,
-        "phase3-remainder-review",
-    )
+def validate_coverage_review_mirror(orchestrate_dir: Path, reporter: IssueReporter) -> None:
+    json_path = orchestrate_dir / "phase-works/phase-3/coverage-review.json"
+    if json_path.exists():
+        validate_rendered_markdown(
+            orchestrate_dir,
+            json_path,
+            json_path.with_suffix(".md"),
+            render_coverage_review,
+            reporter,
+            "phase3-coverage-review",
+        )
 
 
 def read_full_sources(orchestrate_dir: Path, repo_root: Path) -> List[str]:
@@ -1142,370 +1153,456 @@ def valid_range_items(value: object) -> List[Dict[str, int]]:
     return ranges
 
 
-def phase2_evidence_ranges(orchestrate_dir: Path, source_document: str) -> tuple[List[Dict[str, int]], List[str]]:
+def phase2_evidence_ranges(orchestrate_dir: Path, source_document: str) -> List[Dict[str, int]]:
     sidecar = orchestrate_dir / "phase-works/phase-2/source-obligation-atoms" / source_atom_file_name(source_document).replace(".md", ".json")
     if not sidecar.exists():
-        return [], []
-    try:
-        data = read_json(sidecar)
-    except Exception:  # noqa: BLE001
-        return [], []
-
-    ranges: List[Dict[str, int]] = []
-    origins: List[str] = []
-    for collection, id_key in (("source-atoms", "source-atom-id"),):
-        rows = data.get(collection)
-        if not isinstance(rows, list):
-            continue
-        for index, row in enumerate(rows, start=1):
-            if not isinstance(row, dict):
-                continue
-            row_ranges = valid_range_items(row.get("line-ranges"))
-            if not row_ranges:
-                continue
-            ranges.extend(row_ranges)
-            origin = normalize_code(row.get(id_key) or row.get("source-atom-ids") or f"{collection}[{index}]")
-            if origin:
-                origins.append(origin)
-    return merge_line_ranges(ranges), origins
-
-
-def validate_phase3_manifest_and_coverage(orchestrate_dir: Path, repo_root: Path, reporter: IssueReporter) -> None:
-    manifest_path = orchestrate_dir / "phase-works/phase-3/source-doc-manifest.md"
-    rows = table_rows(manifest_path, ["Source Document", "Classification", "Review File"])
-    seen: Set[str] = set()
-    for raw in rows:
-        source_document = normalize_code(cell(raw, "Source Document"))
-        if not source_document:
-            continue
-        if source_document in seen:
-            reporter.error("phase3-manifest-duplicate", manifest_path, f"Phase 3 来源文档重复：{source_document}")
-        seen.add(source_document)
-        review_file = normalize_code(cell(raw, "Review File"))
-        if review_file:
-            review_path = repo_root / review_file
-        else:
-            review_path = orchestrate_dir / "phase-works/phase-3/source-doc-coverage" / coverage_file_name(source_document)
-        if not review_path.exists():
-            reporter.error("phase3-coverage-file", manifest_path, f"{source_document} 缺少 coverage 文件：{review_path}")
-
-    for source_document in read_full_sources(orchestrate_dir, repo_root):
-        if source_document not in seen:
-            reporter.error("phase3-manifest-coverage", manifest_path, f"Phase 3 manifest 缺少 read-full 来源：{source_document}")
-
-
-def production_obligation_value(value: object) -> bool:
-    if isinstance(value, bool):
-        return value
-    text = normalize_code(value).lower()
-    return text in {
-        "true",
-        "yes",
-        "y",
-        "1",
-        "production",
-        "production-obligation",
-        "obligation-bearing",
-        "meaningful-production-obligation",
-    }
-
-
-def validate_remainder_audit_documents(
-    remainder_path: Path,
-    reporter: IssueReporter,
-    audit_documents: object,
-    expected_by_source: Dict[str, List[Dict[str, int]]],
-    evidence_by_source: Dict[str, List[Dict[str, int]]],
-    repo_root: Path,
-) -> None:
-    if not isinstance(audit_documents, list):
-        reporter.error("phase3-remainder-audit-documents", remainder_path, "audit-documents 必须是 array")
-        return
-    by_source: Dict[str, Dict[str, object]] = {}
-    for item in audit_documents:
-        if not isinstance(item, dict):
-            reporter.error("phase3-remainder-audit-documents", remainder_path, "audit-documents item 必须是 object")
-            continue
-        source_document = str(item.get("source-document", ""))
-        if source_document:
-            by_source[source_document] = item
-
-    for source_document, expected_uncovered in expected_by_source.items():
-        item = by_source.get(source_document)
-        if not item:
-            reporter.error("phase3-remainder-audit-document", remainder_path, f"缺少 {source_document} 的审计文档")
-            continue
-        line_count = source_line_count(repo_root, source_document)
-        if line_count is not None and item.get("line-count") != line_count:
-            reporter.error("phase3-remainder-audit-drift", remainder_path, f"{source_document} 的 line-count 发生 drift")
-        source_path = repo_root / source_document
-        if source_path.exists() and item.get("source-sha256") != sha256_file(source_path):
-            reporter.error("phase3-remainder-audit-drift", remainder_path, f"{source_document} 的 source-sha256 发生 drift")
-
-        actual_uncovered = merge_line_ranges(
-            range_item
-            for row in item.get("candidate-uncovered-ranges", [])
-            if isinstance(row, dict)
-            for range_item in valid_range_items(row.get("line-ranges"))
-        )
-        if actual_uncovered != merge_line_ranges(expected_uncovered):
-            reporter.error(
-                "phase3-remainder-audit-drift",
-                remainder_path,
-                f"{source_document} 的 candidate-uncovered-ranges 发生 drift；期望 {line_ranges_label(expected_uncovered)}",
-            )
-
-        actual_evidence = merge_line_ranges(
-            range_item
-            for row in item.get("evidence-ranges", [])
-            if isinstance(row, dict)
-            for range_item in valid_range_items(row.get("line-ranges"))
-        )
-        if actual_evidence and actual_evidence != merge_line_ranges(evidence_by_source.get(source_document, [])):
-            reporter.error(
-                "phase3-remainder-audit-drift",
-                remainder_path,
-                f"{source_document} 的 evidence-ranges 发生 drift；期望 {line_ranges_label(evidence_by_source.get(source_document, []))}",
-            )
-
-
-def validate_phase3_remainder_review(
-    orchestrate_dir: Path,
-    repo_root: Path,
-    reporter: IssueReporter,
-    global_atoms: Dict[str, Dict[str, object]],
-    phase3_decision: str,
-) -> None:
-    remainder_path = orchestrate_dir / "phase-works/phase-3/phase-3-trace/source-remainder-review.json"
-    data = json_obj(remainder_path, reporter, SOURCE_REMAINDER_REVIEW_SCHEMA)
-    if not data:
-        return
-
-    evidence_by_source: Dict[str, List[Dict[str, int]]] = {}
-    uncovered_by_source: Dict[str, List[Dict[str, int]]] = {}
-    for source_document in read_full_sources(orchestrate_dir, repo_root):
-        sidecar = orchestrate_dir / "phase-works/phase-2/source-obligation-atoms" / source_atom_file_name(source_document).replace(".md", ".json")
-        if not sidecar.exists():
-            reporter.error("phase3-phase2-source-atoms", remainder_path, f"{source_document} 缺少 Phase 2 source atom sidecar")
-        evidence_ranges, _ = phase2_evidence_ranges(orchestrate_dir, source_document)
-        line_count = source_line_count(repo_root, source_document)
-        if line_count is None:
-            reporter.error("phase3-source-exists", remainder_path, f"缺少来源文档：{source_document}")
-            line_count = 0
-        evidence_by_source[source_document] = evidence_ranges
-        uncovered_by_source[source_document] = uncovered_line_ranges(evidence_ranges, line_count)
-
-    validate_remainder_audit_documents(
-        remainder_path,
-        reporter,
-        data.get("audit-documents"),
-        uncovered_by_source,
-        evidence_by_source,
-        repo_root,
+        return []
+    data = read_json(sidecar)
+    return merge_line_ranges(
+        item
+        for row in data.get("source-atoms", [])
+        if isinstance(row, dict)
+        for item in valid_range_items(row.get("line-ranges"))
     )
 
-    rows = data.get("rows")
+
+def exact_fields(row: Dict[str, object], expected: Set[str], path: Path, reporter: IssueReporter, rule: str, context: str) -> None:
+    actual = set(row)
+    if actual != expected:
+        missing = sorted(expected - actual)
+        extra = sorted(actual - expected)
+        reporter.error(rule, path, f"{context} 字段不符合 schema；缺少={missing or 'None'}，多余={extra or 'None'}")
+
+
+def iter_nested_keys(value: object) -> Iterable[str]:
+    if isinstance(value, dict):
+        for key, child in value.items():
+            yield str(key)
+            yield from iter_nested_keys(child)
+    elif isinstance(value, list):
+        for child in value:
+            yield from iter_nested_keys(child)
+
+
+def contains_source_fact(value: object, candidates: Set[str]) -> bool:
+    if isinstance(value, str):
+        return any(candidate in value for candidate in candidates)
+    if isinstance(value, dict):
+        return any(contains_source_fact(child, candidates) for child in value.values())
+    if isinstance(value, list):
+        return any(contains_source_fact(child, candidates) for child in value)
+    return False
+
+
+def load_phase3_gap_atoms(orchestrate_dir: Path, reporter: IssueReporter) -> Dict[str, Dict[str, object]]:
+    path = orchestrate_dir / "phase-works/phase-3/coverage-review.json"
+    data = json_obj(path, reporter, PHASE3_COVERAGE_REVIEW_SCHEMA)
+    result: Dict[str, Dict[str, object]] = {}
+    rows = data.get("gap-atoms")
     if not isinstance(rows, list):
-        reporter.error("phase3-remainder-rows", remainder_path, "rows 必须是 array")
-        rows = []
-
-    review_ranges_by_source: Dict[str, List[Dict[str, int]]] = {}
-    for index, row in enumerate(rows):
+        reporter.error("phase3-gap-atoms", path, "gap-atoms 必须是 array")
+        return result
+    expected_fields = {"gap-atom-id", "source-document", "line-ranges", "source-fact", "atom-type", "normativity", "review-judgment"}
+    for row in rows:
         if not isinstance(row, dict):
-            reporter.error("phase3-remainder-row", remainder_path, "rows item 必须是 object")
+            reporter.error("phase3-gap-atom-row", path, "gap-atoms item 必须是 object")
             continue
-        source_document = str(row.get("source-document", ""))
-        context = f"{source_document}::{row.get('lines', '') or index}"
-        check_ranges(remainder_path, reporter, row.get("line-ranges"), source_document, repo_root, context)
-        row_ranges = valid_range_items(row.get("line-ranges"))
-        review_ranges_by_source.setdefault(source_document, []).extend(row_ranges)
+        gap_id = normalize_code(row.get("gap-atom-id"))
+        exact_fields(row, expected_fields, path, reporter, "phase3-gap-atom-fields", gap_id or "gap atom")
+        if not PHASE3_GAP_ID_RE.match(gap_id):
+            reporter.error("phase3-gap-id", path, f"gap atom ID 非法：{gap_id}")
+        if gap_id in result:
+            reporter.error("phase3-gap-id-duplicate", path, f"gap atom ID 重复：{gap_id}")
+        source_document = normalize_code(row.get("source-document"))
+        check_atom_range(path, reporter, row.get("line-ranges"), source_document, repo_root_for_path(path), gap_id)
+        check_source_fact_quote(path, reporter, row.get("source-fact"), row.get("line-ranges"), source_document, repo_root_for_path(path), gap_id)
+        if normalize_code(row.get("atom-type")) not in PHASE2_ATOM_TYPES:
+            reporter.error("phase3-gap-atom-type", path, f"{gap_id} atom-type 非法")
+        if normalize_code(row.get("normativity")) not in PHASE2_NORMATIVITY:
+            reporter.error("phase3-gap-normativity", path, f"{gap_id} normativity 非法")
+        if not squash(row.get("review-judgment")):
+            reporter.error("phase3-gap-judgment", path, f"{gap_id} 缺少中文 review-judgment")
+        result[gap_id] = row
+    return result
 
-        linked_ids = row.get("linked-global-atom-ids")
-        if not isinstance(linked_ids, list):
-            reporter.error("phase3-remainder-linked-ga", remainder_path, f"{context} 的 linked-global-atom-ids 必须是 array")
-            linked_ids = []
-        for atom_id in linked_ids:
-            if atom_id not in global_atoms:
-                reporter.error("phase3-remainder-unknown-ga", remainder_path, f"{context} 引用了未知的 {atom_id}")
 
-        blocker = squash(row.get("blocker", ""))
-        non_coverage = squash(row.get("non-coverage-status", ""))
-        if production_obligation_value(row.get("production-obligation")) and not linked_ids and not blocker:
-            reporter.error("phase3-remainder-outcome", remainder_path, f"{context} 的 production obligation 必须关联 GA 或提供 blocker")
-        if not linked_ids and not non_coverage and not blocker:
-            reporter.error("phase3-remainder-outcome", remainder_path, f"{context} 必须提供关联 GA、non-coverage status 或 blocker")
-        if blocker and phase3_decision == "coverage-complete":
-            reporter.error("phase3-remainder-blocker-complete", remainder_path, f"{context} 在 coverage-complete 状态下仍有 blocker")
-
-    for source_document, uncovered_ranges in uncovered_by_source.items():
-        review_ranges = review_ranges_by_source.get(source_document, [])
-        for candidate in uncovered_ranges:
-            if not range_covered_by(candidate, review_ranges):
-                reporter.error(
-                    "phase3-remainder-coverage",
-                    remainder_path,
-                    f"{source_document} 的未覆盖 range {line_range_label(candidate)} 未在 source-remainder-review.json 中审阅",
-                )
+def repo_root_for_path(path: Path) -> Path:
+    for parent in path.parents:
+        if parent.name == "orchestrate" and parent.parent.name == "openspec":
+            return parent.parent.parent
+    return Path.cwd()
 
 
 def validate_phase_3(orchestrate_dir: Path, repo_root: Path, reporter: IssueReporter) -> None:
-    require_file(
-        orchestrate_dir / "phase-works/phase-1/initial-change-plan.md",
-        reporter,
-        "phase3-interface-input",
-        "缺少 Phase 3 输入：Phase 1 initial-change-plan.md",
-    )
-    phase3_trace = json_obj(orchestrate_dir / "trace/phase-3.trace.json", reporter, PHASE_TRACE_SCHEMAS["phase-3"])
-    phase3_decision = ""
-    if phase3_trace:
-        phase3_decision = validate_trace_status(
-            phase3_trace,
-            orchestrate_dir / "trace/phase-3.trace.json",
-            reporter,
-            "phase-3",
-            "phase3-status",
-        )
-    require_file(orchestrate_dir / "phase-works/phase-3/coverage-review.md", reporter, "phase3-interface-artifact", "缺少 Phase 3 coverage review")
-    require_file(orchestrate_dir / "phase-works/phase-3/phase-3-agent-report.md", reporter, "phase3-interface-artifact", "缺少 Phase 3 agent 报告")
-    require_file(orchestrate_dir / "phase-works/phase-3/phase-3-trace/duplicate-ownership-review.md", reporter, "phase3-interface-artifact", "缺少 Phase 3 duplicate ownership review")
-    require_file(orchestrate_dir / "phase-works/phase-3/phase-3-trace/atom-normalization-decision-log.md", reporter, "phase3-interface-artifact", "缺少 Phase 3 normalization decision log")
-    validate_phase3_manifest_and_coverage(orchestrate_dir, repo_root, reporter)
-    global_atoms = load_global_atoms(orchestrate_dir, reporter)
+    trace_path = orchestrate_dir / "trace/phase-3.trace.json"
+    coverage_path = orchestrate_dir / "phase-works/phase-3/coverage-review.json"
     index_path = orchestrate_dir / "change-capability-anchors/obligation-atom-index.json"
-    for atom_id, row in global_atoms.items():
-        reject_legacy_capability_fields(row, index_path, reporter, atom_id)
-        source_document = str(row.get("source-document", ""))
-        check_atom_range(index_path, reporter, row.get("line-ranges"), source_document, repo_root, atom_id)
-        check_source_fact_quote(
-            index_path,
+    trace = json_obj(trace_path, reporter, PHASE_TRACE_SCHEMAS["phase-3"])
+    if trace:
+        exact_fields(
+            trace,
+            {
+                "trace-schema",
+                "trace-contract-version",
+                "decision",
+                "global-atom-index-path",
+                "global-atom-index-sha256",
+                "coverage-review-path",
+                "coverage-review-sha256",
+                "reviewer-loop",
+            },
+            trace_path,
             reporter,
-            row.get("source-fact"),
-            row.get("line-ranges"),
-            source_document,
-            repo_root,
-            atom_id,
+            "phase3-trace-fields",
+            "Phase 3 trace",
         )
-        projection = str(row.get("artifact-projection", ""))
-        status = str(row.get("coverage-status", ""))
-        if not projection:
-            reporter.error("phase3-projection", index_path, f"{atom_id} 的 artifact-projection 为空")
-        if status in {"direct", "direct-candidate"} and projection == "contextual-only":
-            reporter.error("phase3-direct-contextual-only", index_path, f"{atom_id} 是 direct，却使用了 contextual-only")
-        if status in {"direct", "direct-candidate"} and is_no_owner(row.get("owner-change")):
-            reporter.error("phase3-direct-change-owner", index_path, f"{atom_id} direct atom 必须提供 owner-change 或 phase-5-refit-required")
-        validate_capability_contract(
-            row,
-            impact_field="capability-impact",
-            target_field="target-capability",
-            related_field="related-capabilities",
-            projection_field="artifact-projection",
-            allowed_impacts=NON_TERMINAL_CAPABILITY_IMPACTS,
-            path=index_path,
-            reporter=reporter,
-            context=atom_id,
-            rationale_field="review-judgment",
+        if not isinstance(trace.get("reviewer-loop"), dict):
+            reporter.error("phase3-reviewer-loop", trace_path, "reviewer-loop 必须是 object")
+        else:
+            reviewer_loop = trace["reviewer-loop"]
+            exact_fields(
+                reviewer_loop,
+                {"status", "writer-id", "reviewer-id", "validator-status", "findings", "repairs"},
+                trace_path,
+                reporter,
+                "phase3-reviewer-loop-fields",
+                "reviewer-loop",
+            )
+            loop_status = normalize_code(reviewer_loop.get("status"))
+            if loop_status not in {"pending", "passed", "blocked"}:
+                reporter.error("phase3-reviewer-loop-status", trace_path, f"reviewer-loop status非法：{loop_status}")
+            if not isinstance(reviewer_loop.get("findings"), list) or not isinstance(reviewer_loop.get("repairs"), list):
+                reporter.error("phase3-reviewer-loop-evidence", trace_path, "findings与repairs必须是 array")
+            if loop_status == "passed":
+                writer_id = squash(reviewer_loop.get("writer-id"))
+                reviewer_id = squash(reviewer_loop.get("reviewer-id"))
+                if not writer_id or not reviewer_id:
+                    reporter.error("phase3-reviewer-loop-identity", trace_path, "passed reviewer-loop必须记录 writer/reviewer identity")
+                elif writer_id == reviewer_id:
+                    reporter.error("phase3-reviewer-loop-independence", trace_path, "Phase 3 reviewer identity必须不同于 writer identity")
+                if normalize_code(reviewer_loop.get("validator-status")) != "passed":
+                    reporter.error("phase3-reviewer-loop-validator", trace_path, "passed reviewer-loop必须记录 validator-status=passed")
+    trace_decision = validate_trace_status(trace, trace_path, reporter, "phase-3", "phase3-status") if trace else ""
+    coverage = json_obj(coverage_path, reporter, PHASE3_COVERAGE_REVIEW_SCHEMA)
+    if coverage:
+        exact_fields(
+            coverage,
+            {
+                "trace-schema",
+                "trace-contract-version",
+                "artifact-path",
+                "documents",
+                "gap-atoms",
+                "remainder-dispositions",
+                "recheck-sources",
+                "summary",
+                "decision",
+                "language-self-check",
+            },
+            coverage_path,
+            reporter,
+            "phase3-coverage-review-fields",
+            "coverage review",
         )
-        impact = normalize_code(row.get("capability-impact"))
-        target = normalize_code(row.get("target-capability"))
-        if target == "candidate-new-capability":
-            reporter.error(
-                "phase3-capability-target-placeholder",
-                index_path,
-                f"{atom_id} 的 Phase 3 target 必须将 candidate-new-capability 消解为具体 Capability 或 unresolved",
-            )
-        if status not in PHASE3_DIRECT_STATUSES and (impact != "none" or target != "none"):
-            reporter.error(
-                "phase3-non-direct-capability",
-                index_path,
-                f"{atom_id} 的 non-direct/contextual row 必须使用 impact=none、target=none",
-            )
-        if status in PHASE3_DIRECT_STATUSES and projection in SPEC_PROJECTIONS:
-            if impact not in {*BUSINESS_CAPABILITY_IMPACTS, "unresolved"}:
-                reporter.error(
-                    "phase3-direct-spec-impact",
-                    index_path,
-                    f"{atom_id} direct spec atom 必须使用 new、modified 或 unresolved",
-                )
+        expected_artifact = "openspec/orchestrate/phase-works/phase-3/coverage-review.md"
+        if coverage.get("artifact-path") != expected_artifact:
+            reporter.error("phase3-coverage-artifact-path", coverage_path, f"artifact-path 应为 {expected_artifact}")
+        if not isinstance(coverage.get("summary"), dict):
+            reporter.error("phase3-summary", coverage_path, "summary 必须是 object")
+        if not squash(coverage.get("language-self-check")):
+            reporter.error("phase3-language-self-check", coverage_path, "language-self-check 必须非空")
+    decision = normalize_code(coverage.get("decision"))
+    if decision not in PHASE_ALLOWED_TRACE_STATUSES["phase-3"]:
+        reporter.error("phase3-decision", coverage_path, f"decision 非法：{decision}")
+    if trace_decision and decision and trace_decision != decision:
+        reporter.error("phase3-decision-drift", trace_path, "Phase 3 trace 与 coverage review decision 不一致")
 
-    map_path = orchestrate_dir / "phase-works/phase-3/phase-3-trace/source-to-global-atom-map.json"
-    data = json_obj(map_path, reporter, SOURCE_TO_GLOBAL_MAP_SCHEMA)
+    expected_trace = {
+        "global-atom-index-path": rel(index_path, repo_root),
+        "coverage-review-path": rel(coverage_path, repo_root),
+    }
+    for field, expected in expected_trace.items():
+        if trace.get(field) != expected:
+            reporter.error("phase3-trace-path", trace_path, f"{field} 应为 {expected}")
+    for field, artifact in (("global-atom-index-sha256", index_path), ("coverage-review-sha256", coverage_path)):
+        if artifact.exists() and trace.get(field) != sha256_file(artifact):
+            reporter.error("phase3-trace-sha", trace_path, f"{field} 与 canonical artifact digest 不一致")
+
+    removed_paths = [
+        "phase-works/phase-3/source-doc-manifest.md",
+        "phase-works/phase-3/source-doc-coverage",
+        "phase-works/phase-3/phase-3-agent-report.md",
+        "phase-works/phase-3/phase-3-trace",
+    ]
+    for relative in removed_paths:
+        path = orchestrate_dir / relative
+        if path.exists():
+            reporter.error("phase3-legacy-artifact", path, "Phase 3 v1 已移除此 artifact")
+    phase3_dir = orchestrate_dir / "phase-works/phase-3"
+    allowed_phase3_files = {coverage_path.resolve(), coverage_path.with_suffix(".md").resolve()}
+    if phase3_dir.exists():
+        for path in phase3_dir.rglob("*"):
+            if path.is_file() and path.resolve() not in allowed_phase3_files:
+                reporter.error("phase3-unexpected-artifact", path, "Phase 3 固定五产物契约不允许此文件")
+
     phase2_atoms = load_phase2_atoms(orchestrate_dir, reporter)
-    mapped_keys: Set[str] = set()
-    rows = data.get("rows")
-    if not isinstance(rows, list):
-        reporter.error("phase3-map-rows", map_path, "rows 必须是 array")
-        rows = []
-    for row in rows:
-        if not isinstance(row, dict):
-            reporter.error("phase3-map-row", map_path, "rows item 必须是 object")
-            continue
-        source_document = str(row.get("source-document", ""))
-        atom_id = str(row.get("source-atom-id", ""))
-        reject_legacy_capability_fields(row, map_path, reporter, f"{source_document}::{atom_id}")
-        forbidden_phase2_fields = sorted(
-            {"lines", "candidate-capability-impact", "candidate-related-capabilities"}.intersection(row)
+    phase2_source_facts = {
+        str(row.get("source-fact"))
+        for row in phase2_atoms.values()
+        if isinstance(row.get("source-fact"), str) and str(row.get("source-fact"))
+    }
+    coverage_without_gaps = dict(coverage)
+    coverage_without_gaps["gap-atoms"] = []
+    if contains_source_fact(trace, phase2_source_facts) or contains_source_fact(coverage_without_gaps, phase2_source_facts):
+        reporter.error(
+            "phase3-phase2-source-fact-copy",
+            trace_path,
+            "Phase 3 gap-atoms之外的 artifact不得复制 Phase 2 source-fact原文",
         )
-        if forbidden_phase2_fields:
-            reporter.error(
-                "phase3-map-v3-field",
-                map_path,
-                f"{source_document}::{atom_id} 包含 source-map v3 已移除的字段：{', '.join(forbidden_phase2_fields)}",
-            )
-        source_key = f"{source_document}::{atom_id}"
-        mapped_keys.add(source_key)
-        phase2_row = phase2_atoms.get(source_key)
-        if phase2_row:
-            if row.get("line-ranges") != phase2_row.get("line-ranges"):
-                reporter.error(
-                    "phase3-map-evidence-drift",
-                    map_path,
-                    f"{source_key} 的 line-ranges 与不可变的 Phase 2 evidence 不一致",
-                )
-            for field in (
-                "candidate-status",
-                "candidate-artifact-projection",
-                "candidate-owner-change",
-                "candidate-target-capability",
-            ):
-                if row.get(field) != phase2_row.get(field):
-                    reporter.error(
-                        "phase3-map-candidate-drift",
-                        map_path,
-                        f"{source_key} 的 {field} 与不可变的 Phase 2 evidence 不一致",
-                    )
-        populated = [
-            key
-            for key in ("global-atom-id", "global-relation", "non-coverage-status", "blocker")
-            if row.get(key)
-        ]
-        if len(populated) != 1:
-            reporter.error("phase3-map-exclusive", map_path, f"{source_document}::{atom_id} 必须且只能设置一个 mapping outcome")
-        if row.get("global-atom-id") and row.get("global-atom-id") not in global_atoms:
-            reporter.error("phase3-map-unknown-ga", map_path, f"{atom_id} 映射到了未知的 {row.get('global-atom-id')}")
-        global_atom_id = str(row.get("global-atom-id", ""))
-        if global_atom_id in global_atoms:
-            global_row = global_atoms[global_atom_id]
-            expected = {
-                "global-capability-impact": global_row.get("capability-impact"),
-                "global-target-capability": global_row.get("target-capability"),
-                "global-related-capabilities": global_row.get("related-capabilities"),
-            }
-            for field, value in expected.items():
-                if row.get(field) != value:
-                    reporter.error(
-                        "phase3-map-capability-drift",
-                        map_path,
-                        f"{source_document}::{atom_id} 的 {field} 与 {global_atom_id} 不一致",
-                    )
-        check_atom_range(map_path, reporter, row.get("line-ranges"), source_document, repo_root, atom_id)
+    read_full = read_full_sources(orchestrate_dir, repo_root)
+    documents = coverage.get("documents")
+    document_rows: Dict[str, Dict[str, object]] = {}
+    if not isinstance(documents, list):
+        reporter.error("phase3-documents", coverage_path, "documents 必须是 array")
+        documents = []
+    document_fields = {"source-document", "source-sha256", "line-count", "phase-2-atom-path", "phase-2-atom-sha256", "covered-ranges", "candidate-uncovered-ranges"}
+    uncovered_by_source: Dict[str, List[Dict[str, int]]] = {}
+    for row in documents:
+        if not isinstance(row, dict):
+            reporter.error("phase3-document-row", coverage_path, "documents item 必须是 object")
+            continue
+        source_document = normalize_code(row.get("source-document"))
+        exact_fields(row, document_fields, coverage_path, reporter, "phase3-document-fields", source_document or "document")
+        if source_document in document_rows:
+            reporter.error("phase3-document-duplicate", coverage_path, f"source document 重复：{source_document}")
+        document_rows[source_document] = row
+        source_path = repo_root / source_document
+        sidecar = orchestrate_dir / "phase-works/phase-2/source-obligation-atoms" / source_atom_file_name(source_document).replace(".md", ".json")
+        if not source_path.exists():
+            reporter.error("phase3-source-missing", coverage_path, f"来源文档不存在：{source_document}")
+            continue
+        if not sidecar.exists():
+            reporter.error("phase3-phase2-artifact-missing", coverage_path, f"{source_document} 缺少 Phase 2 atom artifact")
+        else:
+            phase2_data = json_obj(sidecar, reporter, SOURCE_ATOMS_SCHEMA)
+            if normalize_code(phase2_data.get("source-document")) != source_document:
+                reporter.error("phase3-phase2-artifact-source", sidecar, f"Phase 2 artifact source-document 应为 {source_document}")
+            if phase2_data.get("source-sha256") != sha256_file(source_path):
+                reporter.error("phase3-phase2-artifact-source-sha", sidecar, f"{source_document} 的 Phase 2 source digest已失效")
+        line_count = source_line_count(repo_root, source_document) or 0
+        expected_covered = phase2_evidence_ranges(orchestrate_dir, source_document) if sidecar.exists() else []
+        expected_uncovered = uncovered_line_ranges(expected_covered, line_count)
+        uncovered_by_source[source_document] = expected_uncovered
+        expected_values = {
+            "source-sha256": sha256_file(source_path),
+            "line-count": line_count,
+            "phase-2-atom-path": rel(sidecar, repo_root),
+            "phase-2-atom-sha256": sha256_file(sidecar) if sidecar.exists() else "",
+            "covered-ranges": expected_covered,
+            "candidate-uncovered-ranges": expected_uncovered,
+        }
+        for field, expected in expected_values.items():
+            if row.get(field) != expected:
+                reporter.error("phase3-document-drift", coverage_path, f"{source_document} 的 {field} 与机械重算不一致")
+    if set(document_rows) != set(read_full):
+        reporter.error("phase3-document-coverage", coverage_path, f"documents 必须恰好覆盖 read-full source；缺少={sorted(set(read_full)-set(document_rows))}，多余={sorted(set(document_rows)-set(read_full))}")
 
-    for key in phase2_atoms:
-        if key not in mapped_keys:
-            reporter.error("phase3-map-coverage", map_path, f"source-to-global map 缺少 Phase 2 atom/context row：{key}")
+    gap_atoms = load_phase3_gap_atoms(orchestrate_dir, reporter)
+    for gap_id, row in gap_atoms.items():
+        source_document = normalize_code(row.get("source-document"))
+        ranges = valid_range_items(row.get("line-ranges"))
+        if ranges and not range_covered_by(ranges[0], uncovered_by_source.get(source_document, [])):
+            reporter.error("phase3-gap-not-uncovered", coverage_path, f"{gap_id} 不在 Phase 2 uncovered range内")
+
+    dispositions = coverage.get("remainder-dispositions")
+    if not isinstance(dispositions, list):
+        reporter.error("phase3-dispositions", coverage_path, "remainder-dispositions 必须是 array")
+        dispositions = []
+    disposition_fields = {"disposition-id", "source-document", "line-ranges", "classification", "linked-gap-atom-ids", "reason"}
+    seen_disposition_ids: Set[str] = set()
+    disposition_ranges: Dict[str, List[Dict[str, int]]] = {}
+    gap_link_counts = {gap_id: 0 for gap_id in gap_atoms}
+    classifications: List[str] = []
+    for row in dispositions:
+        if not isinstance(row, dict):
+            reporter.error("phase3-disposition-row", coverage_path, "remainder-dispositions item 必须是 object")
+            continue
+        disposition_id = normalize_code(row.get("disposition-id"))
+        source_document = normalize_code(row.get("source-document"))
+        classification = normalize_code(row.get("classification"))
+        classifications.append(classification)
+        exact_fields(row, disposition_fields, coverage_path, reporter, "phase3-disposition-fields", disposition_id or "disposition")
+        if not PHASE3_DISPOSITION_ID_RE.match(disposition_id) or disposition_id in seen_disposition_ids:
+            reporter.error("phase3-disposition-id", coverage_path, f"disposition ID非法或重复：{disposition_id}")
+        seen_disposition_ids.add(disposition_id)
+        if classification not in PHASE3_DISPOSITIONS:
+            reporter.error("phase3-disposition-classification", coverage_path, f"{disposition_id} classification非法：{classification}")
+        check_ranges(coverage_path, reporter, row.get("line-ranges"), source_document, repo_root, disposition_id)
+        ranges = valid_range_items(row.get("line-ranges"))
+        disposition_ranges.setdefault(source_document, []).extend(ranges)
+        for item in ranges:
+            if not range_covered_by(item, uncovered_by_source.get(source_document, [])):
+                reporter.error("phase3-disposition-not-uncovered", coverage_path, f"{disposition_id} 包含 Phase 2 covered range")
+        linked = row.get("linked-gap-atom-ids")
+        if not isinstance(linked, list) or len(linked) != len(set(linked)):
+            reporter.error("phase3-disposition-gap-links", coverage_path, f"{disposition_id} 的 linked-gap-atom-ids 必须是唯一 array")
+            linked = []
+        if classification == "missing-obligation" and not linked:
+            reporter.error("phase3-missing-gap-link", coverage_path, f"{disposition_id} 必须链接 gap atom")
+        if classification != "missing-obligation" and linked:
+            reporter.error("phase3-unexpected-gap-link", coverage_path, f"{disposition_id} 的 {classification} 不得链接 gap atom")
+        for gap_id in linked:
+            gap = gap_atoms.get(str(gap_id))
+            if not gap:
+                reporter.error("phase3-unknown-gap", coverage_path, f"{disposition_id} 引用了未知 gap atom：{gap_id}")
+                continue
+            gap_link_counts[str(gap_id)] += 1
+            gap_ranges = valid_range_items(gap.get("line-ranges"))
+            if normalize_code(gap.get("source-document")) != source_document or not gap_ranges or not range_covered_by(gap_ranges[0], ranges):
+                reporter.error("phase3-gap-disposition-range", coverage_path, f"{gap_id} 不在 {disposition_id} 的 source/range内")
+        if not squash(row.get("reason")):
+            reporter.error("phase3-disposition-reason", coverage_path, f"{disposition_id} 缺少中文 reason")
+    for source_document, candidates in uncovered_by_source.items():
+        for candidate in candidates:
+            if not range_covered_by(candidate, disposition_ranges.get(source_document, [])):
+                reporter.error("phase3-uncovered-disposition", coverage_path, f"{source_document} 的 {line_range_label(candidate)} 尚未处置")
+    for gap_id, count in gap_link_counts.items():
+        if count != 1:
+            reporter.error("phase3-gap-link-cardinality", coverage_path, f"{gap_id} 必须恰好由一个 missing-obligation disposition链接，实际 {count}")
+
+    rechecks = coverage.get("recheck-sources")
+    if not isinstance(rechecks, list):
+        reporter.error("phase3-recheck-sources", coverage_path, "recheck-sources 必须是 array")
+        rechecks = []
+    recheck_fields = {"source-document", "source-atom-ids", "line-ranges", "reason"}
+    phase2_keys = set(phase2_atoms)
+    for row in rechecks:
+        if not isinstance(row, dict):
+            reporter.error("phase3-recheck-row", coverage_path, "recheck-sources item 必须是 object")
+            continue
+        source_document = normalize_code(row.get("source-document"))
+        exact_fields(row, recheck_fields, coverage_path, reporter, "phase3-recheck-fields", source_document or "recheck")
+        ids = row.get("source-atom-ids")
+        if not isinstance(ids, list) or not ids or len(ids) != len(set(ids)):
+            reporter.error("phase3-recheck-atom-ids", coverage_path, f"{source_document} recheck必须提供非空唯一 source-atom-ids")
+            ids = []
+        for atom_id in ids:
+            if f"{source_document}::{atom_id}" not in phase2_keys:
+                reporter.error("phase3-recheck-unknown-atom", coverage_path, f"recheck引用未知 Phase 2 atom：{source_document}::{atom_id}")
+        check_ranges(coverage_path, reporter, row.get("line-ranges"), source_document, repo_root, f"recheck::{source_document}")
+        if not squash(row.get("reason")):
+            reporter.error("phase3-recheck-reason", coverage_path, f"{source_document} recheck缺少中文 reason")
+
+    global_atoms = load_global_atoms(orchestrate_dir, reporter)
+    seen_refs: Set[str] = set()
+    referenced_phase2: Set[str] = set()
+    referenced_gaps: Set[str] = set()
+    for ga_id, row in global_atoms.items():
+        exact_fields(row, {"global-atom-id", "evidence-ref"}, index_path, reporter, "phase3-global-atom-fields", ga_id)
+        evidence_ref = row.get("evidence-ref")
+        if not isinstance(evidence_ref, dict):
+            reporter.error("phase3-evidence-ref", index_path, f"{ga_id} evidence-ref必须是 object")
+            continue
+        kind = normalize_code(evidence_ref.get("kind"))
+        if kind == "phase-2-source-atom":
+            exact_fields(evidence_ref, {"kind", "source-document", "source-atom-id"}, index_path, reporter, "phase3-evidence-ref-fields", ga_id)
+            key = f"{normalize_code(evidence_ref.get('source-document'))}::{normalize_code(evidence_ref.get('source-atom-id'))}"
+            if key not in phase2_atoms:
+                reporter.error("phase3-evidence-ref-dangling", index_path, f"{ga_id} 引用未知 Phase 2 atom：{key}")
+            referenced_phase2.add(key)
+            ref_key = f"p2::{key}"
+        elif kind == "phase-3-gap-atom":
+            exact_fields(evidence_ref, {"kind", "gap-atom-id"}, index_path, reporter, "phase3-evidence-ref-fields", ga_id)
+            gap_id = normalize_code(evidence_ref.get("gap-atom-id"))
+            if gap_id not in gap_atoms:
+                reporter.error("phase3-evidence-ref-dangling", index_path, f"{ga_id} 引用未知 gap atom：{gap_id}")
+            referenced_gaps.add(gap_id)
+            ref_key = f"p3::{gap_id}"
+        else:
+            reporter.error("phase3-evidence-ref-kind", index_path, f"{ga_id} evidence-ref kind非法：{kind}")
+            continue
+        if ref_key in seen_refs:
+            reporter.error("phase3-evidence-ref-duplicate", index_path, f"evidence occurrence被多个 GA引用：{ref_key}")
+        seen_refs.add(ref_key)
+    if referenced_phase2 != set(phase2_atoms):
+        reporter.error("phase3-phase2-ga-cardinality", index_path, f"Phase 2 occurrence必须一对一分配 GA；缺少={sorted(set(phase2_atoms)-referenced_phase2)}，多余={sorted(referenced_phase2-set(phase2_atoms))}")
+    if referenced_gaps != set(gap_atoms):
+        reporter.error("phase3-gap-ga-cardinality", index_path, f"gap occurrence必须一对一分配 GA；缺少={sorted(set(gap_atoms)-referenced_gaps)}，多余={sorted(referenced_gaps-set(gap_atoms))}")
+
+    summary = coverage.get("summary") if isinstance(coverage.get("summary"), dict) else {}
+    disposition_counts = {name: classifications.count(name) for name in sorted(PHASE3_DISPOSITIONS)}
+    expected_summary = {
+        "source-documents": len(read_full),
+        "phase-2-atoms": len(phase2_atoms),
+        "gap-atoms": len(gap_atoms),
+        "global-atoms": len(global_atoms),
+        "candidate-uncovered-ranges": sum(len(items) for items in uncovered_by_source.values()),
+        "remainder-dispositions": disposition_counts,
+    }
+    if summary != expected_summary:
+        reporter.error("phase3-summary-drift", coverage_path, f"summary 与机械重算不一致；期望 {expected_summary}")
+
+    if decision == "coverage-complete" and (rechecks or "requires-reextract" in classifications or "blocked" in classifications):
+        reporter.error("phase3-decision-consistency", coverage_path, "coverage-complete不得包含 recheck或 blocker")
+    if decision == "needs-extraction-recheck" and not (rechecks or "requires-reextract" in classifications):
+        reporter.error("phase3-decision-consistency", coverage_path, "needs-extraction-recheck要求 targeted recheck evidence")
+    if decision == "needs-extraction-recheck" and "blocked" in classifications:
+        reporter.error("phase3-decision-consistency", coverage_path, "存在 blocked disposition时 decision必须是 blocked")
+    if decision == "blocked" and "blocked" not in classifications:
+        reporter.error("phase3-decision-consistency", coverage_path, "blocked decision要求至少一个 blocked disposition作为正向证据")
     validate_global_index_mirror(orchestrate_dir, reporter)
-    validate_source_map_mirror(orchestrate_dir, reporter)
-    validate_phase3_remainder_review(orchestrate_dir, repo_root, reporter, global_atoms, phase3_decision)
-    validate_remainder_review_mirror(orchestrate_dir, reporter)
+    validate_coverage_review_mirror(orchestrate_dir, reporter)
+
+
+def resolve_global_evidence(
+    orchestrate_dir: Path,
+    global_atoms: Dict[str, Dict[str, object]],
+    reporter: IssueReporter,
+) -> Dict[str, Dict[str, object]]:
+    index_path = orchestrate_dir / "change-capability-anchors/obligation-atom-index.json"
+    phase2_atoms = load_phase2_atoms(orchestrate_dir, reporter)
+    gap_atoms = load_phase3_gap_atoms(orchestrate_dir, reporter)
+    resolved: Dict[str, Dict[str, object]] = {}
+    seen_refs: Set[str] = set()
+    for ga_id, global_row in global_atoms.items():
+        evidence_ref = global_row.get("evidence-ref")
+        if not isinstance(evidence_ref, dict):
+            reporter.error("evidence-resolver-ref", index_path, f"{ga_id} 缺少有效 evidence-ref")
+            continue
+        kind = normalize_code(evidence_ref.get("kind"))
+        evidence: Dict[str, object] | None = None
+        if kind == "phase-2-source-atom":
+            exact_fields(evidence_ref, {"kind", "source-document", "source-atom-id"}, index_path, reporter, "evidence-resolver-ref-fields", ga_id)
+            key = f"{normalize_code(evidence_ref.get('source-document'))}::{normalize_code(evidence_ref.get('source-atom-id'))}"
+            evidence = phase2_atoms.get(key)
+            ref_key = f"p2::{key}"
+        elif kind == "phase-3-gap-atom":
+            exact_fields(evidence_ref, {"kind", "gap-atom-id"}, index_path, reporter, "evidence-resolver-ref-fields", ga_id)
+            gap_id = normalize_code(evidence_ref.get("gap-atom-id"))
+            evidence = gap_atoms.get(gap_id)
+            ref_key = f"p3::{gap_id}"
+        else:
+            reporter.error("evidence-resolver-kind", index_path, f"{ga_id} evidence-ref kind非法：{kind}")
+            continue
+        if ref_key in seen_refs:
+            reporter.error("evidence-resolver-duplicate", index_path, f"evidence occurrence被多个 GA引用：{ref_key}")
+        seen_refs.add(ref_key)
+        if evidence is None:
+            reporter.error("evidence-resolver-dangling", index_path, f"{ga_id} 无法解析 evidence-ref")
+            continue
+        resolved[ga_id] = {
+            "evidence-ref": evidence_ref,
+            "source-document": evidence.get("source-document"),
+            "line-ranges": evidence.get("line-ranges"),
+            "source-fact": evidence.get("source-fact"),
+            "atom-type": evidence.get("atom-type"),
+            "normativity": evidence.get("normativity"),
+            "candidate-status": evidence.get("candidate-status"),
+            "candidate-artifact-projection": evidence.get("candidate-artifact-projection"),
+            "candidate-owner-change": evidence.get("candidate-owner-change"),
+            "candidate-target-capability": evidence.get("candidate-target-capability"),
+        }
+    return resolved
 
 
 def validate_phase_4(orchestrate_dir: Path, repo_root: Path, reporter: IssueReporter) -> None:
@@ -1530,8 +1627,26 @@ def validate_phase_4(orchestrate_dir: Path, repo_root: Path, reporter: IssueRepo
     require_file(orchestrate_dir / "phase-works/phase-4/source-window-grounding-issues.md", reporter, "phase4-interface-artifact", "缺少 Phase 4 grounding issues 报告")
     require_file(orchestrate_dir / "phase-works/phase-4/phase-4-agent-report.md", reporter, "phase4-interface-artifact", "缺少 Phase 4 agent 报告")
     global_atoms = load_global_atoms(orchestrate_dir, reporter)
+    resolved_evidence = resolve_global_evidence(orchestrate_dir, global_atoms, reporter)
     index_path = orchestrate_dir / "phase-works/phase-4/source-window-dossiers/source-window-index.json"
     data = json_obj(index_path, reporter, SOURCE_WINDOW_INDEX_SCHEMA)
+    if data:
+        exact_fields(
+            data,
+            {"trace-schema", "trace-contract-version", "status", "windows", "semantic-profiles", "grounding-issues"},
+            index_path,
+            reporter,
+            "phase4-index-fields",
+            "source-window-index",
+        )
+        forbidden_tokens = ("duplicate", "equivalence", "canonical-ga", "canonical-atom", "delivery-unit")
+        forbidden_keys = sorted({key for key in iter_nested_keys(data) if any(token in key.lower() for token in forbidden_tokens)})
+        if forbidden_keys:
+            reporter.error(
+                "phase4-semantic-dedup-field",
+                index_path,
+                f"Phase 4 不得包含 semantic dedup metadata：{', '.join(forbidden_keys)}",
+            )
     index_status = phase_status_value(data.get("status"))
     if status and index_status and status != index_status:
         reporter.error("phase4-status-drift", index_path, f"source-window-index status {index_status} 与 phase trace status {status} 不一致")
@@ -1546,11 +1661,25 @@ def validate_phase_4(orchestrate_dir: Path, repo_root: Path, reporter: IssueRepo
         if status in NON_FINAL_PHASE4_STATUSES and not (isinstance(issues, list) and issues):
             reporter.error("phase4-grounding-issues", index_path, f"{status} 要求提供非空 grounding-issues")
         return
+    grounded_ids: Set[str] = set()
+    window_fields = {
+        "window-id",
+        "input-unit",
+        "unit-type",
+        "source-document",
+        "line-ranges",
+        "context-line-ranges",
+        "linked-global-atom-ids",
+        "dossier-path",
+        "source-sha256",
+        "window-text-sha256",
+    }
     for row in windows:
         if not isinstance(row, dict):
             reporter.error("phase4-window-row", index_path, "windows item 必须是 object")
             continue
         window_id = str(row.get("window-id", ""))
+        exact_fields(row, window_fields, index_path, reporter, "phase4-window-fields", window_id or "window")
         source_document = str(row.get("source-document", ""))
         dossier_path = row.get("dossier-path")
         if not isinstance(dossier_path, str) or not (repo_root / dossier_path).exists():
@@ -1561,13 +1690,51 @@ def validate_phase_4(orchestrate_dir: Path, repo_root: Path, reporter: IssueRepo
         elif row.get("source-sha256") != sha256_file(source_path):
             reporter.error("phase4-source-sha", index_path, f"{window_id} 的来源 hash 相对 {source_document} 发生 drift")
         check_ranges(index_path, reporter, row.get("line-ranges"), source_document, repo_root, window_id)
+        context_ranges = row.get("context-line-ranges")
+        if not isinstance(context_ranges, list):
+            reporter.error("phase4-context-line-ranges", index_path, f"{window_id} 的 context-line-ranges 必须是 array")
+        elif context_ranges:
+            check_ranges(index_path, reporter, context_ranges, source_document, repo_root, f"{window_id} context")
+        window_ranges = valid_range_items(row.get("line-ranges"))
+        expected_window_sha = sha256_text(source_text_for_ranges(repo_root, source_document, window_ranges))
+        if row.get("window-text-sha256") != expected_window_sha:
+            reporter.error("phase4-window-text-sha", index_path, f"{window_id} 的 window-text-sha256 与 source/range不一致")
         ids = row.get("linked-global-atom-ids")
-        if not isinstance(ids, list) or not ids:
+        if not isinstance(ids, list) or not ids or len(ids) != len(set(ids)):
             reporter.error("phase4-linked-ga", index_path, f"{window_id} 的 linked-global-atom-ids 必须非空")
         else:
+            evidence_signatures: Set[Tuple[str, str]] = set()
             for atom_id in ids:
                 if atom_id not in global_atoms:
                     reporter.error("phase4-linked-ga", index_path, f"{window_id} 引用了未知的 {atom_id}")
+                    continue
+                grounded_ids.add(str(atom_id))
+                evidence = resolved_evidence.get(str(atom_id))
+                if not evidence:
+                    continue
+                evidence_signatures.add(
+                    (
+                        str(evidence.get("source-document", "")),
+                        json.dumps(evidence.get("line-ranges"), ensure_ascii=False, sort_keys=True),
+                    )
+                )
+                if source_document != evidence.get("source-document"):
+                    reporter.error("phase4-window-evidence-source", index_path, f"{window_id}/{atom_id} 与 resolved source不一致")
+                evidence_ranges = valid_range_items(evidence.get("line-ranges"))
+                if evidence_ranges and not range_covered_by(evidence_ranges[0], window_ranges):
+                    reporter.error("phase4-window-evidence-range", index_path, f"{window_id} 未覆盖 {atom_id} 的 resolved evidence range")
+            if len(ids) > 1 and len(evidence_signatures) > 1:
+                reporter.error(
+                    "phase4-window-reuse-nonidentical",
+                    index_path,
+                    f"{window_id} 只能机械复用 source/range完全相同的 GA evidence",
+                )
+    if status == "grounded" and grounded_ids != set(global_atoms):
+        reporter.error(
+            "phase4-ga-grounding-coverage",
+            index_path,
+            f"grounded要求每个 GA至少一个 window；缺少={sorted(set(global_atoms)-grounded_ids)}",
+        )
 
 
 def load_mapping(orchestrate_dir: Path, reporter: IssueReporter) -> Dict[str, Dict[str, object]]:
@@ -1755,6 +1922,12 @@ def validate_final_packets(orchestrate_dir: Path, repo_root: Path, reporter: Iss
             reporter.error("phase5-final-packet-path", index_path, f"{change} 缺少 packet：{packet_rel}")
             continue
         text = packet_path.read_text(encoding="utf-8")
+        if "未做语义去重" not in text or "多对一" not in text:
+            reporter.error(
+                "phase5-packet-dedup-handoff",
+                packet_path,
+                "final packet 必须声明其为未语义去重的 evidence mapping，并要求下游保留多对一 GA trace",
+            )
         if packet.get("packet-digest") != sha256_file(packet_path):
             reporter.error("phase5-final-packet-digest", index_path, f"{change} 的 packet-digest 发生 drift")
         direct_ids = set(packet.get("direct-atom-ids") if isinstance(packet.get("direct-atom-ids"), list) else [])
@@ -1839,9 +2012,17 @@ def validate_final_packets(orchestrate_dir: Path, repo_root: Path, reporter: Iss
         for atom_id in direct_ids:
             if atom_id not in text:
                 reporter.error("phase5-final-direct-packet", packet_path, f"final packet 缺少 direct atom {atom_id}")
+            mapping_row = mapping.get(str(atom_id), {})
+            evidence_ref = mapping_row.get("evidence-ref")
+            if isinstance(evidence_ref, dict) and json.dumps(evidence_ref, ensure_ascii=False, sort_keys=True) not in text:
+                reporter.error("phase5-final-evidence-ref", packet_path, f"final packet 缺少 {atom_id} 的 evidence reference")
         for atom_id in non_direct_ids:
             if atom_id not in text:
                 reporter.error("phase5-final-non-direct-packet", packet_path, f"final packet 缺少 owner-scoped non-direct atom {atom_id}")
+            mapping_row = mapping.get(str(atom_id), {})
+            evidence_ref = mapping_row.get("evidence-ref")
+            if isinstance(evidence_ref, dict) and json.dumps(evidence_ref, ensure_ascii=False, sort_keys=True) not in text:
+                reporter.error("phase5-final-evidence-ref", packet_path, f"final packet 缺少 {atom_id} 的 evidence reference")
 
         capability_paths = packet.get("capability-view-paths")
         if not isinstance(capability_paths, list):
@@ -2077,6 +2258,7 @@ def validate_phase_5(orchestrate_dir: Path, repo_root: Path, reporter: IssueRepo
         if baseline_json_path.exists() and trace.get("capability-baseline-reconciliation-sha256") != sha256_file(baseline_json_path):
             reporter.error("phase5-capability-baseline-trace-sha", trace_path, "baseline reconciliation digest 与 trace 不一致")
     global_atoms = load_global_atoms(orchestrate_dir, reporter)
+    resolved_evidence = resolve_global_evidence(orchestrate_dir, global_atoms, reporter)
     mapping = load_mapping(orchestrate_dir, reporter)
     missing = sorted(set(global_atoms) - set(mapping))
     extra = sorted(set(mapping) - set(global_atoms))
@@ -2084,31 +2266,50 @@ def validate_phase_5(orchestrate_dir: Path, repo_root: Path, reporter: IssueRepo
         reporter.error("phase5-mapping-coverage", orchestrate_dir / "phase-works/phase-5/atom-plan-mapping.json", f"mapping 缺少 global atom：{', '.join(missing[:12])}")
     if extra:
         reporter.error("phase5-mapping-extra", orchestrate_dir / "phase-works/phase-5/atom-plan-mapping.json", f"mapping 包含未知 global atom：{', '.join(extra[:12])}")
+    mapping_fields = {
+        "global-atom-id",
+        "evidence-ref",
+        "source-document",
+        "line-ranges",
+        "final-owner-type",
+        "final-owner-change",
+        "final-capability-impact",
+        "final-target-capability",
+        "related-capabilities",
+        "final-artifact-projection",
+        "final-relation",
+        "plan-decision",
+        "reason",
+    }
     for atom_id, row in mapping.items():
+        mapping_path = orchestrate_dir / "phase-works/phase-5/atom-plan-mapping.json"
+        exact_fields(row, mapping_fields, mapping_path, reporter, "phase5-mapping-fields", atom_id)
         reject_legacy_capability_fields(
             row,
-            orchestrate_dir / "phase-works/phase-5/atom-plan-mapping.json",
+            mapping_path,
             reporter,
             atom_id,
         )
         source_document = str(row.get("source-document", ""))
-        mapping_path = orchestrate_dir / "phase-works/phase-5/atom-plan-mapping.json"
         check_atom_range(mapping_path, reporter, row.get("line-ranges"), source_document, repo_root, atom_id)
         global_row = global_atoms.get(atom_id)
-        if global_row:
+        evidence = resolved_evidence.get(atom_id)
+        if global_row and row.get("evidence-ref") != global_row.get("evidence-ref"):
+            reporter.error("phase5-mapping-evidence-ref-drift", mapping_path, f"{atom_id} 的 evidence-ref 与 global index不一致")
+        if evidence:
             for field in ("source-document", "line-ranges"):
-                if row.get(field) != global_row.get(field):
+                if row.get(field) != evidence.get(field):
                     reporter.error(
                         "phase5-mapping-source-drift",
                         mapping_path,
-                        f"{atom_id} 的 {field} 与 global atom evidence 不一致",
+                        f"{atom_id} 的 {field} 与 resolved evidence不一致",
                     )
             check_source_fact_quote(
-                orchestrate_dir / "change-capability-anchors/obligation-atom-index.json",
+                mapping_path,
                 reporter,
-                global_row.get("source-fact"),
-                global_row.get("line-ranges"),
-                str(global_row.get("source-document", "")),
+                evidence.get("source-fact"),
+                evidence.get("line-ranges"),
+                str(evidence.get("source-document", "")),
                 repo_root,
                 atom_id,
             )
@@ -2169,11 +2370,6 @@ def validate_phase_5(orchestrate_dir: Path, repo_root: Path, reporter: IssueRepo
     validate_final_packets(orchestrate_dir, repo_root, reporter, mapping)
     if (orchestrate_dir / "foundation-reference").exists():
         reporter.error("phase5-foundation-reference-deprecated", orchestrate_dir / "foundation-reference", "foundation-reference 输出已废弃；Phase 5 必须改为输出 executable foundation packet")
-
-    for raw in table_rows(orchestrate_dir / "phase-works/phase-5/change-complexity-review.md", ["Change", "Budget Status"]):
-        budget = normalize_code(cell(raw, "Budget Status"))
-        if budget in {"over-budget-reviewed", "hard-over-budget", "above-target-reviewed"}:
-            reporter.warning("phase5-over-budget-review", orchestrate_dir / "phase-works/phase-5/change-complexity-review.md", f"{normalize_code(cell(raw, 'Change'))} 的 budget status 为 {budget}；必须提供 reviewer 判断")
 
     if complete:
         status = str(trace.get("status", ""))

@@ -106,7 +106,7 @@ reviewer 与 repair-writer 的权限由 `references/reviewer-repair-loop.md` 定
 - 保留同一规则的 condition + trigger/action + expected effect，不机械拆分。
 - 多个 behavior、不同 normativity、不同 projection、不同 failure/recovery path 或不同 acceptance obligation 可以独立变化时才拆分。
 - 不得用 “page detail”“flow behavior” 或宽泛 summary 覆盖整个页面、对象或流程。
-- 每个 atom 的 `line-ranges[]` 必须且只能包含一个连续 range。连续多行可使用一个 `{start, end}`；互不连续的 source 片段必须分别提取为 atom，再由 Phase 3 判断它们属于 duplicate、refinement、dependency、preserve 还是其他 relation。
+- 每个 atom 的 `line-ranges[]` 必须且只能包含一个连续 range。连续多行可使用一个 `{start, end}`；互不连续的 source 片段必须分别提取为独立 atom。即使这些 atom语义相同，后续也保留独立 evidence occurrence。
 
 对 UI/flow source，至少检查 page role、route/entry/exit、具名 state、trigger、可见行为、允许/禁用 action、failure/recovery、persistence/navigation/access/privacy、影响任务完成的 responsive behavior、acceptance 和 scope guard。
 
@@ -167,13 +167,13 @@ Capability 不是 co-owner，target 也不表示 Capability advancement。
 
 ### 7. 最小辅助字段
 
-每个 atom 只保留后续 normalization 必需的辅助字段：
+每个 atom 只保留后续 evidence resolution 与 final mapping 必需的候选辅助字段：
 
 - `atom-type`：`behavior`、`data-contract`、`architecture-runtime`、`verification`、`scope-guard` 或 `context`。
 - `normativity`：`must`、`must-not`、`should` 或 `context`。source 中“用户可/系统允许”若定义必须提供的可用能力，记录为 `must`。
 - `rationale`：简短说明 status/projection/mapping；`unassigned`、`contextual-candidate`、`unresolved-conflict` 和 `unclassified` 必须非空。
 
-Phase 2 不再记录 `candidate-capability-impact`、`candidate-related-capabilities`、`roles`、`propose-use` 或 `evidence-need`；这些字段需要全局 normalization、source-window grounding 或 final plan context，提前填写只会制造噪声和伪精度。
+Phase 2 不记录 `candidate-capability-impact`、`candidate-related-capabilities`、`roles`、`propose-use` 或 `evidence-need`；这些字段需要 source-window grounding 或 final plan context，提前填写只会制造噪声和伪精度。
 
 ## Canonical source atom file
 
@@ -191,7 +191,7 @@ Phase 2 不再记录 `candidate-capability-impact`、`candidate-related-capabili
 | Source Atom ID | Lines | Atom Type | Source Fact | Normativity | Candidate Status | Candidate Artifact Projection | Candidate Owner Change | Candidate Target Capability | Rationale |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
 
-`Lines` 列由 canonical `line-ranges[]` 生成。`.atoms.md` 还包含 source identity、Phase 1 context、blocker、language self-check 和 `Trace Appendix`；render contract 为 `source-aligned-render-v4`。
+`Lines` 列由 canonical `line-ranges[]` 生成。`.atoms.md` 还包含 source identity、Phase 1 context、blocker、language self-check 和 `Trace Appendix`；render contract 为 `source-aligned-render-v5`。
 
 字段 shape：
 

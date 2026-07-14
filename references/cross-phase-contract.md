@@ -1,56 +1,51 @@
 # 跨 Phase 语义契约
 
-本文件定义 Phase 1–5 及其 reviewer/repair 共同遵守的语义不变量。它不定义 Phase 内部任务、artifact schema 或 reviewer 顺序。
+本文件定义 Phase 1–5 以及 reviewer/repair 共同遵守的语义不变量。Phase 内任务和 artifact 由对应 Phase reference 定义；JSON schema、renderer 和 validator 由 `references/trace-sidecar-contract.md` 定义。
 
-## 强制加载
+## 强制加载与权威边界
 
-- main agent 在启动或恢复工作流前完整读取本文件。
-- 每个 Phase writer、Phase 2 index/report writer、reviewer、repair-writer 和 final integration reviewer 在开始任务前直接完整读取本文件。
-- main agent 的 prompt 摘要、转述、继承上下文或上游 report 不能替代直接读取。
-- Phase writer 必须读取当前 Phase reference；reviewer 和 repair-writer 还必须读取当前 Phase reference 与 `references/reviewer-repair-loop.md`；final integration reviewer 必须读取 Phase 3、Phase 4、Phase 5 reference 与 reviewer/repair contract。
+- main agent、所有 writer、reviewer、repair-writer 和 final integration reviewer 必须直接完整读取本文件。
+- source document 是 production obligation 的语义来源；canonical JSON 是 machine-readable authority，renderer-backed Markdown 只是 review mirror。
+- Phase 2 source atom JSON 通过 reviewer 后冻结。Phase 3 只能补充 uncovered range 中遗漏的 evidence occurrence；broad atom 必须返回 targeted Phase 2 re-extraction，不得在 Phase 3 拆分或改写。
+- contract 之间冲突时停止并报告 blocker，不得自行弱化规则。
 
-## 权威边界
+## Evidence occurrence 与 GA identity
 
-- 本文件只拥有跨 Phase 语义；每个 Phase 的任务、允许读写范围、output 和 terminal status 由对应 Phase reference 唯一定义。
-- JSON key、schema、field、enum、manifest、renderer 和 validator contract 由 `references/trace-sidecar-contract.md` 唯一定义。
-- reviewer、repair 和 final integration 顺序及独立性由 `references/reviewer-repair-loop.md` 唯一定义。
-- 发现上述 contract 相互冲突时停止当前 Phase 并报告 blocker，不得自行选择、合并或弱化规则。
+- 每个 Phase 2 source atom 和每个 Phase 3 gap atom都是一个独立的 extracted evidence occurrence，并恰好获得一个 `GA-####`。
+- GA 不是语义去重后的唯一 requirement。多个语义相同的 occurrence 必须保留为多个 GA；本技能不识别、标记、合并、归组或消除 semantic duplicate。
+- Phase 3 global index 只保存 `global-atom-id` 和 `evidence-ref`，不得复制 Phase 2 `source-fact`、行范围、atom type、normativity 或 extraction metadata。
+- `evidence-ref` 指向 frozen Phase 2 atom或 Phase 3 gap atom。Phase 4/5 通过 evidence resolver 加载原始证据，不得把 global index 扩展为第二份 extraction ledger。
+- technical duplicate ID、重复 source-atom key、dangling reference 和一对多/多对一 identity 错误仍由 validator 拒绝。
 
-## Evidence 与 identity
+## Coverage 与重新提取
 
-- 原始 source document 是 production obligation 的语义来源。每个 atom 必须且只能引用一个连续 `line-ranges[]` range，`source-fact` 必须是该 range 内未经转述或翻译的原文连续摘录。Phase 3 根据 atom 范围的 complement 完成 remainder disposition 与全文 coverage closure；行范围本身不是 coverage 目标。
-- canonical JSON sidecar 是 machine-readable authority；renderer-backed Markdown 是 reviewer/proposal surface。修复 drift 时更新 JSON 或重新渲染，不得只手工修改 mirror。
-- Phase 2 canonical source atom JSON 通过 reviewer loop 后冻结。后续 missing、split、duplicate、grounding 或 ownership finding 进入 Phase 3–5，不回写 frozen evidence。
-- Phase 3 分配的 global atom ID 必须使用 `GA-####`。Phase 4、Phase 5 和后续 OpenSpec 工作必须原样保留，不得改写为其他 global 前缀或 source-local ID。
+- Phase 3 coverage closure 是 Phase 2 atom ranges 的机械补集加上对每个 uncovered range 的处置，不是语义唯一性证明。
+- `coverage-complete` 只表示：每份 `read-full` source 有有效 Phase 2 artifact；所有 uncovered range 已补提取或安全分类；不存在 broad extraction recheck 或 blocker。
+- semantic duplicate 不影响 coverage decision。
+- Phase 3、Phase 4 或 Phase 5 发现 broad/missing extraction 时，只能返回 targeted coverage/extraction recheck。Phase 3 gap atom只允许来自 uncovered range。
 
 ## Ownership、projection 与 Capability
 
-- executable direct atom 恰好有一个 Change owner。Capability metadata 不是 co-ownership surface。
-- artifact projection 与 Change ownership 正交。direct atom 使用 `spec-requirement`、`spec-guard`、`design-obligation` 或 `verification-obligation`；`contextual-only` 只用于 non-direct context。
-- Capability advancement 只来自具有具体 target Capability 的 direct `spec-requirement` / `spec-guard` atom。普通 direct design/verification atom 和所有 non-direct atom 不得产生 business Capability progression。
-- `related-capabilities[]` 只保留 source-explicit、已声明、去重且不同于 target 的 non-owning evidence；不得替代 target，也不得产生 ownership、progression、Capability view 或 complexity count。
-- Phase 2 只记录 source-local status/projection 和对现有 Change/Capability 的候选映射；Phase 3 负责跨文档规范化与 duplicate/coverage closure；Phase 5 负责 new/refit Change、new Capability 和其他 final determination。不得把较早 Phase 的 candidate owner、projection 或 target 当作 final authority。
-- Phase 5 返回 `accepted` 或 `adjusted` 前必须解决所有 direct atom 的 final owner、final projection 和 unresolved Capability impact/target。
+- Phase 2 candidate owner/projection/target 仅是 extraction-time hint；Phase 3 不判断 Change owner、artifact projection、relation 或 Capability。
+- Phase 5 必须为每个 GA 独立给出 final owner Change、artifact projection、relation、Capability impact/target 和 related Capability。语义相同的 GA 可以具有完全相同的 mapping。
+- executable direct evidence 的 final mapping 恰好一个 Change owner。Capability metadata 不是 co-ownership surface。
+- Capability advancement 只来自 final direct `spec-requirement` / `spec-guard` mapping；普通 design/verification 和 non-direct mapping 不推进 Capability。
+- Capability/Change boundary 只能依据 intent、outcome、acceptance、dependency、Capability boundary 和独立 archive 条件；不得从 GA 数量、重复 evidence 数量或表格形状推断。
+- Phase 5 返回 `accepted` 或 `adjusted` 前，必须解决每个 GA 的 final mapping 和 repository baseline reconciliation。
 
 ## Capability、Change 与 Phase 1 边界
 
-- Capability 是跨 Change 持续存在的 logical spec/domain boundary；Change 是围绕一个 source-backed intent、可独立决策与归档的 delivery/evolution slice。两者是多对多关系，任何 Phase 都不得从一方机械生成另一方。
-- Phase 1 必须先建立 coarse candidate Capability topology，再独立按 outcome、cohesion、indivisibility、acceptance 和 hard dependency 形成 Change roadmap；Capability 列数、名称或矩阵外观不得决定 Change boundary。
-- Phase 1 不执行 obligation extraction、atom ID、line-level coverage、unique obligation ownership、requirement operation 或 completeness claim。coarse semantic landscape、Purpose、Owns/Excludes、intent、outcome 和 source hint 不得被解释为 obligation ledger。
-- Phase 1 的 Change–Capability edge 只使用 `first-advancement` / `later-advancement` 表达 roadmap progression hypothesis。OpenSpec Capability relation `New` / `Modified` 取决于 repository spec baseline，不得从 roadmap 首次出现位置推断。
-- Phase 2 不记录 capability impact；Phase 3 的 capability impact 只是 normalized planning metadata。在没有 repository baseline evidence 时，direct spec atom 应保持 `unresolved`，由 Phase 5 reconciliation。较早 Phase 的 `new` / `modified` 不能替代 Phase 5 baseline check。
-- Phase 5 必须将 source-backed final target 与只读 `openspec/specs/<capability>/spec.md` baseline 对齐：existing target 的所有 planned delta 为 `modified`；absent target 的首次 planned delta 为 `new`，其后按明确 roadmap/archive 顺序为 `modified`。现有 spec 只提供 identity/existence/comparison evidence，不成为 production obligation authority。
-- Capability-level `New` / `Modified` 与 requirement-level `ADDED` / `MODIFIED` / `REMOVED` / `RENAMED` 是两层语义。向 existing Capability 新增 requirement 仍是 Capability-level `Modified` + requirement-level `ADDED`；任何 Phase 都不得把 requirement operation 反推为 Capability existence。
+- Capability 是可跨 Change 演进的稳定 behavior/spec boundary；Change 是一个 source-backed、可独立决策、验收和归档的 outcome slice。两者多对多，不能互相机械生成。
+- Phase 1 先建立 candidate Capability topology，再按 outcome/cohesion/acceptance/dependency 建立 Change roadmap；不得执行 atom extraction、coverage 或 final `New`/`Modified` 判断。
+- Phase 5 将 final target 与只读 `openspec/specs/<capability>/spec.md` baseline 对齐。existing target 为 Capability-level `Modified`；absent target 的首次 roadmap advancement 为 `New`，后续为 `Modified`。
+
+## 下游 semantic dedup handoff
+
+- Phase 5 final packet 是完整 evidence mapping，不是经过语义去重的 requirement inventory。
+- 后续规格生成流程可以把多个 GA 综合成一个 requirement，但必须保留多对一 GA trace。该判断与实现不属于本技能。
 
 ## Artifact Language Gate
 
-- agent 编写的解释、判断、理由、风险、proof/evidence description、report 和 handoff 必须使用简体中文。
-- 固定 heading、table header、field label、enum/status、ID、path、command、code/API/DB/package symbol、filename、Capability ID、Change slug 和精确 source quote 可以保留英文。
-- 技术英文可以作为 identifier 或 noun phrase 保留，但周围解释性语句必须使用简体中文。`Source Fact` 和 `Source Phrase` 是精确 source quote，不受简体中文要求约束。
-- 每次写入或修改 artifact 后执行 language self-check；忽略上述固定结构后，剩余英文主导的自然语言句必须在当前 Phase 结束前改写。
-
-## 交接检查
-
-- writer report 必须确认已直接读取并遵守本文件，且没有把 candidate metadata 提升为越权的 final decision。
-- reviewer 必须将本文件作为独立 review 输入，检查跨 Phase identity、authority、ownership、projection、Capability 和语言语义。
-- repair-writer 必须保留上游 frozen evidence、`GA-####`、source path、line range 和允许范围之外的 canonical decision；需要越权修改时返回 recheck 或 blocker。
+- agent 编写的解释、判断、理由、报告和 handoff 使用简体中文。
+- 固定 heading、field、enum、ID、path、代码符号和精确 source quote 可以保留英文。
+- `source-fact` 必须保持 source 原文，不翻译、不转述。

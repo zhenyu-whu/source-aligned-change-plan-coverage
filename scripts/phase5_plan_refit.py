@@ -24,10 +24,13 @@ from source_aligned_trace_lib import (
     CAPABILITY_BASELINE_SCHEMA,
     FINAL_PACKET_INDEX_SCHEMA,
     GLOBAL_ATOM_INDEX_SCHEMA,
+    PHASE3_COVERAGE_REVIEW_SCHEMA,
     PHASE_TRACE_SCHEMAS,
+    SOURCE_ATOMS_SCHEMA,
     TRACE_CONTRACT_VERSION,
     line_ranges_label,
     sha256_file,
+    source_atom_file_name,
     write_json,
 )
 from render_source_aligned_orchestrate import render_atom_plan_mapping, render_capability_baseline
@@ -40,7 +43,6 @@ DIRECT_PROJECTIONS = {
     "design-obligation",
     "verification-obligation",
 }
-FAILURE_TYPES = {"recovery", "failure-path", "disabled-action"}
 PHASE5_STATUSES = {"accepted", "adjusted", "needs-coverage-recheck", "blocked"}
 TERMINAL_PHASE5_STATUSES = {"accepted", "adjusted"}
 EXECUTABLE_OWNER_TYPE = "executable-change"
@@ -94,28 +96,23 @@ class CapabilityDef:
 @dataclass(frozen=True)
 class AtomRow:
     atom_id: str
+    evidence_ref: Dict[str, object]
     source_document: str
     lines: str
     line_ranges: Tuple[Tuple[int, int], ...]
     atom_type: str
     source_fact: str
     normativity: str
-    coverage_status: str
-    artifact_projection: str
-    owner_change: str
-    capability_impact: str
-    target_capability: str
-    related_capabilities: Tuple[str, ...]
-    source_atom_origins: str
-    atom_relation: str
     propose_use: str
     evidence_need: str
-    review_judgment: str
 
 
 @dataclass(frozen=True)
 class MappingRow:
     atom_id: str
+    evidence_ref: Dict[str, object]
+    source_document: str
+    line_ranges: Tuple[Tuple[int, int], ...]
     final_owner_type: str
     final_change: str
     final_capability_impact: str
@@ -207,6 +204,10 @@ def code(value: object) -> str:
     return f"`{text}`" if text else "`None`"
 
 
+def evidence_ref_text(value: Dict[str, object]) -> str:
+    return json.dumps(value, ensure_ascii=False, sort_keys=True)
+
+
 def ensure_dir(path: Path) -> None:
     path.mkdir(parents=True, exist_ok=True)
 
@@ -226,17 +227,47 @@ def single_atom_line_range(raw: object, context: str) -> Tuple[Tuple[int, int], 
     return ((start, end),)
 
 
+def projection_use(projection: str) -> str:
+    return {
+        "spec-requirement": "供下游规格生成形成 requirement；当前 packet 保留 evidence occurrence。",
+        "spec-guard": "供下游规格生成形成 guard；当前 packet 保留 evidence occurrence。",
+        "design-obligation": "进入 design obligation。",
+        "verification-obligation": "进入 verification obligation。",
+        "contextual-only": "作为 owner-scoped context 保留。",
+    }.get(projection, "由 Phase 5 final mapping 决定用途。")
+
+
+def evidence_need(atom_type: str) -> str:
+    return "verification" if atom_type == "verification" else "manual"
+
+
 def load_global_atoms_json(path: Path) -> Dict[str, AtomRow]:
     data = require_v2_json_contract(
         json.loads(path.read_text(encoding="utf-8")),
         path,
         GLOBAL_ATOM_INDEX_SCHEMA,
     )
+    orchestrate_dir = path.parent.parent
+    phase2_root = orchestrate_dir / "phase-works/phase-2/source-obligation-atoms"
+    coverage_path = orchestrate_dir / "phase-works/phase-3/coverage-review.json"
+    coverage = require_v2_json_contract(
+        json.loads(coverage_path.read_text(encoding="utf-8")),
+        coverage_path,
+        PHASE3_COVERAGE_REVIEW_SCHEMA,
+    )
+    gaps = {
+        normalize_code(str(row.get("gap-atom-id", ""))): row
+        for row in coverage.get("gap-atoms", [])
+        if isinstance(row, dict)
+    }
+    phase2_cache: Dict[str, Dict[str, object]] = {}
     atoms: Dict[str, AtomRow] = {}
+    seen_evidence_refs: set[str] = set()
     for raw in data.get("global-atoms", []):
         if not isinstance(raw, dict):
             continue
-        reject_legacy_capability_fields(raw, f"global atom index row {raw.get('global-atom-id', '')}")
+        if set(raw) != {"global-atom-id", "evidence-ref"}:
+            raise ValueError("global atom index v3 row 只能包含 global-atom-id 与 evidence-ref")
         atom_id = normalize_code(str(raw.get("global-atom-id", "")))
         if not atom_id:
             continue
@@ -244,32 +275,62 @@ def load_global_atoms_json(path: Path) -> Dict[str, AtomRow]:
             raise ValueError(f"global atom index JSON 中的 Global Atom ID 必须匹配 GA-####: {atom_id}")
         if atom_id in atoms:
             raise ValueError(f"global atom index JSON 中存在重复 ID: {atom_id}")
-        line_ranges = single_atom_line_range(raw.get("line-ranges"), f"global atom {atom_id}")
+        evidence_ref = raw.get("evidence-ref")
+        if not isinstance(evidence_ref, dict):
+            raise ValueError(f"{atom_id} evidence-ref 必须是 object")
+        kind = normalize_code(str(evidence_ref.get("kind", "")))
+        evidence: Dict[str, object]
+        if kind == "phase-2-source-atom":
+            if set(evidence_ref) != {"kind", "source-document", "source-atom-id"}:
+                raise ValueError(f"{atom_id} Phase 2 evidence-ref 字段非法")
+            source_document = normalize_code(str(evidence_ref.get("source-document", "")))
+            atom_path = phase2_root / source_atom_file_name(source_document).replace(".md", ".json")
+            if source_document not in phase2_cache:
+                sidecar = require_v2_json_contract(
+                    json.loads(atom_path.read_text(encoding="utf-8")),
+                    atom_path,
+                    SOURCE_ATOMS_SCHEMA,
+                )
+                phase2_cache[source_document] = {
+                    normalize_code(str(row.get("source-atom-id", ""))): {**row, "source-document": source_document}
+                    for row in sidecar.get("source-atoms", [])
+                    if isinstance(row, dict)
+                }
+            source_atom_id = normalize_code(str(evidence_ref.get("source-atom-id", "")))
+            candidate = phase2_cache[source_document].get(source_atom_id)
+            if not isinstance(candidate, dict):
+                raise ValueError(f"{atom_id} 引用未知 Phase 2 atom：{source_document}::{source_atom_id}")
+            evidence = candidate
+            ref_key = f"p2::{source_document}::{source_atom_id}"
+        elif kind == "phase-3-gap-atom":
+            if set(evidence_ref) != {"kind", "gap-atom-id"}:
+                raise ValueError(f"{atom_id} Phase 3 gap evidence-ref 字段非法")
+            gap_id = normalize_code(str(evidence_ref.get("gap-atom-id", "")))
+            candidate = gaps.get(gap_id)
+            if not isinstance(candidate, dict):
+                raise ValueError(f"{atom_id} 引用未知 Phase 3 gap atom：{gap_id}")
+            evidence = candidate
+            ref_key = f"p3::{gap_id}"
+        else:
+            raise ValueError(f"{atom_id} evidence-ref kind 非法：{kind}")
+        if ref_key in seen_evidence_refs:
+            raise ValueError(f"evidence occurrence 被多个 GA 引用：{ref_key}")
+        seen_evidence_refs.add(ref_key)
+        line_ranges = single_atom_line_range(evidence.get("line-ranges"), f"global atom {atom_id}")
         canonical_lines = line_ranges_label(
             [{"start": start, "end": end} for start, end in line_ranges]
         )
         atoms[atom_id] = AtomRow(
             atom_id=atom_id,
-            source_document=normalize_code(str(raw.get("source-document", ""))),
+            evidence_ref=dict(evidence_ref),
+            source_document=normalize_code(str(evidence.get("source-document", ""))),
             lines=canonical_lines,
             line_ranges=line_ranges,
-            atom_type=normalize_code(str(raw.get("atom-type", ""))),
-            source_fact=str(raw.get("source-fact", "")),
-            normativity=normalize_code(str(raw.get("normativity", ""))),
-            coverage_status=normalize_code(str(raw.get("coverage-status", ""))),
-            artifact_projection=normalize_code(str(raw.get("artifact-projection", ""))),
-            owner_change=normalize_code(str(raw.get("owner-change", ""))),
-            capability_impact=normalize_code(str(raw.get("capability-impact", ""))),
-            target_capability=normalize_code(str(raw.get("target-capability", ""))),
-            related_capabilities=related_from_json(
-                raw.get("related-capabilities"),
-                f"global atom {atom_id}.related-capabilities",
-            ),
-            source_atom_origins=normalize_code(str(raw.get("source-atom-origins", ""))),
-            atom_relation=normalize_code(str(raw.get("atom-relation", ""))),
-            propose_use=str(raw.get("propose-use", "")),
-            evidence_need=normalize_code(str(raw.get("evidence-need", ""))),
-            review_judgment=str(raw.get("review-judgment", "")),
+            atom_type=normalize_code(str(evidence.get("atom-type", ""))),
+            source_fact=str(evidence.get("source-fact", "")),
+            normativity=normalize_code(str(evidence.get("normativity", ""))),
+            propose_use=projection_use(normalize_code(str(evidence.get("candidate-artifact-projection", "")))),
+            evidence_need=evidence_need(normalize_code(str(evidence.get("atom-type", "")))),
         )
     if not atoms:
         raise ValueError(f"{path} 中没有 global atom row")
@@ -278,7 +339,7 @@ def load_global_atoms_json(path: Path) -> Dict[str, AtomRow]:
 
 def load_mapping(path: Path) -> Dict[str, MappingRow]:
     if path.suffix != ".json":
-        raise ValueError(f"Phase 5 v2 只接受 canonical JSON mapping: {path}")
+        raise ValueError(f"Phase 5 v3 只接受 canonical JSON mapping: {path}")
     data = require_v2_json_contract(
         json.loads(path.read_text(encoding="utf-8")),
         path,
@@ -288,7 +349,14 @@ def load_mapping(path: Path) -> Dict[str, MappingRow]:
     for raw in data.get("rows", []):
         if not isinstance(raw, dict):
             continue
-        reject_legacy_capability_fields(raw, f"Phase 5 mapping row {raw.get('global-atom-id', '')}")
+        expected_fields = {
+            "global-atom-id", "evidence-ref", "source-document", "line-ranges",
+            "final-owner-type", "final-owner-change", "final-capability-impact",
+            "final-target-capability", "related-capabilities", "final-artifact-projection",
+            "final-relation", "plan-decision", "reason",
+        }
+        if set(raw) != expected_fields:
+            raise ValueError(f"Phase 5 mapping row字段不符合 v3：{raw.get('global-atom-id', '')}")
         atom_id = normalize_code(str(raw.get("global-atom-id", "")))
         if not atom_id:
             continue
@@ -306,6 +374,9 @@ def load_mapping(path: Path) -> Dict[str, MappingRow]:
             raise ValueError(f"{atom_id} 使用了已废弃的 foundation-reference owner/relation")
         mapping[atom_id] = MappingRow(
             atom_id=atom_id,
+            evidence_ref=dict(raw.get("evidence-ref")) if isinstance(raw.get("evidence-ref"), dict) else {},
+            source_document=normalize_code(str(raw.get("source-document", ""))),
+            line_ranges=single_atom_line_range(raw.get("line-ranges"), f"Phase 5 mapping {atom_id}"),
             final_owner_type=normalize_code(str(raw.get("final-owner-type", ""))),
             final_change=normalize_code(str(raw.get("final-owner-change", ""))),
             final_capability_impact=normalize_code(str(raw.get("final-capability-impact", ""))),
@@ -412,7 +483,7 @@ def parse_capabilities(config: Dict[str, object]) -> List[CapabilityDef]:
 def latest_mapping(orchestrate_dir: Path) -> Path:
     mapping_path = orchestrate_dir / "phase-works/phase-5/atom-plan-mapping.json"
     if not mapping_path.exists():
-        raise ValueError(f"缺少 Phase 5 v2 canonical mapping JSON: {mapping_path}")
+        raise ValueError(f"缺少 Phase 5 v3 canonical mapping JSON: {mapping_path}")
     return mapping_path
 
 
@@ -429,6 +500,13 @@ def join_atoms(atoms: Dict[str, AtomRow], mapping: Dict[str, MappingRow]) -> Lis
         raise ValueError(f"Phase 5 mapping 缺少 global atom: {', '.join(missing[:12])}")
     if extra:
         raise ValueError(f"Phase 5 mapping 包含未知 global atom: {', '.join(extra[:12])}")
+    for atom_id in sorted(atom_ids):
+        source = atoms[atom_id]
+        row = mapping[atom_id]
+        if row.evidence_ref != source.evidence_ref:
+            raise ValueError(f"{atom_id} mapping evidence-ref 与 global index 不一致")
+        if row.source_document != source.source_document or row.line_ranges != source.line_ranges:
+            raise ValueError(f"{atom_id} mapping source/range 与 resolved evidence 不一致")
     return [FinalAtom(atoms[atom_id], mapping[atom_id]) for atom_id in sorted(atom_ids)]
 
 
@@ -448,7 +526,7 @@ def normalize_mapping(
     mapping: Dict[str, MappingRow],
     changes: Sequence[ChangeDef],
 ) -> Dict[str, MappingRow]:
-    del changes  # v2 renderer 必须保留已审阅的终态字段，不推断 owner 或 impact。
+    del changes  # v3 renderer 必须保留已审阅的终态字段，不推断 owner 或 impact。
     for atom_id, row in mapping.items():
         if row.final_owner_type == "foundation-reference" or row.final_relation == "foundation-reference":
             raise ValueError(f"{atom_id} 使用了已废弃的 foundation-reference owner/relation")
@@ -593,10 +671,7 @@ def validate(
             for item in by_change[change.slug]
             if is_business_capability_delta(item)
         }
-        if direct_count > 120:
-            warnings.append(f"{change.slug} direct atom count={direct_count}，需要 hard split/blocker 级别说明")
-        elif direct_count > 80 or len(caps) > 6:
-            warnings.append(f"{change.slug} 超过 Phase 5 over-budget 复核阈值")
+        del direct_count, caps  # evidence occurrence 数量只用于 trace，不构成 framework gate。
     return warnings
 
 
@@ -653,14 +728,12 @@ def mapping_json_rows(final_atoms: Sequence[FinalAtom]) -> List[Dict[str, object
         rows.append(
             {
                 "global-atom-id": source.atom_id,
+                "evidence-ref": source.evidence_ref,
                 "source-document": source.source_document,
-                "lines": source.lines,
                 "line-ranges": [
                     {"start": start, "end": end}
                     for start, end in source.line_ranges
                 ],
-                "phase-3-owner-status": f"{source.owner_change} / {source.coverage_status}",
-                "phase-3-artifact-projection": source.artifact_projection,
                 "final-owner-type": mapping.final_owner_type,
                 "final-owner-change": mapping.final_change,
                 "final-capability-impact": mapping.final_capability_impact,
@@ -744,24 +817,9 @@ def evidence_types(items: Sequence[FinalAtom]) -> str:
     return ", ".join(values) if values else "manual"
 
 
-def failure_count(items: Sequence[FinalAtom]) -> int:
-    return sum(1 for item in items if item.source.atom_type in FAILURE_TYPES)
-
-
 def budget_status(items: Sequence[FinalAtom]) -> str:
-    count = len(items)
-    cap_count = len({
-        item.mapping.final_target_capability
-        for item in items
-        if is_business_capability_delta(item)
-    })
-    if count > 120:
-        return "hard-over-budget"
-    if count > 80 or cap_count > 6:
-        return "over-budget-reviewed"
-    if count > 60:
-        return "above-target-reviewed"
-    return "within-target"
+    del items
+    return "semantic-boundary-reviewed"
 
 
 def optional_list(config: Dict[str, object], key: str) -> List[Dict[str, object]]:
@@ -842,14 +900,14 @@ def render_change_plan(
     progression_capabilities = active_capabilities(capabilities, all_direct_items)
     lines: List[str] = ["# source-aligned Phase 5 Change 计划\n\n", "## 输入\n\n"]
     lines.append(
-        f"- 已读取的来源文档：{config.get('source_documents_read', '`openspec/orchestrate/phase-works/phase-3/source-doc-manifest.md` 中源文档已由 Phase 2/3 覆盖。')}\n"
+        f"- 已读取的来源文档：{config.get('source_documents_read', '`openspec/orchestrate/phase-works/phase-3/coverage-review.json` 中的 read-full source 已完成覆盖审计。')}\n"
     )
     lines.append("- Phase 3 global atom index 路径：`openspec/orchestrate/change-capability-anchors/obligation-atom-index.md`。\n")
     lines.append("- Phase 4 source-window dossier：`openspec/orchestrate/phase-works/phase-4/source-window-dossiers/index.md`。\n")
     lines.append("- Phase 4 semantic profile 审阅：`openspec/orchestrate/phase-works/phase-4/source-window-semantic-profile-review.md`。\n")
     lines.append(f"- Phase 5 工作路径：`{work_dir.as_posix()}/`。\n")
     lines.append(
-        f"- 假设与冲突：{config.get('assumptions_and_conflicts', 'Phase 3 已给出 `Decision: coverage-complete`；Phase 5 未新增 atom，也未改写 Phase 2/3 证据。')}\n"
+        f"- 假设与冲突：{config.get('assumptions_and_conflicts', 'Phase 3 已给出 `Decision: coverage-complete`；Phase 5 未新增、合并或改写 Phase 2/3 evidence occurrence。')}\n"
     )
 
     lines.append("\n## Capability Map\n\n")
@@ -957,15 +1015,15 @@ def render_change_plan(
         lines.append(f"- 依赖：{dep}\n")
         lines.append("- contextual atom / downstream design constraint：见 final packet context table 和 `atom-plan-mapping.md`。\n")
         lines.append("- 非目标：只保留与本 intent/outcome 相关的全局/局部非目标 guard，不扩展 prototype-only 页面、scene、fixture 或 mock 资产。\n")
-        lines.append("- complexity budget：\n")
-        lines.append(f"  - direct atom 数量：`{len(items)}`\n")
+        lines.append("- semantic boundary review：\n")
+        lines.append(f"  - evidence occurrence 数量：`{len(items)}`，仅作为 trace volume。\n")
         lines.append("  - 推进的 Capability：" + (", ".join(code(cap) for cap in business_caps) if business_caps else "`None`") + "\n")
         if change.kind == FOUNDATION_CHANGE_KIND:
             lines.append(f"  - foundation substrate Capability：`{FOUNDATION_CAPABILITY}`\n")
-        lines.append("  - surface family：该 Change 的入口、页面/对象、domain command、worker 或列表/导出面；超过目标时见 complexity review。\n")
+        lines.append("  - surface family：按 intent、outcome、acceptance、dependency 与独立 archive 条件审阅。\n")
         lines.append(f"  - 证据类型：{md(evidence_types(items))}\n")
         lines.append(f"  - executable roadmap 状态：`{gate}`\n")
-        lines.append(f"  - budget 状态：`{budget_status(items)}`\n")
+        lines.append(f"  - boundary 状态：`{budget_status(items)}`\n")
         lines.append("  - split/defer 分析：Phase 5 已按 one-intent、独立决策/archive、indivisibility、acceptance 和 evidence surface 记录判断。\n")
         lines.append("- 归档就绪性：direct atom 表服务同一 intent，能够在一个 focused OpenSpec Change 中提案、实现、验收和归档。\n")
 
@@ -1041,7 +1099,7 @@ def render_complexity_review(
     }
     lines = [
         "# Change complexity 审阅\n\n",
-        "| Change | Direct Atom Count | Artifact Projection Mix | Atom Groups | New Capabilities | Modified Capabilities | Primary Intent/Outcome Count | Trigger/Outcome/Invariant Families | Exception/Error Families | Evidence Types | Surface Families | Executable Roadmap Status | Budget Status | Complexity Decision |\n",
+        "| Change | Evidence Occurrence Count | Artifact Projection Mix | Atom Groups | New Capabilities | Modified Capabilities | Primary Intent/Outcome Count | Trigger/Outcome/Invariant Families | Exception/Error Semantic Review | Evidence Types | Surface Families | Executable Roadmap Status | Boundary Review | Complexity Decision |\n",
         "| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |\n",
     ]
     for change in changes:
@@ -1077,7 +1135,7 @@ def render_complexity_review(
             f"| `{change.slug}` | `{len(items)}` | {md(projection_mix(items))} | {md(atom_groups(items))} | "
             f"{md(', '.join(code(cap) for cap in new_caps) if new_caps else '`None`')} | "
             f"{md(', '.join(code(cap) for cap in modified_caps) if modified_caps else '`None`')} | "
-            f"{functional_points} | 由 source-window profile 审阅 | `{failure_count(items)}` | "
+            f"{functional_points} | 由 source-window profile 审阅 | 依据 source-window 语义审阅，不使用 occurrence count 门禁 | "
             f"{md(evidence_types(items))} | {md(surface_families)} | "
             f"`{gate}` | `{budget_status(items)}` | {md(decision)} |\n"
         )
@@ -1196,35 +1254,36 @@ def render_packet(
         "- source-window grounding：`openspec/orchestrate/phase-works/phase-4/source-window-dossiers/`；语义画像见 `openspec/orchestrate/phase-works/phase-4/source-window-semantic-profile-review.md`。\n",
         f"- source-window refit trace：`{work_dir.as_posix()}/source-window-refit-trace.md`\n",
         f"- Phase 5 mapping：`{work_dir.as_posix()}/atom-plan-mapping.md`\n",
-        f"- complexity budget 状态：`{budget_status(items)}`；direct atom 数量=`{len(items)}`。\n",
+        f"- framework boundary 状态：`{budget_status(items)}`；evidence occurrence 数量=`{len(items)}`，仅作为 trace volume。\n",
+        "- handoff：本 packet 是完整、未做语义去重的 evidence mapping，不是 requirement inventory；下游综合多个 GA 时必须保留多对一 trace。\n",
         f"- executable roadmap 状态：`{gate}`。\n",
         "- 阻塞项：`None`\n\n",
         "## Final Direct Owner Atoms\n\n",
-        "| Global Atom ID | Source Document | Lines | Atom Type | Source Fact | Normativity | Artifact Projection | Projection Rationale | Capability Impact | Target Capability | Related Capabilities | Atom Relation | Roles | Propose Use | Evidence Need |\n",
-        "| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |\n",
+        "| Global Atom ID | Evidence Reference | Source Document | Lines | Atom Type | Source Fact | Normativity | Artifact Projection | Projection Rationale | Capability Impact | Target Capability | Related Capabilities | Atom Relation | Roles | Propose Use | Evidence Need |\n",
+        "| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |\n",
     ]
     for item in items:
         source = item.source
         mapping = item.mapping
-        rationale = "保留 Phase 3 projection 或采用 Phase 5 final projection；不把 design 或 verification 行强制改成 spec requirement。"
+        rationale = "由 Phase 5 根据 resolved evidence 与 source-window semantics 决定 final projection。"
         related = ", ".join(code(cap) for cap in mapping.related_capabilities) or "`None`"
         target = "None/change-only" if is_no_owner(mapping.final_target_capability) else mapping.final_target_capability
         lines.append(
-            f"| `{source.atom_id}` | `{source.source_document}` | `{source.lines}` | `{source.atom_type}` | {md(source.source_fact)} | "
+            f"| `{source.atom_id}` | {code(evidence_ref_text(source.evidence_ref))} | `{source.source_document}` | `{source.lines}` | `{source.atom_type}` | {md(source.source_fact)} | "
             f"`{source.normativity}` | `{mapping.final_projection}` | {md(rationale)} | `{mapping.final_capability_impact}` | "
             f"`{target}` | {md(related)} | `direct` | `direct-owner` | "
             f"{md(source.propose_use)} | `{source.evidence_need}` |\n"
         )
     lines.append("\n## contextual atom 与未来约束\n\n")
-    lines.append("| Global Atom ID / Relation | Source Document | Lines | Context Type | Affects Current Design Because | Handling |\n")
-    lines.append("| --- | --- | --- | --- | --- | --- |\n")
+    lines.append("| Global Atom ID / Relation | Evidence Reference | Source Document | Lines | Context Type | Affects Current Design Because | Handling |\n")
+    lines.append("| --- | --- | --- | --- | --- | --- | --- |\n")
     context_items = by_context[change.slug]
     if not context_items:
-        lines.append("| `None` | `None` | `None` | `None` | 本 change 没有专属 contextual row。 | 仅消费 upstream baseline 与全局非目标 guard。 |\n")
+        lines.append("| `None` | `None` | `None` | `None` | `None` | 本 change 没有专属 contextual row。 | 仅消费 upstream baseline 与全局非目标 guard。 |\n")
     else:
         for item in context_items:
             lines.append(
-                f"| `{item.source.atom_id}` / `{item.mapping.final_relation}` | `{item.source.source_document}` | `{item.source.lines}` | "
+                f"| `{item.source.atom_id}` / `{item.mapping.final_relation}` | {code(evidence_ref_text(item.source.evidence_ref))} | `{item.source.source_document}` | `{item.source.lines}` | "
                 f"`{item.mapping.final_relation}` | {md(item.source.source_fact)} | {md(item.mapping.reason)} |\n"
             )
     order = {item.slug: pos for pos, item in enumerate(changes)}
@@ -1276,7 +1335,7 @@ def render_anchor_index(
 ) -> str:
     lines = [
         "# Change Capability anchor 索引\n\n",
-        "本索引只把 final direct `new` / `modified` spec atoms 计为 business capabilities advanced；foundation view、dependency、context、evidence-only、non-goal 和 upstream baseline 均不计入能力进展。\n\n",
+        "本索引只把 final direct `new` / `modified` spec mapping计为 business capabilities advanced；GA 数量仅为 trace volume，不决定 framework boundary。\n\n",
         "| Change | Change Packet | Capability Views | Direct Atoms | Contextual Atoms | Capabilities Advanced | Complexity Budget | Evidence Burden | Blockers |\n",
         "| --- | --- | --- | --- | --- | --- | --- | --- | --- |\n",
     ]
@@ -1318,7 +1377,7 @@ def render_human_plan(
     progression_capabilities = active_capabilities(capabilities, all_direct_items)
     lines = [
         "# Change Capability 人工可读计划\n\n",
-        "本文件是便于人工阅读的 Phase 5 结果摘要；source of truth 仍是 global atom index、Phase 5 mapping 和 final change packets。\n\n",
+        "本文件是便于人工阅读的 Phase 5 结果摘要；source of truth 仍是 global atom index、Phase 5 mapping 和 final change packets。全部 packet 是未语义去重的 evidence mapping；下游可以综合多个 GA，但必须保留多对一 trace。\n\n",
         "| Change | Intent / Outcome | Direct Atom Groups | Complexity Budget | Contextual Atoms / Future Constraints | Upstream Realized Baseline | Downstream Constraints | Non-Goals | Evidence Burden | Ledger Links |\n",
         "| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |\n",
     ]
@@ -1402,6 +1461,7 @@ def render_alignment_report(
     lines.append("- `design-obligation` 和 `verification-obligation` 使用 `impact=none`、`target=none`，仍由 Change 直接拥有。\n")
     lines.append("- `related-capabilities` 只保留 source-explicit 非拥有型关联，不进入 progression 或 capability views。\n")
     lines.append("- Final matrix 只作为 derived diagnostic；一对一或多对多形状都必须回到 intent、Capability Purpose 与 source evidence 审阅。\n")
+    lines.append("- GA 与重复 evidence occurrence 数量只作为 trace volume，不用于 Change/Capability boundary 或 complexity gate。\n")
     lines.append("- Foundation candidate 如存在，已输出为第一位 executable foundation change packet；`runtime-substrate-foundation` 可出现在 packet/capability view，但不计入业务 capability progression。\n")
     lines.append("- 是否需要 Phase 3 recheck：`No`。\n")
     lines.append("\n## 语言自检\n\n本文解释内容已按 Artifact Language Gate 检查为简体中文。\n")
@@ -1694,8 +1754,8 @@ def print_config_template(final_atoms: Sequence[FinalAtom]) -> None:
     }
     template = {
         "status": "adjusted",
-        "source_documents_read": "`openspec/orchestrate/phase-works/phase-3/source-doc-manifest.md` 中源文档已由 Phase 2/3 覆盖。",
-        "assumptions_and_conflicts": "Phase 3 已给出 `Decision: coverage-complete`，Phase 4 已给出 `Phase 4 Status: grounded`；Phase 5 未新增 atom，也未改写 Phase 2/3/4 证据。",
+        "source_documents_read": "`openspec/orchestrate/phase-works/phase-3/coverage-review.json` 中的 read-full source 已完成覆盖审计。",
+        "assumptions_and_conflicts": "Phase 3 已给出 `Decision: coverage-complete`，Phase 4 已给出 `Phase 4 Status: grounded`；Phase 5 未新增、合并或改写 Phase 2/3/4 evidence occurrence。",
         "changes": [
             {
                 "slug": slug,
@@ -1733,7 +1793,7 @@ def build_parser() -> argparse.ArgumentParser:
         description="根据已审阅的 mapping/config 校验并渲染机械派生的 Phase 5 plan-refit artifact。"
     )
     parser.add_argument("--orchestrate-dir", default="openspec/orchestrate", type=Path, help="orchestrate 目录路径")
-    parser.add_argument("--mapping", type=Path, help="已审阅的 v2 phase-works/phase-5/atom-plan-mapping.json。")
+    parser.add_argument("--mapping", type=Path, help="已审阅的 v3 phase-works/phase-5/atom-plan-mapping.json。")
     parser.add_argument("--config", type=Path, help="已审阅的 Phase 5 JSON config；默认使用 mapping 同目录的 phase5-refit.config.json。")
     parser.add_argument("--output-orchestrate-dir", type=Path, help="将输出写入该 orchestrate 目录，而不是 --orchestrate-dir。")
     parser.add_argument("--write", action="store_true", help="写入渲染后的 artifact；不指定时只检查输入。")
@@ -1757,9 +1817,9 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
         mapping_path = args.mapping or latest_mapping(orchestrate_dir)
         config_path = args.config or default_config_path(mapping_path)
         if not global_index_json.exists():
-            raise ValueError(f"缺少 Phase 3 v2 canonical global atom index JSON: {global_index_json}")
+            raise ValueError(f"缺少 Phase 3 v3 canonical global atom index JSON: {global_index_json}")
         if mapping_path.suffix != ".json":
-            raise ValueError(f"Phase 5 v2 只接受 canonical JSON mapping: {mapping_path}")
+            raise ValueError(f"Phase 5 v3 只接受 canonical JSON mapping: {mapping_path}")
         atoms = load_global_atoms_json(global_index_json)
         mapping = load_mapping(mapping_path)
     except (OSError, ValueError, json.JSONDecodeError) as exc:

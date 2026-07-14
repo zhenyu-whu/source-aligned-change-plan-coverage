@@ -1,11 +1,11 @@
 ---
 name: source-aligned-change-plan-coverage
-description: 当用户明确要求从指定 source document 出发，在 openspec-propose 之前建立具备 obligation atom 覆盖、source trace、gap 分类和最终 plan refit 的 OpenSpec Change/Capability 全局计划时使用；确保每项可执行 production obligation 恰好归属于一个 final Change，并仅由适用的 direct spec atom 推进 Capability。
+description: 当用户明确要求从指定 source document 出发，在 openspec-propose 之前建立具备 evidence occurrence 覆盖、source trace、gap 分类和最终 plan refit 的 OpenSpec Change/Capability 全局计划时使用；确保每个 extracted evidence occurrence 拥有独立 GA 并映射到 final Change/Capability framework。
 ---
 
 # source-aligned-change-plan-coverage：五阶段编排协议
 
-先从完整 source document 建立 Capability-first 的初始 Change/Capability framework，再由后续 Phase 提取并规范化 global obligation atom，最终结合原始 source-window semantics 推导可供 `openspec-propose` 消费的 final Change packet。本文件只定义 main agent 的编排协议；每个 Phase 的具体任务、artifact 和完成条件由对应 reference 定义。
+先从完整 source document 建立 Capability-first 的初始 Change/Capability framework，再提取 source atom、审计覆盖补集、为每个 evidence occurrence建立独立 GA，最终结合原始 source-window semantics 推导可供 `openspec-propose` 消费的 final Change packet。本技能不执行 semantic duplicate识别或去重。
 
 本工作流遵循 `Capability-first、Outcome-sliced、Obligation-later`：Phase 1 只建立 coarse semantic landscape、candidate Capability topology 和 outcome-based Change roadmap，不执行 obligation atom extraction、line-level coverage 或 final `New`/`Modified` 判定；Phase 2–5 才完成 obligation extraction、coverage closure、source-window grounding、baseline reconciliation 与 final plan refit。
 
@@ -51,16 +51,17 @@ description: 当用户明确要求从指定 source document 出发，在 openspe
 | --- | --- | --- | --- |
 | Phase 1 | 完整阅读 source，先形成 candidate Capability topology，再形成 outcome-sliced Change roadmap；不提取 obligation | `initial-plan-written` | Phase 2 |
 | Phase 2 | source-first atom extraction 与独立 aggregation | `source-atoms-written` | Phase 3 |
-| Phase 3 | global atom normalization、coverage closure 和 gap audit | `coverage-complete` | Phase 4 |
-| Phase 3 | 无法稳定 coverage/identity/boundary | `blocked` | 停止并报告 |
+| Phase 3 | 机械 complement、遗漏补提取与 evidence occurrence GA index | `coverage-complete` | Phase 4 |
+| Phase 3 | broad/失效 extraction | `needs-extraction-recheck` | targeted Phase 2，再执行 Phase 3 |
+| Phase 3 | 无法稳定 coverage/evidence identity | `blocked` | 停止并报告 |
 | Phase 4 | source-window dossier 与 semantic profile grounding | `grounded` | Phase 5 |
-| Phase 4 | 暴露 missing/broad/conflicting obligation | `needs-coverage-recheck` | fresh Phase 3，再执行 Phase 4 |
+| Phase 4 | 暴露 missing/broad/conflicting extraction | `needs-coverage-recheck` | 按 finding targeted Phase 2/3，再执行 Phase 4 |
 | Phase 4 | 无法安全 grounding | `blocked` | 停止并报告 |
 | Phase 5 | atom-driven plan refit 完成 | `accepted` 或 `adjusted` | final validation 与 handoff |
-| Phase 5 | 暴露 missing/broad/conflicting obligation | `needs-coverage-recheck` | fresh Phase 3、Phase 4、Phase 5 |
+| Phase 5 | 暴露 missing/broad/conflicting extraction | `needs-coverage-recheck` | 按 finding targeted Phase 2/3，再执行 Phase 4、Phase 5 |
 | Phase 5 | 需要用户决定或越权 reanalysis | `blocked` | 停止并报告 |
 
-除非 Phase 3–5 明确说明 targeted review 不足且用户要求完整 extraction rerun，否则 recheck 不得重新运行 Phase 2。
+recheck 必须 targeted 到受影响的 Phase 2 source/atom；不得无依据重跑全部 extraction。
 
 ## 工作流
 
@@ -72,13 +73,13 @@ description: 当用户明确要求从指定 source document 出发，在 openspe
 6. 根据当前 JSON trace digest 刷新 manifest，按 trace contract 运行当前 Phase validator。
 7. 完整执行 `references/reviewer-repair-loop.md`。若发生 repair，依次重新刷新 manifest、运行 validator 并启动 fresh independent reviewer，直至 pass 或 block。
 8. validator 和 reviewer 均通过后，再次刷新 manifest，使 canonical Phase status/decision 和 artifact digest 与 Phase trace 一致。
-9. 按“Phase 状态机”推进：正常进入下一 Phase，`needs-coverage-recheck` 回到 Phase 3，`blocked` 停止并报告。
+9. 按“Phase 状态机”推进：正常进入下一 Phase；`needs-extraction-recheck` targeted 回 Phase 2；`needs-coverage-recheck` 根据 missing/broad finding回 Phase 3或 targeted Phase 2；`blocked` 停止并报告。
 10. Phase 5 达到 `accepted` 或 `adjusted` 后，进入“完成与 handoff”；不得从普通 Phase pass 直接启动 `openspec-propose`。
 
 ## 恢复规则
 
 1. 读取现有 manifest、Phase trace、artifact digest、validator result 和 reviewer evidence，从 Phase 1 起寻找第一个未完成或失效的 Phase。
-2. Phase 只有同时满足以下条件才可跳过：canonical trace status/decision 正确；manifest status 与 trace 一致且 digest 当前有效；Phase validator 通过；存在由不同身份完成且明确 pass 的 independent reviewer report；所有 finding 已 repair 或记录 accepted non-blocking warning。
+2. Phase 只有同时满足以下条件才可跳过：canonical trace status/decision 正确；manifest status 与 trace 一致且 digest 当前有效；Phase validator 通过；存在由不同身份完成且明确 pass 的 independent reviewer evidence（Phase 3 使用 `phase-3.trace.json.reviewer-loop`，其他 Phase 使用 reviewer report）；所有 finding 已 repair 或记录 accepted non-blocking warning。
 3. Phase 1 只发布 `phase-works/phase-1/initial-change-plan.md`；根 `change-plan.md` 仅由 Phase 5 在 `accepted` 或 `adjusted` 后发布。仅存在根计划、旧文件名的 Phase 1 snapshot 或 v1 Phase 1 trace 均不代表 Phase 1 完成。若缺少有效 Phase 1 evidence，运行 fresh Phase 1，并把用户提供的现有计划作为 candidate input。
 4. 缺少有效 writer output 或 Phase trace 时运行 fresh Phase writer；已有完整 writer output 但存在 validator/reviewer finding 时进入 repair loop。最早失效 Phase 之后的 output 均视为 stale，不得用于跳过后续 Phase。
 5. source document 集合或 digest 变化使 Phase 1 及其下游失效；Phase 2 frozen evidence 仅在其 source digest、canonical owner 或必需 output 本身失效时重建。
@@ -87,5 +88,7 @@ description: 当用户明确要求从指定 source document 出发，在 openspe
 
 - Phase 5 为 `accepted` 或 `adjusted` 后，必须让 `phase-works/phase-5/change-plan.md` 与根 `change-plan.md` 完全一致，再按 trace contract 执行 all-phase complete validation，并运行 fresh independent final integration reviewer。
 - final integration reviewer 必须核对 global atom index、source-window index、atom-plan mapping、Capability baseline reconciliation、final Change packet、Capability view、根 `change-plan.md` 和 human plan 的一致性。
+- final integration reviewer 必须确认每个 Phase 2/3 evidence occurrence都有独立 GA和独立 Phase 5 mapping，且没有 semantic duplicate处理或基于 GA数量的 framework推断。
 - 只有 complete validator 和 final integration reviewer 都通过，且 final Change packet 已存在时，才允许从 packet 启动 `openspec-propose`。
+- handoff 必须明确：final packet是未语义去重的完整 evidence mapping；后续规格生成可以综合多个 GA，但必须保留多对一 trace。
 - 任一 Phase 返回 `blocked` 时停止工作流，报告 blocker、已验证 evidence 和恢复所需的最小用户决定；main agent 不得越权补做 Phase 内容。

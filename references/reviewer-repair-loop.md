@@ -37,18 +37,19 @@ complete validator 或 final integration reviewer 未通过时不得 handoff；�
 - Final integration reviewer 必须是 fresh leaf subagent，使用相同 runtime，且不同于 Phase 5 writer、Phase 5 reviewer 和 Phase 5 repair-writer。
 - Writer subagent 的自检、最终回复、agent report、trace 字段或 “reviewer passed” 文案不满足 reviewer 步骤。
 - Validator 通过不满足 reviewer 步骤；validator 只提供 reviewer 输入之一。
-- Reviewer subagent 对被审 artifact 只读，只能写入或追加本 Phase 的 reviewer report，不得修改被审 artifact，不得执行 repair，不得推进下一 Phase。
-- Repair-writer subagent 只能根据 validator issues 和 reviewer report 修改本 Phase 允许的 artifact，并写入或追加本 Phase 的 repair report；不得重新解释上游 frozen evidence，不得推进下一 Phase。
+- Reviewer subagent 对被审 artifact 只读，只能写入或追加本 Phase 的 reviewer report，不得修改被审 artifact，不得执行 repair，不得推进下一 Phase。Phase 3 reviewer保持完全只读，只在最终回复返回结构化 review evidence；由 main agent机械记录到 `phase-3.trace.json.reviewer-loop`，reviewer本身不得写 trace。
+- Repair-writer subagent 只能根据 validator issues 和 reviewer evidence修改本 Phase允许的 artifact，并写入或追加本 Phase的 repair report；不得重新解释上游 frozen evidence，不得推进下一 Phase。Phase 3 repair-writer在最终回复返回结构化 repair evidence，由 main agent机械记录到 trace，不另建 report。
 - Reviewer 和 repair-writer 都是 leaf worker，不得 spawn、调用、委派任何嵌套 AI subagent、`codex exec`、multi-agent worker 或其他 agentic reasoning 子进程。
 - 每次 repair 后必须重新运行 validator，并重新 spawn fresh independent reviewer subagent。不得复用同一个 reviewer subagent 通过 `send_input` 进行复审。
 - Final integration reviewer 对 Phase 3/4/5 和 final handoff surface 只读，只能在 `phase-works/phase-5/phase-5-reviewer-report.md` 中追加 integration review 记录；不得修改 artifact 或执行 repair。
 
 ## 必需证据
 
-每个 Phase 在进入下一 Phase 前必须有可审计 evidence：
+每个 Phase 在进入下一 Phase 前必须有可审计 evidence。Phase 3 为保持固定五产物，使用下述例外：
 
 - `phase-works/phase-<n>/phase-<n>-reviewer-report.md`：必需。每次 reviewer run 必须保留 reviewer subagent identity、writer subagent identity 或 writer 来源、validator input status、只读检查范围、findings、accepted warnings、是否需要 repair、最终 pass/block 决定。
 - `phase-works/phase-<n>/phase-<n>-repair-report.md`：仅当发生 artifact 修改时必需。每次 repair run 必须保留 repair subagent identity、被消费的 validator/reviewer findings、修改文件、保留的不变量、未修复项和 blockers。
+- Phase 3 不创建 reviewer/repair report文件；reviewer/repair worker在只读审查或允许的 repair完成后通过最终回复返回结构化 evidence，main agent只做机械转录，将 reviewer identity、writer identity、validator status、finding、repair和 pass/block evidence写入 `trace/phase-3.trace.json.reviewer-loop`。不得因此新增第六个 Phase 3产物。
 - `trace/phase-<n>.trace.json` 应记录 reviewer/repair loop 摘要，但 trace 摘要不能替代 reviewer report 或 repair report。
 - `trace/manifest.json` 可以在 validator 前创建或刷新，用于提供当前 trace sidecar digest。只有 validator 和 independent reviewer 均通过后，才可以在 reviewer report、phase trace summary 和 manifest canonical phase decision 中记录该 Phase 可进入下一阶段。
 - Phase 5 handoff 前，`phase-works/phase-5/phase-5-reviewer-report.md` 还必须记录 final integration reviewer identity、all-phase complete validator status、跨 artifact 检查范围、finding、accepted warning 和 pass/block decision。
@@ -59,8 +60,8 @@ complete validator 或 final integration reviewer 未通过时不得 handoff；�
 - Reviewer 只读，不直接改 artifact。
 - Reviewer 必须处理 validator warnings；warnings 可以接受，但必须有 reviewer 判断或修复计划。
 - Repair-writer 只能修改本 Phase 允许的 artifact。
-- Phase 2 完成后 raw `.atoms.md/.json` 冻结。后续发现的问题进入 Phase 3 missing/split/recheck，不回改 Phase 2。
-- Phase 5 发现缺失或过宽 source obligation 时返回 `needs-coverage-recheck`，不得在 Phase 5 发明新 atom。
+- Phase 2 完成后 raw `.atoms.md/.json` 冻结。Phase 3 只在 uncovered range创建 gap atom；broad Phase 2 atom必须 targeted回 Phase 2重新提取。
+- Phase 5 发现缺失或过宽 source obligation 时返回 `needs-coverage-recheck`，不得在 Phase 5 发明或合并 atom。
 
 ## reviewer 范围
 
@@ -78,28 +79,35 @@ Phase 2 reviewer 检查项：
 
 Phase 3 reviewer 检查项：
 
-- 检查 `GA-####` 归一、每个 global atom 的单一 canonical range 与原文 `Source Fact`、source-to-global 全覆盖、non-coverage 合理性、duplicate/broad split 处理。
-- 检查 direct 或 `phase-5-refit-required` atom 没有使用 `contextual-only`。
+- 检查每份 `read-full` source都有有效 Phase 2 artifact，covered/complement range可机械重算。
+- 检查每个 Phase 2 atom和 Phase 3 gap atom恰好一个独立 `GA-####`，global index row只包含 ID与 evidence ref。
+- 检查 Phase 3 artifact没有复制 Phase 2 `source-fact`，且每个 uncovered range都由 gap extraction或 remainder disposition闭合。
+- 检查 broad Phase 2 atom被记录为 targeted `needs-extraction-recheck`，没有在 Phase 3拆分。
+- 不执行 semantic duplicate、owner、projection、relation或 Capability review。
 
 Phase 4 reviewer 检查项：
 
-- 检查 source-window dossier 是否真实支撑 semantic profile。
+- 检查 evidence resolver是否为每个 GA加载正确 evidence，source-window dossier是否真实支撑 semantic profile。
+- 检查机械 window复用仍列出所有 GA，且没有语义 duplicate判断或 GA合并。
 - 检查 grounding issue 是否应返回 `needs-coverage-recheck`。
 
 Phase 5 reviewer 检查项：
 
-- 检查 final ownership、non-direct 承载、Capability Purpose/Owns/Excludes、repository baseline reconciliation、capability progression、Change intent/cohesion/indivisibility 和 complexity gate。
+- 检查每个 GA独立的 final ownership/projection/relation/Capability mapping、non-direct 承载、Capability Purpose/Owns/Excludes、repository baseline reconciliation、capability progression和 Change intent/cohesion/indivisibility。
 - 检查 final packet 是否显式列出 owner-scoped non-direct atom。
 - 检查 capability view 只包含 direct advancement rows。
+- 检查 framework没有从 GA数量推断 boundary或 complexity，且没有 semantic duplicate resolution。
+- 检查 packet/handoff明确声明其为未语义去重的完整 evidence mapping。
 
 final integration reviewer 检查项：
 
 - 对 Phase 3/4/5 做跨 artifact reconciliation。
 - 检查 global atom index、source-window index、atom-plan mapping、Capability baseline reconciliation、final packets、capability views、root `change-plan.md` 和 human plan 是否一致。
+- 检查每个 evidence occurrence从 Phase 2/3到 Phase 4/5保持一对一 GA identity；语义相同 occurrence不得丢失或合并。
 
 ## repair 规则
 
-- Repair 必须保留 `GA-####`、source path、line range、source fact 和 upstream evidence，除非本 Phase 明确允许修正。
+- Repair 必须保留 `GA-####`、evidence ref、source path、line range、source fact 和 upstream evidence，除非本 Phase明确要求 targeted re-extraction。
 - Repair 不得通过删除 warning 对应数据来让 validator 通过。
 - Repair 后必须重新运行 validator 和 reviewer。
 - 若 repair 需要修改冻结上游 evidence，返回 `needs-coverage-recheck` 或 `blocked`，由主 agent 重新启动允许的 Phase。
