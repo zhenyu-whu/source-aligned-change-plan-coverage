@@ -20,7 +20,7 @@ Phase 1只负责：
 - 按共享原则先推导candidate Capability topology；
 - 再按source-backed outcome和hard dependency建立candidate Change roadmap；
 - 建立coarse Change-Capability advancement hypothesis；
-- 写入initial plan、source manifest、agent report和canonical trace。
+- 直接编写内容权威`initial-change-plan.md`，并写入source manifest、非canonical agent report和control trace。
 
 Phase 1不得：
 
@@ -52,6 +52,8 @@ trace/phase-1.trace.json
 ```
 
 Phase 1不得创建或更新根`change-plan.md`。
+
+`initial-change-plan.md`是Phase 1内容权威。`source-doc-manifest.md`是人工阅读界面；其逐行数据、source digest和initial plan digest由`phase-1.trace.json`提供机器校验。agent/reviewer/repair report是非canonical流程证据，不进入manifest。
 
 ## 规划方法
 
@@ -174,6 +176,6 @@ coarse source hint只使用source path、heading、section、decision ID、route
 
 - source set完整读取；
 - initial plan符合固定模板和共享原则；
-- trace使用`source-aligned-phase-1-trace-v2`且plan/source digest有效；
+- trace使用`source-aligned-phase-1-trace-v2`且source manifest数据、plan/source digest有效；
 - agent report blocker为`无`；
 - validator和fresh independent reviewer通过。

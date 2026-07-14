@@ -57,6 +57,7 @@ complete validator 或 final integration reviewer 未通过时不得 handoff；�
 ## 权威性规则
 
 - Validator 只检查结构、trace、digest、schema、ID、coverage、mirror drift 和跨 artifact 一致性；不替代语义判断。
+- reviewer/repair/agent report和Phase 2 work queue都是非canonical流程证据，不进入manifest；它们不能覆盖Phase-specific authority。
 - Reviewer 只读，不直接改 artifact。
 - Reviewer 必须处理 validator warnings；warnings 可以接受，但必须有 reviewer 判断或修复计划。
 - Repair-writer 只能修改本 Phase 允许的 artifact。
@@ -88,14 +89,14 @@ Phase 3 reviewer 检查项：
 Phase 4 reviewer 检查项：
 
 - 检查resolver是否为每个GA加载正确的Phase 2/3 frozen evidence，且不读取原始source document。
-- 检查每个GA恰好一个collection row，Change/Capability bucket严格来自Phase 2 candidate hint或Phase 3 gap provenance。
-- 检查每个initial Change/Capability都有rendered collection，包括空集合；dossier中的`source-fact`逐字等于canonical evidence。
+- 检查assembler直接从Phase 1–3生成collection Markdown，派生index没有反向承载语义；每个GA恰好一个index row，Change/Capability bucket严格来自Phase 2 candidate hint或Phase 3 gap provenance。
+- 检查每个initial Change/Capability都有collection，包括空集合；collection中的`source-fact`逐字等于canonical evidence；派生index的collection path/digest与Markdown一致且没有stale文件。
 - 检查Phase 4没有semantic profile、refit、final owner/projection/Capability判断；evidence异常时返回targeted recheck或blocker。
 
 Phase 5 reviewer 检查项：
 
-- 使用共享framework原则检查`plan-refit-review.md`先审Capability、再审Change、再审unassigned/gap，且initial framework默认保留、调整均有frozen source fact支持。
-- 检查每个initial Capability/Change及每个unassigned/gap GA恰好一个review disposition，status与framework实际变化一致。
+- 使用共享framework原则检查`framework-refit-trace.json`先审Capability、再审Change、再审unassigned/gap，且initial framework默认保留、调整均有frozen source fact支持；确认`plan-refit-review.md`只是逐字重渲染mirror。
+- 检查每个initial Capability/Change及每个unassigned/gap GA在refit JSON中恰好一个review disposition，gate result、status与framework实际变化一致。
 - 检查每个GA独立的final owner/projection/relation/Capability mapping、non-direct承载和repository baseline reconciliation。
 - 检查 final packet 是否显式列出 owner-scoped non-direct atom。
 - 检查 capability view 只包含 direct advancement rows。
@@ -105,7 +106,7 @@ Phase 5 reviewer 检查项：
 final integration reviewer 检查项：
 
 - 对 Phase 3/4/5 做跨 artifact reconciliation。
-- 检查global atom index、evidence collection index、plan refit review、atom-plan mapping、Capability baseline、final packets、Capability views和根`change-plan.md`一致。
+- 检查global atom index、Phase 4 collection Markdown及派生index、framework refit JSON及review mirror、atom-plan mapping、Capability baseline、final packets、Capability views、anchor index和根`change-plan.md`一致。
 - 检查每个evidence occurrence从Phase 2/3 frozen source fact到Phase 4 collection、Phase 5 mapping和packet保持一对一GA identity；语义相同occurrence不得丢失或合并。
 
 ## repair 规则

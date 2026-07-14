@@ -2,7 +2,8 @@
 # -*- coding: utf-8 -*-
 """Phase 5 机械派生器。
 
-语义权威只有 final change-plan.md、plan-refit-review.md 和 atom-plan-mapping.json。
+语义权威是 final change-plan.md、framework-refit-trace.json 和
+atom-plan-mapping.json；plan-refit-review.md 只是 JSON mirror。
 本脚本不接受 semantic config，不推断 framework，不补写 acceptance/dependency/archive 文案。
 """
 
@@ -18,11 +19,17 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Dict, List, Optional, Sequence, Tuple
 
-from render_source_aligned_orchestrate import render_atom_plan_mapping, render_capability_baseline
+from render_source_aligned_orchestrate import (
+    render_atom_plan_mapping,
+    render_capability_baseline,
+    render_framework_refit_review,
+)
 from source_aligned_trace_lib import (
     ATOM_PLAN_MAPPING_SCHEMA,
     CAPABILITY_BASELINE_SCHEMA,
+    EVIDENCE_COLLECTION_INDEX_SCHEMA,
     FINAL_PACKET_INDEX_SCHEMA,
+    FRAMEWORK_REFIT_TRACE_SCHEMA,
     GLOBAL_ATOM_INDEX_SCHEMA,
     KEBAB_CASE_RE,
     PHASE3_COVERAGE_REVIEW_SCHEMA,
@@ -45,7 +52,10 @@ CHANGE_ONLY_PROJECTIONS = {"design-obligation", "verification-obligation"}
 RELATIONS = {"direct", "context", "dependency", "preserve", "reference", "non-goal"}
 CAPABILITY_IMPACTS = {"new", "modified", "none"}
 TERMINAL_STATUSES = {"accepted", "adjusted"}
+NONTERMINAL_STATUSES = {"needs-coverage-recheck", "blocked"}
 NONE_VALUES = {"", "none", "null", "None", "NULL"}
+CAPABILITY_REVIEW_DECISIONS = {"keep", "split", "merge", "remove", "rename"}
+CHANGE_REVIEW_DECISIONS = {"keep", "split", "merge", "scope-adjusted", "remove", "rename", "reorder"}
 
 
 @dataclass(frozen=True)
@@ -333,15 +343,282 @@ def parse_final_plan(path: Path) -> tuple[List[ChangeDef], List[CapabilityDef], 
     return changes, capabilities, overlay
 
 
-def parse_review_status(path: Path) -> str:
+def _phase1_framework(orchestrate_dir: Path) -> tuple[List[str], List[str], set[Tuple[str, str]]]:
+    path = orchestrate_dir / "phase-works/phase-1/initial-change-plan.md"
     text = path.read_text(encoding="utf-8")
-    for heading in ("## Capability Review", "## Change Review", "## Unassigned and Gap Review", "## Final Decision"):
-        if heading not in text:
-            raise ValueError(f"plan-refit-review缺少heading：{heading}")
-    match = re.search(r"(?mi)^-?\s*Status[：:]\s*`?([a-z-]+)`?", text)
-    if not match or match.group(1) not in TERMINAL_STATUSES:
-        raise ValueError("mechanical helper只处理accepted/adjusted review")
-    return match.group(1)
+    changes = [
+        normalize_code(match.group(1))
+        for match in re.finditer(r"(?m)^- Change 名称[：:]\s*(.+?)\s*$", text)
+    ]
+    capabilities = [
+        normalize_code(cell(row, "Candidate Capability"))
+        for row in table_rows(path, ["Candidate Capability", "Purpose", "Owns", "Excludes"])
+    ]
+    overlay = {
+        (normalize_code(cell(row, "Change")), normalize_code(cell(row, "Candidate Capability")))
+        for row in table_rows(path, ["Change", "Candidate Capability", "Roadmap Role", "Direct Behavior Delta Hypothesis"])
+    }
+    return changes, capabilities, overlay
+
+
+def _require_exact_fields(row: Dict[str, object], expected: set[str], where: str) -> None:
+    actual = set(row)
+    if actual != expected:
+        raise ValueError(f"{where}字段必须精确为{sorted(expected)}；缺少={sorted(expected-actual)}，多余={sorted(actual-expected)}")
+
+
+def _require_identifier_list(value: object, where: str, allow_empty: bool = False) -> List[str]:
+    if not isinstance(value, list):
+        raise ValueError(f"{where}必须是array")
+    result = [normalize_code(item) for item in value]
+    if any(not KEBAB_CASE_RE.match(item) for item in result) or len(result) != len(set(result)):
+        raise ValueError(f"{where}必须是无重复kebab-case identifier array")
+    if not allow_empty and not result:
+        raise ValueError(f"{where}不得为空")
+    return result
+
+
+def _validate_gate_results(value: object, where: str) -> None:
+    if not isinstance(value, list) or not value:
+        raise ValueError(f"{where}.gate-results必须是非空array")
+    for index, item in enumerate(value):
+        if not isinstance(item, dict):
+            raise ValueError(f"{where}.gate-results[{index}]必须是object")
+        _require_exact_fields(item, {"gate", "result", "note"}, f"{where}.gate-results[{index}]")
+        if not normalize_code(item.get("gate")) or normalize_code(item.get("result")) not in {"passed", "failed"}:
+            raise ValueError(f"{where}.gate-results[{index}] gate/result非法")
+        if not squash(item.get("note")):
+            raise ValueError(f"{where}.gate-results[{index}].note不得为空")
+
+
+def load_framework_refit(path: Path) -> Dict[str, object]:
+    return require_json(path, FRAMEWORK_REFIT_TRACE_SCHEMA)
+
+
+def validate_framework_refit(
+    orchestrate_dir: Path,
+    data: Dict[str, object],
+    changes: Optional[Sequence[ChangeDef]] = None,
+    capabilities: Optional[Sequence[CapabilityDef]] = None,
+    overlay: Optional[Dict[Tuple[str, str], str]] = None,
+) -> str:
+    """校验 refit trace 的结构、基数及与 final plan 的 framework 一致性。"""
+    _require_exact_fields(data, {
+        "trace-schema", "trace-contract-version", "status", "initial-plan-ref",
+        "capability-reviews", "change-reviews", "unassigned-and-gap-reviews",
+        "final-framework", "issues", "language-self-check",
+    }, "framework-refit-trace")
+    status = normalize_code(data.get("status"))
+    if status not in TERMINAL_STATUSES | NONTERMINAL_STATUSES:
+        raise ValueError(f"framework refit status非法：{status}")
+    repo_root = repo_root_for(orchestrate_dir)
+    initial_path = orchestrate_dir / "phase-works/phase-1/initial-change-plan.md"
+    initial_ref = data.get("initial-plan-ref")
+    if not isinstance(initial_ref, dict):
+        raise ValueError("initial-plan-ref必须是object")
+    _require_exact_fields(initial_ref, {"artifact-path", "sha256"}, "initial-plan-ref")
+    if initial_ref.get("artifact-path") != rel(initial_path, repo_root) or initial_ref.get("sha256") != sha256_file(initial_path):
+        raise ValueError("initial-plan-ref path或digest与Phase 1 initial plan不一致")
+    initial_changes, initial_capabilities, initial_overlay = _phase1_framework(orchestrate_dir)
+
+    capability_rows = data.get("capability-reviews")
+    change_rows = data.get("change-reviews")
+    gap_rows = data.get("unassigned-and-gap-reviews")
+    if not isinstance(capability_rows, list) or not isinstance(change_rows, list) or not isinstance(gap_rows, list):
+        raise ValueError("三个review集合必须是array")
+    capability_decisions: Dict[str, str] = {}
+    for index, row in enumerate(capability_rows):
+        if not isinstance(row, dict):
+            raise ValueError(f"capability-reviews[{index}]必须是object")
+        _require_exact_fields(row, {
+            "input-capability", "evidence-collection-path", "decision", "final-capabilities", "gate-results", "reason",
+        }, f"capability-reviews[{index}]")
+        source = normalize_code(row.get("input-capability"))
+        decision = normalize_code(row.get("decision"))
+        if source in capability_decisions or source not in initial_capabilities:
+            raise ValueError(f"input Capability未知或重复：{source}")
+        if decision not in CAPABILITY_REVIEW_DECISIONS:
+            raise ValueError(f"{source} Capability decision非法：{decision}")
+        finals = _require_identifier_list(row.get("final-capabilities"), f"{source}.final-capabilities", allow_empty=decision == "remove")
+        if decision == "remove" and finals:
+            raise ValueError(f"{source} remove要求final-capabilities为空")
+        if decision == "keep" and finals != [source]:
+            raise ValueError(f"{source} keep要求final-capabilities仅包含自身")
+        if decision == "rename" and (len(finals) != 1 or finals[0] == source):
+            raise ValueError(f"{source} rename要求一个不同的final Capability")
+        if decision == "split" and len(finals) < 2:
+            raise ValueError(f"{source} split要求至少两个final Capability")
+        if decision == "merge" and len(finals) != 1:
+            raise ValueError(f"{source} merge要求恰好一个final Capability")
+        expected_collection = rel(
+            orchestrate_dir / f"phase-works/phase-4/source-evidence-collections/by-input-capability/{source}.md",
+            repo_root,
+        )
+        if row.get("evidence-collection-path") != expected_collection:
+            raise ValueError(f"{source} evidence-collection-path应为{expected_collection}")
+        _validate_gate_results(row.get("gate-results"), f"capability-reviews[{index}]")
+        if not squash(row.get("reason")) or not re.search(r"[\u4e00-\u9fff]", str(row.get("reason"))):
+            raise ValueError(f"{source} reason必须使用简体中文解释")
+        capability_decisions[source] = decision
+    if list(capability_decisions) != initial_capabilities:
+        raise ValueError(f"每个initial Capability必须按原顺序恰好一行：期望={initial_capabilities}，实际={list(capability_decisions)}")
+    capability_merge_targets: Dict[str, int] = {}
+    for row in capability_rows:
+        if normalize_code(row.get("decision")) == "merge":
+            target = normalize_code(row.get("final-capabilities", [""])[0])
+            capability_merge_targets[target] = capability_merge_targets.get(target, 0) + 1
+    if any(count < 2 for count in capability_merge_targets.values()):
+        raise ValueError("Capability merge要求至少两个initial Capability指向同一个final Capability")
+
+    change_decisions: Dict[str, str] = {}
+    for index, row in enumerate(change_rows):
+        if not isinstance(row, dict):
+            raise ValueError(f"change-reviews[{index}]必须是object")
+        _require_exact_fields(row, {
+            "input-change", "evidence-collection-path", "decision", "final-changes", "gate-results", "reason",
+        }, f"change-reviews[{index}]")
+        source = normalize_code(row.get("input-change"))
+        decision = normalize_code(row.get("decision"))
+        if source in change_decisions or source not in initial_changes:
+            raise ValueError(f"input Change未知或重复：{source}")
+        if decision not in CHANGE_REVIEW_DECISIONS:
+            raise ValueError(f"{source} Change decision非法：{decision}")
+        finals = _require_identifier_list(row.get("final-changes"), f"{source}.final-changes", allow_empty=decision == "remove")
+        if decision == "remove" and finals:
+            raise ValueError(f"{source} remove要求final-changes为空")
+        if decision in {"keep", "reorder", "scope-adjusted"} and finals != [source]:
+            raise ValueError(f"{source} {decision}要求final-changes仅包含自身")
+        if decision == "rename" and (len(finals) != 1 or finals[0] == source):
+            raise ValueError(f"{source} rename要求一个不同的final Change")
+        if decision == "split" and len(finals) < 2:
+            raise ValueError(f"{source} split要求至少两个final Change")
+        if decision == "merge" and len(finals) != 1:
+            raise ValueError(f"{source} merge要求恰好一个final Change")
+        expected_collection = rel(
+            orchestrate_dir / f"phase-works/phase-4/source-evidence-collections/by-input-change/{source}.md",
+            repo_root,
+        )
+        if row.get("evidence-collection-path") != expected_collection:
+            raise ValueError(f"{source} evidence-collection-path应为{expected_collection}")
+        _validate_gate_results(row.get("gate-results"), f"change-reviews[{index}]")
+        if not squash(row.get("reason")) or not re.search(r"[\u4e00-\u9fff]", str(row.get("reason"))):
+            raise ValueError(f"{source} reason必须使用简体中文解释")
+        change_decisions[source] = decision
+    if list(change_decisions) != initial_changes:
+        raise ValueError(f"每个initial Change必须按原顺序恰好一行：期望={initial_changes}，实际={list(change_decisions)}")
+    change_merge_targets: Dict[str, int] = {}
+    for row in change_rows:
+        if normalize_code(row.get("decision")) == "merge":
+            target = normalize_code(row.get("final-changes", [""])[0])
+            change_merge_targets[target] = change_merge_targets.get(target, 0) + 1
+    if any(count < 2 for count in change_merge_targets.values()):
+        raise ValueError("Change merge要求至少两个initial Change指向同一个final Change")
+
+    collection_path = orchestrate_dir / "phase-works/phase-4/source-evidence-collections/evidence-collection-index.json"
+    collection = require_json(collection_path, EVIDENCE_COLLECTION_INDEX_SCHEMA)
+    expected_gap = {
+        normalize_code(row.get("global-atom-id")): row.get("evidence-ref")
+        for row in collection.get("rows", [])
+        if isinstance(row, dict) and normalize_code(row.get("change-bucket")) == "unassigned-and-gap"
+    }
+    seen_gap: set[str] = set()
+    for index, row in enumerate(gap_rows):
+        if not isinstance(row, dict):
+            raise ValueError(f"unassigned-and-gap-reviews[{index}]必须是object")
+        _require_exact_fields(row, {
+            "global-atom-id", "evidence-ref", "disposition", "final-change", "final-capability", "reason",
+        }, f"unassigned-and-gap-reviews[{index}]")
+        ga = normalize_code(row.get("global-atom-id"))
+        if ga in seen_gap or ga not in expected_gap:
+            raise ValueError(f"unassigned/gap GA未知或重复：{ga}")
+        seen_gap.add(ga)
+        if row.get("evidence-ref") != expected_gap[ga]:
+            raise ValueError(f"{ga} evidence-ref与Phase 4 index不一致")
+        if not normalize_code(row.get("disposition")) or not normalize_code(row.get("final-change")):
+            raise ValueError(f"{ga} disposition/final-change不得为空")
+        if not normalize_code(row.get("final-capability")):
+            raise ValueError(f"{ga} final-capability必须显式使用none或Capability ID")
+        if not squash(row.get("reason")) or not re.search(r"[\u4e00-\u9fff]", str(row.get("reason"))):
+            raise ValueError(f"{ga} reason必须使用简体中文解释")
+    if seen_gap != set(expected_gap):
+        raise ValueError(f"每个unassigned/gap GA必须恰好一行；缺少={sorted(set(expected_gap)-seen_gap)}")
+
+    issues = data.get("issues")
+    if not isinstance(issues, list):
+        raise ValueError("issues必须是array")
+    language = squash(data.get("language-self-check"))
+    if not language or not re.search(r"[\u4e00-\u9fff]", language):
+        raise ValueError("language-self-check必须使用简体中文解释")
+    if status in NONTERMINAL_STATUSES:
+        if data.get("final-framework") is not None or not issues:
+            raise ValueError(f"{status}要求final-framework=null且issues非空")
+        return status
+    if issues:
+        raise ValueError(f"{status}要求issues为空")
+    failed_gates = [
+        normalize_code(gate.get("gate"))
+        for review in [*capability_rows, *change_rows]
+        if isinstance(review, dict)
+        for gate in review.get("gate-results", [])
+        if isinstance(gate, dict) and normalize_code(gate.get("result")) != "passed"
+    ]
+    if failed_gates:
+        raise ValueError(f"terminal refit要求所有gate通过；未通过={failed_gates}")
+
+    framework = data.get("final-framework")
+    if not isinstance(framework, dict):
+        raise ValueError(f"{status}要求非空final-framework")
+    _require_exact_fields(framework, {"change-order", "capabilities", "overlay"}, "final-framework")
+    final_change_order = _require_identifier_list(framework.get("change-order"), "final-framework.change-order")
+    final_capabilities = _require_identifier_list(
+        framework.get("capabilities"), "final-framework.capabilities", allow_empty=True,
+    )
+    framework_overlay: Dict[Tuple[str, str], str] = {}
+    overlay_rows = framework.get("overlay")
+    if not isinstance(overlay_rows, list):
+        raise ValueError("final-framework.overlay必须是array")
+    for index, row in enumerate(overlay_rows):
+        if not isinstance(row, dict):
+            raise ValueError(f"final-framework.overlay[{index}]必须是object")
+        _require_exact_fields(row, {"change", "capability", "capability-impact"}, f"final-framework.overlay[{index}]")
+        pair = (normalize_code(row.get("change")), normalize_code(row.get("capability")))
+        impact = normalize_code(row.get("capability-impact"))
+        if pair in framework_overlay or pair[0] not in final_change_order or pair[1] not in final_capabilities or impact not in {"new", "modified"}:
+            raise ValueError(f"final-framework overlay row非法或重复：{pair}/{impact}")
+        framework_overlay[pair] = impact
+    if changes is not None and final_change_order != [item.slug for item in changes]:
+        raise ValueError("final-framework.change-order与final change-plan不一致")
+    if capabilities is not None and final_capabilities != [item.slug for item in capabilities]:
+        raise ValueError("final-framework.capabilities与final change-plan不一致")
+    if overlay is not None and framework_overlay != overlay:
+        raise ValueError("final-framework.overlay与final change-plan不一致")
+    final_change_ids = set(final_change_order)
+    final_capability_ids = set(final_capabilities)
+    for row in capability_rows:
+        if any(item not in final_capability_ids for item in row.get("final-capabilities", [])):
+            raise ValueError(f"{row.get('input-capability')}引用未知final Capability")
+    for row in change_rows:
+        if any(item not in final_change_ids for item in row.get("final-changes", [])):
+            raise ValueError(f"{row.get('input-change')}引用未知final Change")
+    for row in gap_rows:
+        if normalize_code(row.get("final-change")) not in final_change_ids:
+            raise ValueError(f"{row.get('global-atom-id')}引用未知final Change")
+        cap = normalize_code(row.get("final-capability"))
+        if cap != "none" and cap not in final_capability_ids:
+            raise ValueError(f"{row.get('global-atom-id')}引用未知final Capability")
+    all_keep = all(value == "keep" for value in capability_decisions.values()) and all(value == "keep" for value in change_decisions.values())
+    same_framework = (
+        final_change_order == initial_changes
+        and final_capabilities == initial_capabilities
+        and set(framework_overlay) == initial_overlay
+    )
+    if "reorder" in change_decisions.values() and final_change_order == initial_changes:
+        raise ValueError("reorder decision要求final Change顺序发生变化")
+    if status == "accepted" and (not all_keep or not same_framework):
+        raise ValueError("accepted要求所有initial unit为keep且final framework集合、顺序、overlay与Phase 1一致")
+    if status == "adjusted" and all_keep and same_framework:
+        raise ValueError("adjusted要求至少一个可追溯的framework调整")
+    return status
 
 
 def load_mapping(path: Path) -> Dict[str, Mapping]:
@@ -549,6 +826,53 @@ def render_capability_view(change: str, capability: str, evidence: Dict[str, Evi
     return "\n".join(lines).rstrip() + "\n"
 
 
+def render_anchor_index(
+    changes: Sequence[ChangeDef],
+    mapping: Dict[str, Mapping],
+    repo_root: Path,
+    anchors: Path,
+) -> str:
+    lines = [
+        "# Final Change Packet Index", "",
+        "| Change | Packet | Direct GA | Non-direct GA | Capability Views |",
+        "| --- | --- | --- | --- | --- |",
+    ]
+    for change in changes:
+        packet_path = anchors / change.slug / f"{change.slug}.md"
+        direct_ids = sorted(ga for ga, row in mapping.items() if row.owner_change == change.slug and row.relation == "direct")
+        non_direct_ids = sorted(ga for ga, row in mapping.items() if row.owner_change == change.slug and row.relation != "direct")
+        capabilities = sorted({
+            row.target_capability
+            for row in mapping.values()
+            if row.owner_change == change.slug and row.relation == "direct" and row.projection in SPEC_PROJECTIONS
+        })
+        cap_paths = [
+            rel(anchors / change.slug / "capability-anchors" / f"{capability}.md", repo_root)
+            for capability in capabilities
+        ]
+        lines.append(
+            f"| {code(change.slug)} | {code(rel(packet_path, repo_root))} | "
+            f"{md(', '.join(direct_ids))} | {md(', '.join(non_direct_ids))} | {md(', '.join(cap_paths))} |"
+        )
+    return "\n".join(lines).rstrip() + "\n"
+
+
+def validate_refit_mapping_crosscheck(data: Dict[str, object], mapping: Dict[str, Mapping]) -> None:
+    """校验 refit gap disposition 与最终 GA owner/target 映射。"""
+    for row in data.get("unassigned-and-gap-reviews", []):
+        if not isinstance(row, dict):
+            continue
+        ga = normalize_code(row.get("global-atom-id"))
+        mapped = mapping.get(ga)
+        if mapped is None:
+            raise ValueError(f"refit trace中的{ga}缺少atom mapping")
+        final_capability = normalize_code(row.get("final-capability"))
+        if mapped.owner_change != normalize_code(row.get("final-change")):
+            raise ValueError(f"{ga} refit final Change与atom mapping owner不一致")
+        if mapped.target_capability != final_capability:
+            raise ValueError(f"{ga} refit final Capability与atom mapping target不一致")
+
+
 def clean_legacy(orchestrate_dir: Path) -> None:
     work = orchestrate_dir / "phase-works/phase-5"
     legacy = [
@@ -568,15 +892,21 @@ def write_outputs(orchestrate_dir: Path) -> None:
     repo_root = repo_root_for(orchestrate_dir)
     work = orchestrate_dir / "phase-works/phase-5"
     plan_path = work / "change-plan.md"
+    refit_path = work / "framework-refit-trace.json"
     review_path = work / "plan-refit-review.md"
     mapping_path = work / "atom-plan-mapping.json"
-    status = parse_review_status(review_path)
     changes, capabilities, overlay = parse_final_plan(plan_path)
+    refit = load_framework_refit(refit_path)
+    status = validate_framework_refit(orchestrate_dir, refit, changes, capabilities, overlay)
+    if status not in TERMINAL_STATUSES:
+        raise ValueError("mechanical helper只处理accepted/adjusted framework refit trace")
     evidence = load_evidence(orchestrate_dir)
     mapping = load_mapping(mapping_path)
     validate_mapping(evidence, mapping, changes, capabilities, overlay)
+    validate_refit_mapping_crosscheck(refit, mapping)
     clean_legacy(orchestrate_dir)
 
+    review_path.write_text(render_framework_refit_review(orchestrate_dir, refit_path), encoding="utf-8")
     mapping_md = work / "atom-plan-mapping.md"
     mapping_md.write_text(render_atom_plan_mapping(orchestrate_dir, mapping_path), encoding="utf-8")
     baseline_path = work / "capability-baseline-reconciliation.json"
@@ -592,7 +922,6 @@ def write_outputs(orchestrate_dir: Path) -> None:
         if child.is_dir():
             shutil.rmtree(child)
     packets: List[Dict[str, object]] = []
-    index_lines = ["# Final Change Packet Index", "", "| Change | Packet | Direct GA | Non-direct GA | Capability Views |", "| --- | --- | --- | --- | --- |"]
     for change in changes:
         change_dir = anchors / change.slug
         cap_dir = change_dir / "capability-anchors"
@@ -616,8 +945,7 @@ def write_outputs(orchestrate_dir: Path) -> None:
             "owner-scoped-non-direct-atom-ids": non_direct_ids,
             "capability-view-paths": cap_paths,
         })
-        index_lines.append(f"| {code(change.slug)} | {code(rel(packet_path, repo_root))} | {md(', '.join(direct_ids))} | {md(', '.join(non_direct_ids))} | {md(', '.join(cap_paths))} |")
-    (anchors / "index.md").write_text("\n".join(index_lines).rstrip() + "\n", encoding="utf-8")
+    (anchors / "index.md").write_text(render_anchor_index(changes, mapping, repo_root, anchors), encoding="utf-8")
     packet_index_path = work / "final-packet-index.json"
     write_json(packet_index_path, {
         "trace-schema": FINAL_PACKET_INDEX_SCHEMA,
@@ -631,6 +959,8 @@ def write_outputs(orchestrate_dir: Path) -> None:
         "status": status,
         "final-change-plan-path": rel(plan_path, repo_root),
         "final-change-plan-sha256": sha256_file(plan_path),
+        "framework-refit-trace-path": rel(refit_path, repo_root),
+        "framework-refit-trace-sha256": sha256_file(refit_path),
         "plan-refit-review-path": rel(review_path, repo_root),
         "plan-refit-review-sha256": sha256_file(review_path),
         "atom-plan-mapping-path": rel(mapping_path, repo_root),
@@ -646,26 +976,65 @@ def validate_outputs(orchestrate_dir: Path) -> None:
     repo_root = repo_root_for(orchestrate_dir)
     work = orchestrate_dir / "phase-works/phase-5"
     plan = work / "change-plan.md"
+    changes, capabilities, overlay = parse_final_plan(plan)
+    refit_path = work / "framework-refit-trace.json"
+    refit = load_framework_refit(refit_path)
+    validate_framework_refit(orchestrate_dir, refit, changes, capabilities, overlay)
     if plan.read_bytes() != (orchestrate_dir / "change-plan.md").read_bytes():
         raise ValueError("根change-plan.md与Phase 5 plan不一致")
+    review_path = work / "plan-refit-review.md"
+    if review_path.read_text(encoding="utf-8") != render_framework_refit_review(orchestrate_dir, refit_path):
+        raise ValueError("plan refit review Markdown drift")
     mapping_path = work / "atom-plan-mapping.json"
+    evidence = load_evidence(orchestrate_dir)
+    mapping = load_mapping(mapping_path)
+    validate_mapping(evidence, mapping, changes, capabilities, overlay)
+    validate_refit_mapping_crosscheck(refit, mapping)
     expected_mapping_md = render_atom_plan_mapping(orchestrate_dir, mapping_path)
     if (work / "atom-plan-mapping.md").read_text(encoding="utf-8") != expected_mapping_md:
         raise ValueError("atom plan mapping Markdown drift")
     baseline_path = work / "capability-baseline-reconciliation.json"
+    if require_json(baseline_path, CAPABILITY_BASELINE_SCHEMA) != build_baseline(repo_root, changes, capabilities, mapping):
+        raise ValueError("Capability baseline JSON drift")
     if (work / "capability-baseline-reconciliation.md").read_text(encoding="utf-8") != render_capability_baseline(orchestrate_dir, baseline_path):
         raise ValueError("Capability baseline Markdown drift")
     packet_index = require_json(work / "final-packet-index.json", FINAL_PACKET_INDEX_SCHEMA)
+    indexed_changes: set[str] = set()
     for packet in packet_index.get("packets", []):
         if not isinstance(packet, dict):
             raise ValueError("final packet index row非法")
         packet_path = repo_root / str(packet.get("packet-path", ""))
         if not packet_path.is_file() or sha256_file(packet_path) != packet.get("packet-digest"):
             raise ValueError(f"final packet缺失或digest drift：{packet_path}")
+        slug = normalize_code(packet.get("change"))
+        indexed_changes.add(slug)
+        change = next((item for item in changes if item.slug == slug), None)
+        if change is None or packet_path.read_text(encoding="utf-8") != render_packet(change, evidence, mapping):
+            raise ValueError(f"final packet内容drift：{packet_path}")
+        expected_caps = sorted({
+            row.target_capability
+            for row in mapping.values()
+            if row.owner_change == slug and row.relation == "direct" and row.projection in SPEC_PROJECTIONS
+        })
+        expected_cap_paths = [
+            rel(packet_path.parent / "capability-anchors" / f"{capability}.md", repo_root)
+            for capability in expected_caps
+        ]
+        if packet.get("capability-view-paths") != expected_cap_paths:
+            raise ValueError(f"Capability view index drift：{slug}")
+        for capability, cap_rel in zip(expected_caps, expected_cap_paths):
+            cap_path = repo_root / cap_rel
+            if not cap_path.is_file() or cap_path.read_text(encoding="utf-8") != render_capability_view(slug, capability, evidence, mapping):
+                raise ValueError(f"Capability view drift：{cap_path}")
+    if indexed_changes != {item.slug for item in changes}:
+        raise ValueError("final packet index Change集合与final plan不一致")
+    anchors = orchestrate_dir / "change-capability-anchors"
+    if (anchors / "index.md").read_text(encoding="utf-8") != render_anchor_index(changes, mapping, repo_root, anchors):
+        raise ValueError("anchor index Markdown drift")
 
 
 def build_parser() -> argparse.ArgumentParser:
-    parser = argparse.ArgumentParser(description="从final plan/review/mapping机械生成Phase 5派生产物。")
+    parser = argparse.ArgumentParser(description="从final plan/refit JSON/mapping机械生成Phase 5派生产物。")
     parser.add_argument("--orchestrate-dir", type=Path, default=Path("openspec/orchestrate"))
     parser.add_argument("--write", action="store_true", help="写入baseline、packets、trace和根plan")
     parser.add_argument("--validate-rendered", action="store_true", help="验证已生成派生产物")
@@ -679,13 +1048,15 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
             write_outputs(args.orchestrate_dir)
         else:
             plan = args.orchestrate_dir / "phase-works/phase-5/change-plan.md"
-            review = args.orchestrate_dir / "phase-works/phase-5/plan-refit-review.md"
+            refit_path = args.orchestrate_dir / "phase-works/phase-5/framework-refit-trace.json"
             mapping_path = args.orchestrate_dir / "phase-works/phase-5/atom-plan-mapping.json"
             changes, capabilities, overlay = parse_final_plan(plan)
-            parse_review_status(review)
+            refit = load_framework_refit(refit_path)
+            validate_framework_refit(args.orchestrate_dir, refit, changes, capabilities, overlay)
             evidence = load_evidence(args.orchestrate_dir)
             mapping = load_mapping(mapping_path)
             validate_mapping(evidence, mapping, changes, capabilities, overlay)
+            validate_refit_mapping_crosscheck(refit, mapping)
         if args.validate_rendered:
             validate_outputs(args.orchestrate_dir)
     except (OSError, ValueError, json.JSONDecodeError) as exc:

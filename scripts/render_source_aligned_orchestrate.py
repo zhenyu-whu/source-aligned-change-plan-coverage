@@ -1,10 +1,11 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
-"""根据 canonical JSON sidecar 渲染 source-aligned Markdown mirror。"""
+"""按 Phase-specific authority 渲染 source-aligned 人工阅读产物。"""
 
 from __future__ import annotations
 
 import argparse
+import hashlib
 import json
 import re
 import shutil
@@ -15,7 +16,9 @@ from source_aligned_trace_lib import (
     ATOM_PLAN_MAPPING_SCHEMA,
     CAPABILITY_BASELINE_SCHEMA,
     EVIDENCE_COLLECTION_INDEX_SCHEMA,
+    FRAMEWORK_REFIT_TRACE_SCHEMA,
     GLOBAL_ATOM_INDEX_SCHEMA,
+    PHASE_TRACE_SCHEMAS,
     PHASE3_COVERAGE_REVIEW_SCHEMA,
     SOURCE_ATOMS_SCHEMA,
     TRACE_CONTRACT_VERSION,
@@ -25,17 +28,20 @@ from source_aligned_trace_lib import (
     sha256_file,
     source_atom_file_name,
     table_rows,
+    write_json,
 )
 
 
-RENDER_CONTRACT_VERSION = "source-aligned-render-v5"
+RENDER_CONTRACT_VERSION = "source-aligned-render-v6"
 SUPPORTED_ARTIFACTS = {
     "phase2-source-atoms",
+    "phase2-index",
     "phase3-global-index",
     "phase3-coverage-review",
     "phase4-evidence-collections",
     "phase5-atom-plan-mapping",
     "phase5-capability-baseline",
+    "phase5-refit-review",
     "all-supported",
 }
 
@@ -117,6 +123,17 @@ def lines_from(row: Dict[str, object]) -> str:
         if valid:
             return line_ranges_label(valid)
     return "None"
+
+
+def range_label(value: object) -> str:
+    """渲染单个 canonical ``{start, end}`` range。"""
+    if not isinstance(value, dict):
+        return "None"
+    start = value.get("start")
+    end = value.get("end")
+    if not isinstance(start, int) or not isinstance(end, int):
+        return "None"
+    return line_ranges_label([{"start": start, "end": end}])
 
 
 def render_table(headers: Sequence[str], rows: Iterable[Sequence[object]]) -> str:
@@ -260,6 +277,93 @@ def render_phase2_source_atoms(orchestrate_dir: Path, json_path: Path) -> str:
     return "\n".join(lines).rstrip() + "\n" + trace_appendix(json_path, SOURCE_ATOMS_SCHEMA, repo_root)
 
 
+def _count_summary(values: Iterable[object]) -> str:
+    counts: Dict[str, int] = {}
+    for value in values:
+        key = normalize_code(value) or "none"
+        counts[key] = counts.get(key, 0) + 1
+    return "; ".join(f"{key}={counts[key]}" for key in sorted(counts)) or "none"
+
+
+def _phase2_batch_by_source(orchestrate_dir: Path) -> Dict[str, str]:
+    queue = orchestrate_dir / "phase-works/phase-2/source-obligation-atoms/work-queue.md"
+    result: Dict[str, str] = {}
+    for row in table_rows(queue, ["Batch", "Source Documents", "Canonical Owner"]):
+        batch = normalize_code(cell(row, "Batch"))
+        raw_sources = cell(row, "Source Documents").replace("<br/>", "<br>")
+        for source in raw_sources.split("<br>"):
+            source_id = normalize_code(source)
+            if source_id:
+                result[source_id] = batch
+    return result
+
+
+def render_phase2_index(orchestrate_dir: Path) -> str:
+    """从 Phase 2 canonical JSON 与调度 metadata 机械生成聚合索引。"""
+    repo_root = repo_root_for(orchestrate_dir)
+    atom_root = orchestrate_dir / "phase-works/phase-2/source-obligation-atoms"
+    trace_path = orchestrate_dir / "trace/phase-2.trace.json"
+    trace = read_json(trace_path)
+    require_trace_contract(trace, trace_path, PHASE_TRACE_SCHEMAS["phase-2"])
+    batches = _phase2_batch_by_source(orchestrate_dir)
+    rows: List[List[object]] = []
+    for json_path in sorted(atom_root.glob("*.atoms.json")):
+        data = read_json(json_path)
+        require_trace_contract(data, json_path, SOURCE_ATOMS_SCHEMA)
+        atoms = [row for row in data.get("source-atoms", []) if isinstance(row, dict)]
+        mapped_changes = sorted({
+            normalize_code(row.get("candidate-owner-change"))
+            for row in atoms
+            if normalize_code(row.get("candidate-owner-change")) not in {"", "none", "unassigned", "contextual"}
+        })
+        mapped_capabilities = sorted({
+            normalize_code(row.get("candidate-target-capability"))
+            for row in atoms
+            if normalize_code(row.get("candidate-target-capability")) not in {"", "none", "unresolved"}
+        })
+        unassigned = sorted(
+            normalize_code(row.get("source-atom-id"))
+            for row in atoms
+            if normalize_code(row.get("candidate-status")) == "unassigned"
+        )
+        blockers = data.get("blockers") if isinstance(data.get("blockers"), list) else []
+        source_document = normalize_code(data.get("source-document"))
+        rows.append([
+            code(source_document),
+            code(batches.get(source_document, "none")),
+            code(data.get("canonical-owner")),
+            code(rel(json_path.with_suffix(".md"), repo_root)),
+            code(data.get("read-status")),
+            code(len(atoms)),
+            md(_count_summary(row.get("candidate-status") for row in atoms)),
+            md(_count_summary(row.get("candidate-artifact-projection") for row in atoms)),
+            code_list(mapped_changes),
+            code_list(mapped_capabilities),
+            code_list(unassigned),
+            md("；".join(str(item) for item in blockers) if blockers else "无"),
+        ])
+    body = [
+        "# Phase 2 Source Obligation Atom Index",
+        "",
+        f"- Phase status：{code(trace.get('status'))}",
+        f"- Phase trace：{code(rel(trace_path, repo_root))}",
+        f"- Phase trace digest：{code(sha256_file(trace_path))}",
+        f"- Render contract：{code(RENDER_CONTRACT_VERSION)}",
+        "",
+        render_table(
+            [
+                "Source Document", "Work Queue Batch", "Canonical Owner", "Source Atom File",
+                "Read Status", "Atom Candidates", "Candidate Status Summary", "Projection Summary",
+                "Mapped Changes", "Mapped Capabilities", "Unassigned Atoms", "Blockers",
+            ],
+            rows,
+        ).rstrip(),
+        "",
+        "> 本索引由 Phase 2 canonical atom JSON 机械生成，不是独立语义权威。",
+    ]
+    return "\n".join(body).rstrip() + "\n"
+
+
 def render_global_index(orchestrate_dir: Path, json_path: Path) -> str:
     repo_root = repo_root_for(orchestrate_dir)
     data = read_json(json_path)
@@ -297,8 +401,8 @@ def render_coverage_review(orchestrate_dir: Path, json_path: Path) -> str:
                     code(row.get("source-sha256")),
                     code(row.get("phase-2-atom-path")),
                     code(row.get("phase-2-atom-sha256")),
-                    md("; ".join(lines_from(item) for item in row.get("covered-ranges", []) if isinstance(item, dict))),
-                    md("; ".join(lines_from(item) for item in row.get("candidate-uncovered-ranges", []) if isinstance(item, dict))),
+                    md("; ".join(range_label(item) for item in row.get("covered-ranges", []) if isinstance(item, dict))),
+                    md("; ".join(range_label(item) for item in row.get("candidate-uncovered-ranges", []) if isinstance(item, dict))),
                 ]
                 for row in data.get("documents", [])
                 if isinstance(row, dict)
@@ -350,7 +454,7 @@ def render_coverage_review(orchestrate_dir: Path, json_path: Path) -> str:
                 [
                     code(row.get("source-document")),
                     code_list(row.get("source-atom-ids")),
-                    md("; ".join(lines_from(item) for item in row.get("line-ranges", []) if isinstance(item, dict))),
+                    md("; ".join(range_label(item) for item in row.get("line-ranges", []) if isinstance(item, dict))),
                     md(row.get("reason")),
                 ]
                 for row in data.get("recheck-sources", [])
@@ -366,6 +470,7 @@ def render_coverage_review(orchestrate_dir: Path, json_path: Path) -> str:
             ([code(key), code(value)] for key, value in sorted(summary.items())),
         ).rstrip()
     )
+    body.extend(["", "## 语言自检", "", md(data.get("language-self-check"))])
     return "\n".join(body).rstrip() + "\n" + trace_appendix(json_path, PHASE3_COVERAGE_REVIEW_SCHEMA, repo_root)
 
 
@@ -406,6 +511,107 @@ def render_atom_plan_mapping(orchestrate_dir: Path, json_path: Path) -> str:
         ).rstrip(),
     ]
     return "\n".join(body).rstrip() + "\n" + trace_appendix(json_path, ATOM_PLAN_MAPPING_SCHEMA, repo_root)
+
+
+def _gate_results_text(value: object) -> str:
+    if not isinstance(value, list):
+        return "None"
+    parts: List[str] = []
+    for row in value:
+        if not isinstance(row, dict):
+            continue
+        gate = normalize_code(row.get("gate"))
+        result = normalize_code(row.get("result"))
+        note = squash(row.get("note"))
+        parts.append(f"{gate}={result}" + (f"（{note}）" if note else ""))
+    return "；".join(parts) or "None"
+
+
+def render_framework_refit_review(orchestrate_dir: Path, json_path: Path) -> str:
+    """从 framework refit trace 渲染 Phase 5 人工复审文档。"""
+    repo_root = repo_root_for(orchestrate_dir)
+    data = read_json(json_path)
+    require_trace_contract(data, json_path, FRAMEWORK_REFIT_TRACE_SCHEMA)
+    capability_rows = (
+        [
+            code(row.get("input-capability")),
+            code(row.get("evidence-collection-path")),
+            code(row.get("decision")),
+            code_list(row.get("final-capabilities")),
+            md(_gate_results_text(row.get("gate-results"))),
+            md(row.get("reason")),
+        ]
+        for row in data.get("capability-reviews", [])
+        if isinstance(row, dict)
+    )
+    change_rows = (
+        [
+            code(row.get("input-change")),
+            code(row.get("evidence-collection-path")),
+            code(row.get("decision")),
+            code_list(row.get("final-changes")),
+            md(_gate_results_text(row.get("gate-results"))),
+            md(row.get("reason")),
+        ]
+        for row in data.get("change-reviews", [])
+        if isinstance(row, dict)
+    )
+    gap_rows = (
+        [
+            code(row.get("global-atom-id")),
+            code(json.dumps(row.get("evidence-ref"), ensure_ascii=False, sort_keys=True)),
+            code(row.get("disposition")),
+            code(row.get("final-change")),
+            capability_target(row.get("final-capability")),
+            md(row.get("reason")),
+        ]
+        for row in data.get("unassigned-and-gap-reviews", [])
+        if isinstance(row, dict)
+    )
+    final_framework = data.get("final-framework") if isinstance(data.get("final-framework"), dict) else None
+    summary = "无（非终态）"
+    if final_framework is not None:
+        summary = (
+            f"Change顺序={', '.join(str(item) for item in final_framework.get('change-order', [])) or '无'}；"
+            f"Capability={', '.join(str(item) for item in final_framework.get('capabilities', [])) or '无'}；"
+            f"Overlay={len(final_framework.get('overlay', [])) if isinstance(final_framework.get('overlay'), list) else 0}"
+        )
+    issues = data.get("issues") if isinstance(data.get("issues"), list) else []
+    body = [
+        "# Plan Refit Review",
+        "",
+        "## Capability Review",
+        "",
+        render_table(
+            ["Input Capability", "Evidence Collection", "Decision", "Final Capability(s)", "Failed or Passed Gates", "Reason"],
+            capability_rows,
+        ).rstrip(),
+        "",
+        "## Change Review",
+        "",
+        render_table(
+            ["Input Change", "Evidence Collection", "Decision", "Final Change(s)", "Failed or Passed Gates", "Reason"],
+            change_rows,
+        ).rstrip(),
+        "",
+        "## Unassigned and Gap Review",
+        "",
+        render_table(
+            ["GA", "Evidence Reference", "Disposition", "Final Change", "Final Capability", "Reason"],
+            gap_rows,
+        ).rstrip(),
+        "",
+        "## Final Decision",
+        "",
+        f"- Status: `{normalize_code(data.get('status'))}`",
+        f"- Final framework：{summary}",
+        f"- Issues：{'；'.join(str(item) for item in issues) if issues else '无'}",
+        "",
+        "## 语言自检",
+        "",
+        md(data.get("language-self-check")),
+    ]
+    return "\n".join(body).rstrip() + "\n" + trace_appendix(json_path, FRAMEWORK_REFIT_TRACE_SCHEMA, repo_root)
 
 
 def _resolved_global_evidence(orchestrate_dir: Path) -> Dict[str, Dict[str, object]]:
@@ -525,27 +731,69 @@ def _render_evidence_item(item: Dict[str, object]) -> str:
     return "\n".join(metadata)
 
 
-def render_evidence_collections(orchestrate_dir: Path, json_path: Path) -> Dict[Path, str]:
+def _phase4_index_path(orchestrate_dir: Path) -> Path:
+    return orchestrate_dir / "phase-works/phase-4/source-evidence-collections/evidence-collection-index.json"
+
+
+def _phase4_appendix(orchestrate_dir: Path) -> str:
     repo_root = repo_root_for(orchestrate_dir)
-    data = read_json(json_path)
-    require_trace_contract(data, json_path, EVIDENCE_COLLECTION_INDEX_SCHEMA)
-    plan_path = orchestrate_dir / "phase-works/phase-1/initial-change-plan.md"
-    changes, capabilities = _initial_framework(plan_path)
+    index_path = _phase4_index_path(orchestrate_dir)
+    return (
+        "\n## Assembly Appendix\n\n"
+        f"Derived machine index: `{rel(index_path, repo_root)}`\n"
+        f"Index schema: `{EVIDENCE_COLLECTION_INDEX_SCHEMA}`\n"
+        f"Render contract: `{RENDER_CONTRACT_VERSION}`\n"
+    )
+
+
+def _phase4_rows(
+    orchestrate_dir: Path,
+    changes: Sequence[Dict[str, str]],
+    capabilities: Sequence[Dict[str, str]],
+) -> tuple[List[Dict[str, object]], List[Dict[str, object]]]:
     resolved = _resolved_global_evidence(orchestrate_dir)
-    rows = [row for row in data.get("rows", []) if isinstance(row, dict)]
+    change_ids = {row["slug"] for row in changes}
+    capability_ids = {row["slug"] for row in capabilities}
+    root = _phase4_index_path(orchestrate_dir).parent
+    rows: List[Dict[str, object]] = []
     enriched: List[Dict[str, object]] = []
-    for row in rows:
-        ga = normalize_code(row.get("global-atom-id"))
-        evidence = resolved.get(ga)
-        if evidence is None:
-            raise ValueError(f"collection index引用未知GA: {ga}")
+    for ga, evidence in resolved.items():
+        kind = normalize_code(evidence.get("evidence-kind"))
+        owner_hint = normalize_code(evidence.get("candidate-owner-change"))
+        target_hint = normalize_code(evidence.get("candidate-target-capability"))
+        change_bucket = owner_hint if kind == "phase-2-source-atom" and owner_hint in change_ids else "unassigned-and-gap"
+        capability_bucket = target_hint if kind == "phase-2-source-atom" and target_hint in capability_ids else "none"
+        collection_paths = [
+            (root / "by-input-change" / f"{change_bucket}.md")
+            if change_bucket != "unassigned-and-gap"
+            else (root / "unassigned-and-gap.md")
+        ]
+        if capability_bucket != "none":
+            collection_paths.append(root / "by-input-capability" / f"{capability_bucket}.md")
+        row = {
+            "global-atom-id": ga,
+            "evidence-ref": evidence.get("evidence-ref"),
+            "change-bucket": change_bucket,
+            "capability-bucket": capability_bucket,
+            "rendered-collection-paths": [rel(path, repo_root_for(orchestrate_dir)) for path in collection_paths],
+        }
+        rows.append(row)
         enriched.append({**evidence, **row})
     enriched.sort(key=_evidence_sort_key)
-    root = json_path.parent
-    outputs: Dict[Path, str] = {}
-    appendix = trace_appendix(json_path, EVIDENCE_COLLECTION_INDEX_SCHEMA, repo_root)
+    return rows, enriched
 
-    index_lines = ["# Phase 4 冻结原文集合索引", "", f"Status: {code(data.get('status'))}", ""]
+
+def render_evidence_collections(orchestrate_dir: Path, json_path: Optional[Path] = None) -> Dict[Path, str]:
+    """直接从 Phase 1–3 authority 机械组装 Phase 4 Markdown。"""
+    del json_path  # v2 index 是输出，不再是 renderer 输入。
+    plan_path = orchestrate_dir / "phase-works/phase-1/initial-change-plan.md"
+    changes, capabilities = _initial_framework(plan_path)
+    _, enriched = _phase4_rows(orchestrate_dir, changes, capabilities)
+    root = _phase4_index_path(orchestrate_dir).parent
+    outputs: Dict[Path, str] = {}
+    appendix = _phase4_appendix(orchestrate_dir)
+
+    index_lines = ["# Phase 4 冻结原文集合索引", ""]
     index_lines.append(render_table(
         ["Global Atom ID", "Evidence Reference", "Change Bucket", "Capability Bucket"],
         (
@@ -603,6 +851,59 @@ def render_evidence_collections(orchestrate_dir: Path, json_path: Path) -> Dict[
             lines.append("无关联 evidence occurrence。")
     outputs[root / "unassigned-and-gap.md"] = "\n".join(lines).rstrip() + "\n" + appendix
     return outputs
+
+
+def _sha256_text(text: str) -> str:
+    return hashlib.sha256(text.encode("utf-8")).hexdigest()
+
+
+def build_evidence_collection_index(
+    orchestrate_dir: Path,
+    outputs: Optional[Dict[Path, str]] = None,
+) -> Dict[str, object]:
+    """生成不承载新语义的 Phase 4 v2 派生机器索引。"""
+    repo_root = repo_root_for(orchestrate_dir)
+    plan_path = orchestrate_dir / "phase-works/phase-1/initial-change-plan.md"
+    changes, capabilities = _initial_framework(plan_path)
+    rows, _ = _phase4_rows(orchestrate_dir, changes, capabilities)
+    rendered = outputs if outputs is not None else render_evidence_collections(orchestrate_dir)
+    atom_root = orchestrate_dir / "phase-works/phase-2/source-obligation-atoms"
+    generated_paths = [
+        plan_path,
+        orchestrate_dir / "change-capability-anchors/obligation-atom-index.json",
+        orchestrate_dir / "phase-works/phase-3/coverage-review.json",
+        *sorted(atom_root.glob("*.atoms.json")),
+    ]
+    change_ids = {row["slug"] for row in changes}
+    capability_ids = {row["slug"] for row in capabilities}
+    rendered_artifacts: List[Dict[str, object]] = []
+    for path, text_value in rendered.items():
+        if path.name == "index.md":
+            kind, owner = "index", "all"
+        elif path.name == "unassigned-and-gap.md":
+            kind, owner = "unassigned-and-gap", "unassigned-and-gap"
+        elif path.parent.name == "by-input-change" and path.stem in change_ids:
+            kind, owner = "input-change", path.stem
+        elif path.parent.name == "by-input-capability" and path.stem in capability_ids:
+            kind, owner = "input-capability", path.stem
+        else:
+            raise ValueError(f"无法分类 Phase 4 rendered artifact：{path}")
+        rendered_artifacts.append({
+            "artifact-path": rel(path, repo_root),
+            "sha256": _sha256_text(text_value),
+            "collection-kind": kind,
+            "owner-id": owner,
+        })
+    return {
+        "trace-schema": EVIDENCE_COLLECTION_INDEX_SCHEMA,
+        "trace-contract-version": TRACE_CONTRACT_VERSION,
+        "generated-from": [
+            {"artifact-path": rel(path, repo_root), "sha256": sha256_file(path)}
+            for path in generated_paths
+        ],
+        "rows": rows,
+        "rendered-artifacts": rendered_artifacts,
+    }
 
 
 def render_capability_baseline(orchestrate_dir: Path, json_path: Path) -> str:
@@ -666,10 +967,6 @@ def render_jobs(orchestrate_dir: Path, artifact: str, source_document: str = "")
         path = orchestrate_dir / "phase-works/phase-3/coverage-review.json"
         if path.exists():
             jobs.append({"json-path": path, "md-path": path.with_suffix(".md"), "renderer": render_coverage_review})
-    if artifact in {"phase4-evidence-collections", "all-supported"}:
-        path = orchestrate_dir / "phase-works/phase-4/source-evidence-collections/evidence-collection-index.json"
-        if path.exists():
-            jobs.append({"json-path": path, "multi-renderer": render_evidence_collections})
     if artifact in {"phase5-atom-plan-mapping", "all-supported"}:
         path = orchestrate_dir / "phase-works/phase-5/atom-plan-mapping.json"
         if path.exists():
@@ -678,6 +975,14 @@ def render_jobs(orchestrate_dir: Path, artifact: str, source_document: str = "")
         path = orchestrate_dir / "phase-works/phase-5/capability-baseline-reconciliation.json"
         if path.exists():
             jobs.append({"json-path": path, "md-path": path.with_suffix(".md"), "renderer": render_capability_baseline})
+    if artifact in {"phase5-refit-review", "all-supported"}:
+        path = orchestrate_dir / "phase-works/phase-5/framework-refit-trace.json"
+        if path.exists():
+            jobs.append({
+                "json-path": path,
+                "md-path": orchestrate_dir / "phase-works/phase-5/plan-refit-review.md",
+                "renderer": render_framework_refit_review,
+            })
     return jobs
 
 
@@ -702,36 +1007,73 @@ def render_orchestrate(orchestrate_dir: Path, artifact: str, source_document: st
     if write and artifact in {"phase4-evidence-collections", "all-supported"}:
         clean_phase4_legacy(orchestrate_dir)
     results: List[Dict[str, object]] = []
+    derived_json_results: List[Dict[str, object]] = []
     drift_count = 0
     warnings: List[str] = []
-    for job in render_jobs(orchestrate_dir, artifact, source_document):
-        json_path = job["json-path"]
-        if "multi-renderer" in job:
-            rendered_outputs = job["multi-renderer"](orchestrate_dir, json_path)
+
+    if artifact in {"phase2-index", "all-supported"}:
+        atom_root = orchestrate_dir / "phase-works/phase-2/source-obligation-atoms"
+        if any(atom_root.glob("*.atoms.json")):
+            md_path = atom_root / "index.md"
+            rendered = render_phase2_index(orchestrate_dir)
+            current = md_path.read_text(encoding="utf-8") if md_path.exists() else None
+            drift = current != rendered
+            drift_count += int(drift)
+            if write and drift:
+                md_path.parent.mkdir(parents=True, exist_ok=True)
+                md_path.write_text(rendered, encoding="utf-8")
+            results.append({
+                "source-json": "phase2-atom-json-set",
+                "target-markdown": md_path.as_posix(),
+                "row-count": len(list(atom_root.glob("*.atoms.json"))),
+                "drift": drift if not write else False,
+                "written": bool(write and drift),
+            })
+
+    if artifact in {"phase4-evidence-collections", "all-supported"}:
+        global_path = orchestrate_dir / "change-capability-anchors/obligation-atom-index.json"
+        coverage_path = orchestrate_dir / "phase-works/phase-3/coverage-review.json"
+        plan_path = orchestrate_dir / "phase-works/phase-1/initial-change-plan.md"
+        if global_path.exists() and coverage_path.exists() and plan_path.exists():
+            rendered_outputs = render_evidence_collections(orchestrate_dir)
+            index_path = _phase4_index_path(orchestrate_dir)
             if write:
                 expected_paths = {path.resolve() for path in rendered_outputs}
-                for directory in (json_path.parent / "by-input-change", json_path.parent / "by-input-capability"):
+                for directory in (index_path.parent / "by-input-change", index_path.parent / "by-input-capability"):
                     for stale in directory.glob("*.md") if directory.exists() else []:
                         if stale.resolve() not in expected_paths:
                             stale.unlink()
             for md_path, rendered in rendered_outputs.items():
                 current = md_path.read_text(encoding="utf-8") if md_path.exists() else None
                 drift = current != rendered
-                if drift:
-                    drift_count += 1
+                drift_count += int(drift)
                 if write and drift:
                     md_path.parent.mkdir(parents=True, exist_ok=True)
                     md_path.write_text(rendered, encoding="utf-8")
-                results.append(
-                    {
-                        "source-json": json_path.as_posix(),
-                        "target-markdown": md_path.as_posix(),
-                        "row-count": len(read_json(json_path).get("rows", [])),
-                        "drift": drift if not write else False,
-                        "written": bool(write and drift),
-                    }
-                )
-            continue
+                results.append({
+                    "source-json": "phase1-3-authority-set",
+                    "target-markdown": md_path.as_posix(),
+                    "row-count": len(_resolved_global_evidence(orchestrate_dir)),
+                    "drift": drift if not write else False,
+                    "written": bool(write and drift),
+                })
+            expected_index = build_evidence_collection_index(orchestrate_dir, rendered_outputs)
+            try:
+                current_index = read_json(index_path) if index_path.exists() else None
+            except (OSError, ValueError, json.JSONDecodeError):
+                current_index = None
+            index_drift = current_index != expected_index
+            drift_count += int(index_drift)
+            if write and index_drift:
+                write_json(index_path, expected_index)
+            derived_json_results.append({
+                "target-json": index_path.as_posix(),
+                "drift": index_drift if not write else False,
+                "written": bool(write and index_drift),
+            })
+
+    for job in render_jobs(orchestrate_dir, artifact, source_document):
+        json_path = job["json-path"]
         md_path = job["md-path"]
         renderer = job["renderer"]
         rendered = renderer(orchestrate_dir, json_path)
@@ -767,12 +1109,13 @@ def render_orchestrate(orchestrate_dir: Path, artifact: str, source_document: st
         "rendered-files": len(results),
         "drift-count": 0 if write else drift_count,
         "results": results,
+        "derived-json-results": derived_json_results,
         "warnings": warnings,
     }
 
 
 def main() -> int:
-    parser = argparse.ArgumentParser(description="根据 canonical JSON sidecar 渲染 source-aligned Markdown mirror。")
+    parser = argparse.ArgumentParser(description="按 Phase-specific authority 渲染 source-aligned 人工阅读产物。")
     parser.add_argument("--orchestrate-dir", default="openspec/orchestrate", help="orchestrate 目录路径")
     parser.add_argument("--artifact", choices=sorted(SUPPORTED_ARTIFACTS), default="all-supported", help="要渲染的 artifact")
     parser.add_argument("--source-document", default="", help="可选的来源文档路径筛选条件")

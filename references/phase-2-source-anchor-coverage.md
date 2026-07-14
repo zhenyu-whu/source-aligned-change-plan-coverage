@@ -43,8 +43,8 @@ validator 与 independent reviewer 通过后冻结 `.atoms.json`；`.atoms.md` �
 | --- | --- | --- | --- |
 | main agent | Phase 1 plan、manifest 和 source metadata | `work-queue.md` | 提取或修复 atom、作 coverage 判断 |
 | extraction writer | 分配的 source 正文、Phase 1 plan/manifest、work queue、必需 contract | 分配 source 的 canonical `.atoms.json` | 写其他 source、跨文档比较、聚合、判断 new Change/Capability、读取 Phase 3–5 output |
-| renderer | canonical Phase 2 JSON | 匹配的 `.atoms.md` mirror | 解释或补充 atom |
-| index/report writer | Phase 1 plan/manifest、work queue、全部 `.atoms.json` | `index.md`、`phase-2-agent-report.md`、`phase-2.trace.json` | 重读 source 创建 evidence、编辑 atom、repair、去重、闭合 coverage 或作 final decision |
+| renderer | work queue、canonical Phase 2 JSON、Phase trace | 匹配的`.atoms.md` mirror和聚合`index.md` | 解释或补充atom |
+| index/report writer | Phase 1 plan/manifest、work queue、全部 `.atoms.json` | 非canonical`phase-2-agent-report.md`、`phase-2.trace.json` | 手写index、重读source创建evidence、编辑atom、repair、去重、闭合coverage或作final decision |
 
 reviewer 与 repair-writer 的权限由 `references/reviewer-repair-loop.md` 定义。
 
@@ -55,17 +55,21 @@ reviewer 与 repair-writer 的权限由 `references/reviewer-repair-loop.md` 定
 1. main agent 建立 work queue。
 2. 每个 batch 启动一个 fresh extraction writer；每份 source 只分配一个 canonical owner。
 3. extraction writer 对每份 source 依次完成：全文阅读 → atom extraction → existing-framework mapping → canonical JSON。
-4. 在 repository root 运行 Phase 2 scoped renderer：
+4. 所有extraction完成后，启动fresh index/report writer，只读聚合JSON，并写入非canonical report和status为`source-atoms-written`的Phase trace。该status只表示writer output已形成。
+5. 在repository root运行Phase 2 scoped renderer，依次生成每份atom mirror和聚合index：
 
    ```bash
    python3 .codex/skills/source-aligned-change-plan-coverage/scripts/render_source_aligned_orchestrate.py \
      --orchestrate-dir openspec/orchestrate \
      --artifact phase2-source-atoms \
      --write
+   python3 .codex/skills/source-aligned-change-plan-coverage/scripts/render_source_aligned_orchestrate.py \
+     --orchestrate-dir openspec/orchestrate \
+     --artifact phase2-index \
+     --write
    ```
-5. 所有 extraction 完成后，启动 fresh index/report writer，只读聚合 JSON，并写入 index、report 和 status 为 `source-atoms-written` 的 Phase trace。该 status 只表示 writer output 已形成。
-6. 聚合发现缺失或格式错误时只记录 blocker，不得修复 extraction。
-7. main agent 运行 validator、reviewer 和必要的 repair loop；通过后刷新 manifest 并冻结 Phase 2。
+6. 聚合发现缺失或格式错误时只记录blocker，不得修复extraction。
+7. main agent运行validator、reviewer和必要的repair loop；通过后刷新manifest并冻结Phase 2。
 
 ## Work queue
 
@@ -191,7 +195,7 @@ Phase 2 不记录 `candidate-capability-impact`、`candidate-related-capabilitie
 | Source Atom ID | Lines | Atom Type | Source Fact | Normativity | Candidate Status | Candidate Artifact Projection | Candidate Owner Change | Candidate Target Capability | Rationale |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
 
-`Lines` 列由 canonical `line-ranges[]` 生成。`.atoms.md` 还包含 source identity、Phase 1 context、blocker、language self-check 和 `Trace Appendix`；render contract 为 `source-aligned-render-v5`。
+`Lines`列由canonical `line-ranges[]`生成。`.atoms.md`还包含source identity、Phase 1 context、blocker、language self-check和`Trace Appendix`；render contract为`source-aligned-render-v6`。
 
 字段 shape：
 
@@ -209,6 +213,8 @@ Phase 2 不记录 `candidate-capability-impact`、`candidate-related-capabilitie
 | Source Document | Work Queue Batch | Canonical Owner | Source Atom File | Read Status | Atom Candidates | Candidate Status Summary | Projection Summary | Mapped Changes | Mapped Capabilities | Unassigned Atoms | Blockers |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
 
+该index完全由work queue、全部`.atoms.json`和`phase-2.trace.json`聚合渲染；不得直接编辑。validator逐字重渲染比较。
+
 `phase-2-agent-report.md` 先记录 index/report writer identity、只读 input、output 和 blocker，再包含：
 
 | Batch | Source Documents | Source Atom Files | Docs Read Full | Atom Candidates | Status Summary | Projection Summary | Mapped Changes / Capabilities | Unassigned Atoms | Conflicts / Unclassified | Blockers |
@@ -216,7 +222,7 @@ Phase 2 不记录 `candidate-capability-impact`、`candidate-related-capabilitie
 
 aggregate 不发布 duplicate statistic、candidate new boundary、global coverage statistic、global atom 或 final plan map。
 
-若 repair 修改 canonical `.atoms.json`，repair-writer 必须重跑 Phase 2 scoped renderer，并同步刷新受影响的 index、report 和 Phase trace count/digest；不得借此补做新的 extraction 或全局判断。随后 main agent 再刷新 manifest、运行 validator，并启动 fresh reviewer。
+若repair修改canonical `.atoms.json`，repair-writer必须刷新report和Phase trace count/digest，再重跑Phase 2 atoms/index renderer；不得借此补做新的extraction或全局判断。随后main agent再刷新manifest、运行validator，并启动fresh reviewer。
 
 ## 完成门禁
 

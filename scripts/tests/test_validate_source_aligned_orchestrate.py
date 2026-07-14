@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 import json
+import copy
 import shutil
 import subprocess
 import sys
@@ -15,13 +16,19 @@ SCRIPT_DIR = Path(__file__).resolve().parents[1]
 SKILL_DIR = SCRIPT_DIR.parent
 sys.path.insert(0, str(SCRIPT_DIR))
 
-from phase5_plan_refit import write_outputs  # noqa: E402
-from render_source_aligned_orchestrate import render_evidence_collections, render_orchestrate  # noqa: E402
+from phase5_plan_refit import validate_framework_refit, write_outputs  # noqa: E402
+from render_source_aligned_orchestrate import (  # noqa: E402
+    RENDER_CONTRACT_VERSION,
+    render_coverage_review,
+    render_evidence_collections,
+    render_orchestrate,
+)
 from source_aligned_trace_lib import (  # noqa: E402
     ATOM_PLAN_MAPPING_SCHEMA,
     CAPABILITY_BASELINE_SCHEMA,
     EVIDENCE_COLLECTION_INDEX_SCHEMA,
     FINAL_PACKET_INDEX_SCHEMA,
+    FRAMEWORK_REFIT_TRACE_SCHEMA,
     GLOBAL_ATOM_INDEX_SCHEMA,
     MANIFEST_SCHEMA,
     PHASE3_COVERAGE_REVIEW_SCHEMA,
@@ -207,43 +214,57 @@ class SourceAlignedPhase45Test(unittest.TestCase):
             "rationale": "保留该独立 evidence occurrence，供后续完整复审。",
         }
 
-    def _review(self) -> str:
-        gap_rows = []
-        for ga, provenance in (
-            ("GA-0002", "phase-2-unassigned"),
-            ("GA-0003", "phase-2-contextual"),
-            ("GA-0004", "phase-2-unresolved"),
-            ("GA-0005", "phase-3-gap"),
-        ):
-            gap_rows.append(
-                f"| `{ga}` | `{provenance}` | `{ga}` frozen source-fact | mapped | `change-a` | `none` | 归入同一结果范围且不推进Capability。 |"
-            )
-        return """# Plan Refit Review
-
-## Capability Review
-
-| Input Capability | Evidence Collection | Decision | Final Capability(s) | Failed or Passed Gates | Reason |
-| --- | --- | --- | --- | --- | --- |
-| `cap-a` | `by-input-capability/cap-a.md` | `keep` | `cap-a` | 全部Capability gate通过 | 原文集合支持稳定行为边界。 |
-
-## Change Review
-
-| Input Change | Evidence Collection | Decision | Final Change(s) | Failed or Passed Gates | Reason |
-| --- | --- | --- | --- | --- | --- |
-| `change-a` | `by-input-change/change-a.md` | `keep` | `change-a` | 全部Change gate通过 | 原文集合支持单一可验收结果。 |
-
-## Unassigned and Gap Review
-
-| GA | Provenance | Source Fact Reference | Disposition | Final Change | Final Capability | Reason |
-| --- | --- | --- | --- | --- | --- | --- |
-""" + "\n".join(gap_rows) + """
-
-## Final Decision
-
-- Status: accepted
-- framework变化摘要：无
-- recheck/blocker及最小下一步：无
-"""
+    def _refit_trace(self) -> dict:
+        initial_plan = self.orchestrate / "phase-works/phase-1/initial-change-plan.md"
+        gap_refs = {
+            "GA-0002": self._ref("SA-0002"),
+            "GA-0003": self._ref("SA-0003"),
+            "GA-0004": self._ref("SA-0004"),
+            "GA-0005": {"kind": "phase-3-gap-atom", "gap-atom-id": "P3-GAP-0001"},
+        }
+        return {
+            "trace-schema": FRAMEWORK_REFIT_TRACE_SCHEMA,
+            "trace-contract-version": TRACE_CONTRACT_VERSION,
+            "status": "accepted",
+            "initial-plan-ref": {
+                "artifact-path": "openspec/orchestrate/phase-works/phase-1/initial-change-plan.md",
+                "sha256": sha256_file(initial_plan),
+            },
+            "capability-reviews": [{
+                "input-capability": "cap-a",
+                "evidence-collection-path": "openspec/orchestrate/phase-works/phase-4/source-evidence-collections/by-input-capability/cap-a.md",
+                "decision": "keep",
+                "final-capabilities": ["cap-a"],
+                "gate-results": [{"gate": "capability-boundary", "result": "passed", "note": "稳定行为边界成立。"}],
+                "reason": "原文集合支持稳定行为边界。",
+            }],
+            "change-reviews": [{
+                "input-change": "change-a",
+                "evidence-collection-path": "openspec/orchestrate/phase-works/phase-4/source-evidence-collections/by-input-change/change-a.md",
+                "decision": "keep",
+                "final-changes": ["change-a"],
+                "gate-results": [{"gate": "change-outcome", "result": "passed", "note": "单一可验收结果成立。"}],
+                "reason": "原文集合支持单一可验收结果。",
+            }],
+            "unassigned-and-gap-reviews": [
+                {
+                    "global-atom-id": ga,
+                    "evidence-ref": ref,
+                    "disposition": "mapped",
+                    "final-change": "change-a",
+                    "final-capability": "none",
+                    "reason": "归入同一结果范围且不推进Capability。",
+                }
+                for ga, ref in gap_refs.items()
+            ],
+            "final-framework": {
+                "change-order": ["change-a"],
+                "capabilities": ["cap-a"],
+                "overlay": [{"change": "change-a", "capability": "cap-a", "capability-impact": "new"}],
+            },
+            "issues": [],
+            "language-self-check": "判断与理由已使用简体中文。",
+        }
 
     def _build_fixture(self) -> None:
         source_text = "same | requirement\n```embedded```\nsame outcome\nunassigned fact\ncontextual fact\nunresolved fact\ngap must\nbackground\n"
@@ -281,7 +302,6 @@ class SourceAlignedPhase45Test(unittest.TestCase):
             "openspec/orchestrate/phase-works/phase-2/source-obligation-atoms/work-queue.md",
             "| Batch | Source Documents | Canonical Owner |\n| --- | --- | --- |\n| B1 | docs/source.md | owner-a |\n",
         )
-        self._write("openspec/orchestrate/phase-works/phase-2/source-obligation-atoms/index.md", "索引。\n")
         self._write("openspec/orchestrate/phase-works/phase-2/phase-2-agent-report.md", "Phase 2通过。\n")
         atom_path = atom_root / "docs--source.atoms.json"
         atoms = [
@@ -415,43 +435,29 @@ class SourceAlignedPhase45Test(unittest.TestCase):
             },
         })
         render_orchestrate(self.orchestrate, "phase2-source-atoms", write=True)
+        render_orchestrate(self.orchestrate, "phase2-index", write=True)
         render_orchestrate(self.orchestrate, "phase3-global-index", write=True)
         render_orchestrate(self.orchestrate, "phase3-coverage-review", write=True)
 
         collection_path = self.orchestrate / "phase-works/phase-4/source-evidence-collections/evidence-collection-index.json"
-        collection_rows = []
-        for index, global_row in enumerate(global_rows, start=1):
-            collection_rows.append({
-                "global-atom-id": f"GA-{index:04d}",
-                "evidence-ref": global_row["evidence-ref"],
-                "change-bucket": "change-a" if index == 1 else "unassigned-and-gap",
-                "capability-bucket": "cap-a" if index == 1 else "none",
-            })
-        write_json(collection_path, {
-            "trace-schema": EVIDENCE_COLLECTION_INDEX_SCHEMA,
-            "trace-contract-version": TRACE_CONTRACT_VERSION,
-            "status": "assembled",
-            "rows": collection_rows,
-            "issues": [],
-            "language-self-check": "机械汇总未执行语义调整。",
-        })
         render_orchestrate(self.orchestrate, "phase4-evidence-collections", write=True)
         self._write("openspec/orchestrate/phase-works/phase-4/phase-4-agent-report.md", "Phase 4 Status: assembled\n")
         write_json(self.orchestrate / "trace/phase-4.trace.json", {
             "trace-schema": PHASE_TRACE_SCHEMAS["phase-4"],
             "trace-contract-version": TRACE_CONTRACT_VERSION,
             "status": "assembled",
-            "evidence-collection-index-path": "openspec/orchestrate/phase-works/phase-4/source-evidence-collections/evidence-collection-index.json",
-            "evidence-collection-index-sha256": sha256_file(collection_path),
-            "renderer-result-summary": {
-                "render-contract-version": "source-aligned-render-v5",
-                "rendered-files": 4,
-                "global-atoms": 5,
+            "assembled": {
+                "evidence-collection-index-path": "openspec/orchestrate/phase-works/phase-4/source-evidence-collections/evidence-collection-index.json",
+                "evidence-collection-index-sha256": sha256_file(collection_path),
+                "renderer-result-summary": {
+                    "render-contract-version": RENDER_CONTRACT_VERSION,
+                    "rendered-files": 4,
+                    "global-atoms": 5,
+                },
             },
         })
 
         self._write("openspec/orchestrate/phase-works/phase-5/change-plan.md", self._final_plan())
-        self._write("openspec/orchestrate/phase-works/phase-5/plan-refit-review.md", self._review())
         self._write("openspec/orchestrate/phase-works/phase-5/phase-5-agent-report.md", "Phase 5 Status: accepted\n")
         mapping_rows = []
         for index, global_row in enumerate(global_rows, start=1):
@@ -473,36 +479,38 @@ class SourceAlignedPhase45Test(unittest.TestCase):
             "artifact-path": "openspec/orchestrate/phase-works/phase-5/atom-plan-mapping.md",
             "rows": mapping_rows,
         })
+        write_json(self.orchestrate / "phase-works/phase-5/framework-refit-trace.json", self._refit_trace())
         write_outputs(self.orchestrate)
         self._write_manifest()
 
     def _write_manifest(self) -> None:
         specs = [
-            ("trace/phase-1.trace.json", PHASE_TRACE_SCHEMAS["phase-1"], "phase-1"),
-            ("trace/phase-2.trace.json", PHASE_TRACE_SCHEMAS["phase-2"], "phase-2"),
-            ("phase-works/phase-2/source-obligation-atoms/docs--source.atoms.json", SOURCE_ATOMS_SCHEMA, "phase-2"),
-            ("change-capability-anchors/obligation-atom-index.json", GLOBAL_ATOM_INDEX_SCHEMA, "phase-3"),
-            ("phase-works/phase-3/coverage-review.json", PHASE3_COVERAGE_REVIEW_SCHEMA, "phase-3"),
-            ("trace/phase-3.trace.json", PHASE_TRACE_SCHEMAS["phase-3"], "phase-3"),
-            ("phase-works/phase-4/source-evidence-collections/evidence-collection-index.json", EVIDENCE_COLLECTION_INDEX_SCHEMA, "phase-4"),
-            ("trace/phase-4.trace.json", PHASE_TRACE_SCHEMAS["phase-4"], "phase-4"),
-            ("phase-works/phase-5/atom-plan-mapping.json", ATOM_PLAN_MAPPING_SCHEMA, "phase-5"),
-            ("phase-works/phase-5/capability-baseline-reconciliation.json", CAPABILITY_BASELINE_SCHEMA, "phase-5"),
-            ("phase-works/phase-5/final-packet-index.json", FINAL_PACKET_INDEX_SCHEMA, "phase-5"),
-            ("trace/phase-5.trace.json", PHASE_TRACE_SCHEMAS["phase-5"], "phase-5"),
+            ("trace/phase-1.trace.json", PHASE_TRACE_SCHEMAS["phase-1"], "phase-1", "control", "phase-trace"),
+            ("trace/phase-2.trace.json", PHASE_TRACE_SCHEMAS["phase-2"], "phase-2", "control", "phase-trace"),
+            ("phase-works/phase-2/source-obligation-atoms/docs--source.atoms.json", SOURCE_ATOMS_SCHEMA, "phase-2", "semantic", "source-atoms"),
+            ("change-capability-anchors/obligation-atom-index.json", GLOBAL_ATOM_INDEX_SCHEMA, "phase-3", "semantic", "global-atom-index"),
+            ("phase-works/phase-3/coverage-review.json", PHASE3_COVERAGE_REVIEW_SCHEMA, "phase-3", "semantic", "coverage-review"),
+            ("trace/phase-3.trace.json", PHASE_TRACE_SCHEMAS["phase-3"], "phase-3", "control", "phase-trace"),
+            ("phase-works/phase-4/source-evidence-collections/evidence-collection-index.json", EVIDENCE_COLLECTION_INDEX_SCHEMA, "phase-4", "derived", "evidence-collection-index"),
+            ("trace/phase-4.trace.json", PHASE_TRACE_SCHEMAS["phase-4"], "phase-4", "control", "phase-trace"),
+            ("phase-works/phase-5/framework-refit-trace.json", FRAMEWORK_REFIT_TRACE_SCHEMA, "phase-5", "semantic", "framework-refit-trace"),
+            ("phase-works/phase-5/atom-plan-mapping.json", ATOM_PLAN_MAPPING_SCHEMA, "phase-5", "semantic", "atom-plan-mapping"),
+            ("phase-works/phase-5/capability-baseline-reconciliation.json", CAPABILITY_BASELINE_SCHEMA, "phase-5", "derived", "capability-baseline"),
+            ("phase-works/phase-5/final-packet-index.json", FINAL_PACKET_INDEX_SCHEMA, "phase-5", "derived", "final-packet-index"),
+            ("trace/phase-5.trace.json", PHASE_TRACE_SCHEMAS["phase-5"], "phase-5", "control", "phase-trace"),
         ]
         artifacts = []
-        for relative, schema, phase in specs:
+        for relative, schema, phase, authority, role in specs:
             path = self.orchestrate / relative
             if not path.exists():
                 continue
             artifacts.append({
-                "artifact-path": f"openspec/orchestrate/{relative.replace('.json', '.md')}",
-                "trace-path": f"openspec/orchestrate/{relative}",
+                "json-path": f"openspec/orchestrate/{relative}",
                 "trace-schema": schema,
                 "sha256": sha256_file(path),
                 "phase": phase,
-                "role": "trace",
+                "role": role,
+                "authority": authority,
             })
         statuses = {}
         for phase in ("phase-1", "phase-2", "phase-3", "phase-4", "phase-5"):
@@ -511,6 +519,7 @@ class SourceAlignedPhase45Test(unittest.TestCase):
         write_json(self.orchestrate / "trace/manifest.json", {
             "trace-schema": MANIFEST_SCHEMA,
             "trace-contract-version": TRACE_CONTRACT_VERSION,
+            "authority": "control",
             "orchestrate-dir": "openspec/orchestrate",
             "phase-statuses": statuses,
             "artifacts": artifacts,
@@ -525,6 +534,61 @@ class SourceAlignedPhase45Test(unittest.TestCase):
     def test_all_phase_complete(self) -> None:
         result = self._result("all", complete=True)
         self.assertTrue(result["ok"], result)
+
+    def test_manifest_v2_authority_is_enforced(self) -> None:
+        relative = "openspec/orchestrate/trace/manifest.json"
+        data = self._data(relative)
+        atom = next(row for row in data["artifacts"] if row["role"] == "source-atoms")
+        atom["authority"] = "derived"
+        self._write_data(relative, data)
+        result = self._result("phase-2")
+        self.assertFalse(result["ok"])
+        self._assert_rule(result, "manifest-artifact-authority")
+
+    def test_manifest_v1_is_rejected(self) -> None:
+        relative = "openspec/orchestrate/trace/manifest.json"
+        data = self._data(relative)
+        data["trace-schema"] = "source-aligned-orchestrate-manifest-v1"
+        self._write_data(relative, data)
+        result = self._result("phase-1")
+        self.assertFalse(result["ok"])
+        self._assert_rule(result, "trace-schema")
+
+    def test_phase2_atoms_and_index_drift_then_rerender(self) -> None:
+        atom_md = self.orchestrate / "phase-works/phase-2/source-obligation-atoms/docs--source.atoms.md"
+        index_md = self.orchestrate / "phase-works/phase-2/source-obligation-atoms/index.md"
+        atom_md.write_text(atom_md.read_text(encoding="utf-8") + "手工修改\n", encoding="utf-8")
+        index_md.write_text(index_md.read_text(encoding="utf-8") + "手工修改\n", encoding="utf-8")
+        result = self._result("phase-2")
+        self.assertFalse(result["ok"])
+        self._assert_rule(result, "rendered-markdown-drift")
+        render_orchestrate(self.orchestrate, "phase2-source-atoms", write=True)
+        render_orchestrate(self.orchestrate, "phase2-index", write=True)
+        self.assertTrue(self._result("phase-2")["ok"])
+
+    def test_phase3_range_renderer_and_language_self_check(self) -> None:
+        coverage_path = self.orchestrate / "phase-works/phase-3/coverage-review.json"
+        rendered = coverage_path.with_suffix(".md").read_text(encoding="utf-8")
+        self.assertIn("L1-L6", rendered)
+        self.assertIn("L7-L8", rendered)
+        self.assertIn("## 语言自检", rendered)
+        data = json.loads(coverage_path.read_text(encoding="utf-8"))
+        data["recheck-sources"] = [{
+            "source-document": "docs/source.md",
+            "source-atom-ids": ["SA-0004"],
+            "line-ranges": [{"start": 6, "end": 6}],
+            "reason": "精确复查冲突项。",
+        }]
+        write_json(coverage_path, data)
+        rendered_with_recheck = render_coverage_review(self.orchestrate, coverage_path)
+        self.assertIn("L6-L6", rendered_with_recheck)
+
+    def test_phase3_mirror_drift_is_rejected(self) -> None:
+        path = self.orchestrate / "phase-works/phase-3/coverage-review.md"
+        path.write_text(path.read_text(encoding="utf-8") + "drift\n", encoding="utf-8")
+        result = self._result("phase-3")
+        self.assertFalse(result["ok"])
+        self._assert_rule(result, "rendered-markdown-drift")
 
     def test_phase4_renders_without_original_source(self) -> None:
         (self.root / "docs/source.md").unlink()
@@ -564,6 +628,29 @@ class SourceAlignedPhase45Test(unittest.TestCase):
         text = (self.orchestrate / "phase-works/phase-4/source-evidence-collections/unassigned-and-gap.md").read_text(encoding="utf-8")
         for heading in ("Phase 2 Unassigned", "Phase 2 Unresolved / Contextual", "Phase 3 Gap Atoms"):
             self.assertIn(heading, text)
+        first = index["rows"][0]
+        self.assertEqual(
+            first["rendered-collection-paths"],
+            [
+                "openspec/orchestrate/phase-works/phase-4/source-evidence-collections/by-input-change/change-a.md",
+                "openspec/orchestrate/phase-works/phase-4/source-evidence-collections/by-input-capability/cap-a.md",
+            ],
+        )
+        for artifact in index["rendered-artifacts"]:
+            self.assertEqual(artifact["sha256"], sha256_file(self.root / artifact["artifact-path"]))
+
+    def test_phase4_markdown_drift_and_stale_file_are_rejected(self) -> None:
+        collection = self.orchestrate / "phase-works/phase-4/source-evidence-collections/by-input-change/change-a.md"
+        collection.write_text(collection.read_text(encoding="utf-8") + "drift\n", encoding="utf-8")
+        stale = self._write(
+            "openspec/orchestrate/phase-works/phase-4/source-evidence-collections/by-input-change/stale.md",
+            "stale\n",
+        )
+        result = self._result("phase-4")
+        self.assertFalse(result["ok"])
+        self._assert_rule(result, "phase4-rendered-collection-drift")
+        self._assert_rule(result, "phase4-rendered-collection-extra")
+        self.assertTrue(stale.exists())
 
     def test_phase4_wrong_bucket_is_rejected(self) -> None:
         relative = "openspec/orchestrate/phase-works/phase-4/source-evidence-collections/evidence-collection-index.json"
@@ -572,7 +659,7 @@ class SourceAlignedPhase45Test(unittest.TestCase):
         self._write_data(relative, data)
         result = self._result("phase-4")
         self.assertFalse(result["ok"])
-        self._assert_rule(result, "phase4-change-bucket")
+        self._assert_rule(result, "phase4-derived-index-drift")
 
     def test_phase4_duplicate_ga_is_rejected(self) -> None:
         relative = "openspec/orchestrate/phase-works/phase-4/source-evidence-collections/evidence-collection-index.json"
@@ -581,7 +668,7 @@ class SourceAlignedPhase45Test(unittest.TestCase):
         self._write_data(relative, data)
         result = self._result("phase-4")
         self.assertFalse(result["ok"])
-        self._assert_rule(result, "phase4-ga-duplicate")
+        self._assert_rule(result, "phase4-derived-index-drift")
 
     def test_phase4_missing_ga_is_rejected(self) -> None:
         relative = "openspec/orchestrate/phase-works/phase-4/source-evidence-collections/evidence-collection-index.json"
@@ -590,7 +677,7 @@ class SourceAlignedPhase45Test(unittest.TestCase):
         self._write_data(relative, data)
         result = self._result("phase-4")
         self.assertFalse(result["ok"])
-        self._assert_rule(result, "phase4-ga-coverage")
+        self._assert_rule(result, "phase4-derived-index-drift")
 
     def test_phase4_dangling_evidence_ref_is_rejected(self) -> None:
         global_relative = "openspec/orchestrate/change-capability-anchors/obligation-atom-index.json"
@@ -605,16 +692,26 @@ class SourceAlignedPhase45Test(unittest.TestCase):
         self._write_manifest()
         result = self._result("phase-4")
         self.assertFalse(result["ok"])
-        self._assert_rule(result, "evidence-resolver-dangling")
+        self._assert_rule(result, "phase4-assembly")
 
-    def test_phase5_review_must_cover_every_unassigned_ga(self) -> None:
+    def test_phase5_review_drift_is_rejected(self) -> None:
         path = self.orchestrate / "phase-works/phase-5/plan-refit-review.md"
         text = path.read_text(encoding="utf-8")
         text = "\n".join(line for line in text.splitlines() if "`GA-0005`" not in line) + "\n"
         path.write_text(text, encoding="utf-8")
         result = self._result("phase-5")
         self.assertFalse(result["ok"])
-        self._assert_rule(result, "phase5-review-gap-coverage")
+        self._assert_rule(result, "rendered-markdown-drift")
+
+    def test_phase5_refit_must_cover_every_unassigned_ga(self) -> None:
+        relative = "openspec/orchestrate/phase-works/phase-5/framework-refit-trace.json"
+        data = self._data(relative)
+        data["unassigned-and-gap-reviews"].pop()
+        self._write_data(relative, data)
+        render_orchestrate(self.orchestrate, "phase5-refit-review", write=True)
+        result = self._result("phase-5")
+        self.assertFalse(result["ok"])
+        self._assert_rule(result, "phase5-refit-contract")
 
     def test_phase5_mapping_v4_rejects_repeated_source_fields(self) -> None:
         relative = "openspec/orchestrate/phase-works/phase-5/atom-plan-mapping.json"
@@ -625,12 +722,41 @@ class SourceAlignedPhase45Test(unittest.TestCase):
         self.assertFalse(result["ok"])
         self._assert_rule(result, "phase5-mapping-contract")
 
+    def test_phase5_mapping_and_baseline_mirror_drift_are_rejected(self) -> None:
+        work = self.orchestrate / "phase-works/phase-5"
+        for name in ("atom-plan-mapping.md", "capability-baseline-reconciliation.md"):
+            path = work / name
+            path.write_text(path.read_text(encoding="utf-8") + "drift\n", encoding="utf-8")
+        result = self._result("phase-5")
+        self.assertFalse(result["ok"])
+        self._assert_rule(result, "rendered-markdown-drift")
+
     def test_phase5_packet_drift_is_rejected(self) -> None:
         packet = self.orchestrate / "change-capability-anchors/change-a/change-a.md"
         packet.write_text(packet.read_text(encoding="utf-8").replace("same outcome", "changed outcome"), encoding="utf-8")
         result = self._result("phase-5")
         self.assertFalse(result["ok"])
         self._assert_rule(result, "phase5-packet-drift")
+
+    def test_phase5_anchor_and_capability_view_drift_are_rejected(self) -> None:
+        anchor_index = self.orchestrate / "change-capability-anchors/index.md"
+        capability_view = self.orchestrate / "change-capability-anchors/change-a/capability-anchors/cap-a.md"
+        anchor_index.write_text(anchor_index.read_text(encoding="utf-8") + "drift\n", encoding="utf-8")
+        capability_view.write_text(capability_view.read_text(encoding="utf-8") + "drift\n", encoding="utf-8")
+        result = self._result("phase-5")
+        self.assertFalse(result["ok"])
+        self._assert_rule(result, "phase5-anchor-index-drift")
+        self._assert_rule(result, "phase5-capability-view-drift")
+
+    def test_phase5_refit_mapping_owner_crosscheck(self) -> None:
+        relative = "openspec/orchestrate/phase-works/phase-5/framework-refit-trace.json"
+        data = self._data(relative)
+        data["unassigned-and-gap-reviews"][0]["final-capability"] = "cap-a"
+        self._write_data(relative, data)
+        render_orchestrate(self.orchestrate, "phase5-refit-review", write=True)
+        result = self._result("phase-5")
+        self.assertFalse(result["ok"])
+        self._assert_rule(result, "phase5-mapping-contract")
 
     def test_phase5_adjusted_new_capability_from_gap(self) -> None:
         plan = self.orchestrate / "phase-works/phase-5/change-plan.md"
@@ -645,13 +771,19 @@ class SourceAlignedPhase45Test(unittest.TestCase):
             "| `change-a` | `cap-b` | `new` | gap evidence建立新的稳定行为。 |",
         )
         plan.write_text(plan_text, encoding="utf-8")
-        review = self.orchestrate / "phase-works/phase-5/plan-refit-review.md"
-        review_text = review.read_text(encoding="utf-8")
-        review_text = review_text.replace(
-            "| `GA-0005` | `phase-3-gap` | `GA-0005` frozen source-fact | mapped | `change-a` | `none` | 归入同一结果范围且不推进Capability。 |",
-            "| `GA-0005` | `phase-3-gap` | `GA-0005` frozen source-fact | direct advancement | `change-a` | `cap-b` | gap暴露新的稳定行为边界。 |",
-        ).replace("- Status: accepted", "- Status: adjusted").replace("framework变化摘要：无", "framework变化摘要：新增cap-b Capability")
-        review.write_text(review_text, encoding="utf-8")
+        refit_path = self.orchestrate / "phase-works/phase-5/framework-refit-trace.json"
+        refit = json.loads(refit_path.read_text(encoding="utf-8"))
+        refit["status"] = "adjusted"
+        refit["final-framework"]["capabilities"].append("cap-b")
+        refit["final-framework"]["overlay"].append({
+            "change": "change-a", "capability": "cap-b", "capability-impact": "new",
+        })
+        refit["unassigned-and-gap-reviews"][3].update({
+            "disposition": "direct-advancement",
+            "final-capability": "cap-b",
+            "reason": "gap暴露新的稳定行为边界。",
+        })
+        write_json(refit_path, refit)
         mapping_path = self.orchestrate / "phase-works/phase-5/atom-plan-mapping.json"
         mapping = json.loads(mapping_path.read_text(encoding="utf-8"))
         gap_row = mapping["rows"][4]
@@ -665,12 +797,96 @@ class SourceAlignedPhase45Test(unittest.TestCase):
         result = self._result("all", complete=True)
         self.assertTrue(result["ok"], result)
 
+    def test_phase5_refit_split_rename_scope_and_add_shapes(self) -> None:
+        base = self._refit_trace()
+
+        def split_capability(data: dict) -> None:
+            data["capability-reviews"][0].update({
+                "decision": "split", "final-capabilities": ["cap-a-one", "cap-a-two"],
+            })
+            data["final-framework"]["capabilities"] = ["cap-a-one", "cap-a-two"]
+            data["final-framework"]["overlay"] = [{
+                "change": "change-a", "capability": "cap-a-one", "capability-impact": "new",
+            }]
+
+        def rename_change(data: dict) -> None:
+            data["change-reviews"][0].update({"decision": "rename", "final-changes": ["change-renamed"]})
+            data["final-framework"]["change-order"] = ["change-renamed"]
+            data["final-framework"]["overlay"][0]["change"] = "change-renamed"
+            for row in data["unassigned-and-gap-reviews"]:
+                row["final-change"] = "change-renamed"
+
+        def scope_change(data: dict) -> None:
+            data["change-reviews"][0]["decision"] = "scope-adjusted"
+
+        def add_change(data: dict) -> None:
+            data["final-framework"]["change-order"].append("change-new")
+
+        for name, mutate in (
+            ("split-capability", split_capability),
+            ("rename-change", rename_change),
+            ("scope-adjusted", scope_change),
+            ("add-change", add_change),
+        ):
+            with self.subTest(name=name):
+                data = copy.deepcopy(base)
+                data["status"] = "adjusted"
+                mutate(data)
+                self.assertEqual(validate_framework_refit(self.orchestrate, data), "adjusted")
+
+    def test_phase5_refit_merge_and_reorder_shapes(self) -> None:
+        initial_plan = self.orchestrate / "phase-works/phase-1/initial-change-plan.md"
+        text = initial_plan.read_text(encoding="utf-8")
+        text = text.replace(
+            "\n## Change-Capability Overlay",
+            "\n- Change 名称：`change-b`\n- 单一 intent：交付第二个结果。\n"
+            "- source-backed outcome：形成第二个可验收结果。\n\n## Change-Capability Overlay",
+        )
+        initial_plan.write_text(text, encoding="utf-8")
+        base = self._refit_trace()
+        base["status"] = "adjusted"
+        base["change-reviews"].append({
+            "input-change": "change-b",
+            "evidence-collection-path": "openspec/orchestrate/phase-works/phase-4/source-evidence-collections/by-input-change/change-b.md",
+            "decision": "keep",
+            "final-changes": ["change-b"],
+            "gate-results": [{"gate": "change-outcome", "result": "passed", "note": "第二个结果边界成立。"}],
+            "reason": "原文支持第二个独立结果。",
+        })
+
+        reordered = copy.deepcopy(base)
+        reordered["change-reviews"][0]["decision"] = "reorder"
+        reordered["change-reviews"][1]["decision"] = "reorder"
+        reordered["final-framework"]["change-order"] = ["change-b", "change-a"]
+        self.assertEqual(validate_framework_refit(self.orchestrate, reordered), "adjusted")
+
+        merged = copy.deepcopy(base)
+        for row in merged["change-reviews"]:
+            row["decision"] = "merge"
+            row["final-changes"] = ["change-merged"]
+        merged["final-framework"]["change-order"] = ["change-merged"]
+        merged["final-framework"]["overlay"][0]["change"] = "change-merged"
+        for row in merged["unassigned-and-gap-reviews"]:
+            row["final-change"] = "change-merged"
+        self.assertEqual(validate_framework_refit(self.orchestrate, merged), "adjusted")
+
     def test_phase5_accepted_rejects_boundary_change(self) -> None:
         plan = self.orchestrate / "phase-works/phase-5/change-plan.md"
         plan.write_text(plan.read_text(encoding="utf-8").replace("结果行为和必要约束。", "不同的结果边界。"), encoding="utf-8")
         result = self._result("phase-5")
         self.assertFalse(result["ok"])
-        self._assert_rule(result, "phase5-review-status-consistency")
+        self._assert_rule(result, "phase5-refit-status-consistency")
+
+    def test_phase5_adjusted_requires_actual_framework_change(self) -> None:
+        refit_path = self.orchestrate / "phase-works/phase-5/framework-refit-trace.json"
+        refit = json.loads(refit_path.read_text(encoding="utf-8"))
+        refit["status"] = "adjusted"
+        refit["change-reviews"][0]["decision"] = "scope-adjusted"
+        write_json(refit_path, refit)
+        render_orchestrate(self.orchestrate, "phase5-refit-review", write=True)
+        result = self._result("phase-5")
+        self.assertFalse(result["ok"])
+        self._assert_rule(result, "phase5-refit-status-consistency")
 
     def test_phase5_helper_uses_frozen_evidence_without_source(self) -> None:
         (self.root / "docs/source.md").unlink()
@@ -681,8 +897,14 @@ class SourceAlignedPhase45Test(unittest.TestCase):
 
     def test_phase5_needs_coverage_recheck_is_valid_nonterminal_state(self) -> None:
         work = self.orchestrate / "phase-works/phase-5"
+        refit_path = work / "framework-refit-trace.json"
+        refit = json.loads(refit_path.read_text(encoding="utf-8"))
+        refit["status"] = "needs-coverage-recheck"
+        refit["final-framework"] = None
+        refit["issues"] = ["GA-0004的frozen source-fact不足以支持安全判断，需要targeted recheck。"]
+        write_json(refit_path, refit)
         review = work / "plan-refit-review.md"
-        review.write_text(review.read_text(encoding="utf-8").replace("- Status: accepted", "- Status: needs-coverage-recheck"), encoding="utf-8")
+        render_orchestrate(self.orchestrate, "phase5-refit-review", write=True)
         for path in (
             work / "change-plan.md",
             work / "atom-plan-mapping.json",
@@ -700,6 +922,8 @@ class SourceAlignedPhase45Test(unittest.TestCase):
             "trace-schema": PHASE_TRACE_SCHEMAS["phase-5"],
             "trace-contract-version": TRACE_CONTRACT_VERSION,
             "status": "needs-coverage-recheck",
+            "framework-refit-trace-path": "openspec/orchestrate/phase-works/phase-5/framework-refit-trace.json",
+            "framework-refit-trace-sha256": sha256_file(refit_path),
             "plan-refit-review-path": "openspec/orchestrate/phase-works/phase-5/plan-refit-review.md",
             "plan-refit-review-sha256": sha256_file(review),
             "issues": ["GA-0004的frozen source-fact不足以支持安全判断，需要targeted recheck。"],
@@ -716,6 +940,47 @@ class SourceAlignedPhase45Test(unittest.TestCase):
         self.assertFalse(result["ok"])
         self._assert_rule(result, "phase5-legacy-artifact")
 
+    def test_old_phase4_and_phase5_trace_schemas_are_rejected(self) -> None:
+        phase4 = self._data("openspec/orchestrate/trace/phase-4.trace.json")
+        phase4["trace-schema"] = "source-aligned-phase-4-trace-v2"
+        self._write_data("openspec/orchestrate/trace/phase-4.trace.json", phase4)
+        result4 = self._result("phase-4")
+        self.assertFalse(result4["ok"])
+        self._assert_rule(result4, "trace-schema")
+
+        phase5 = self._data("openspec/orchestrate/trace/phase-5.trace.json")
+        phase5["trace-schema"] = "source-aligned-phase-5-trace-v2"
+        self._write_data("openspec/orchestrate/trace/phase-5.trace.json", phase5)
+        result5 = self._result("phase-5")
+        self.assertFalse(result5["ok"])
+        self._assert_rule(result5, "trace-schema")
+
+    def test_old_phase4_index_and_missing_refit_json_are_rejected(self) -> None:
+        index_relative = "openspec/orchestrate/phase-works/phase-4/source-evidence-collections/evidence-collection-index.json"
+        index = self._data(index_relative)
+        index["trace-schema"] = "source-aligned-evidence-collection-index-v1"
+        self._write_data(index_relative, index)
+        result4 = self._result("phase-4")
+        self.assertFalse(result4["ok"])
+        self._assert_rule(result4, "trace-schema")
+
+        refit = self.orchestrate / "phase-works/phase-5/framework-refit-trace.json"
+        refit.unlink()
+        result5 = self._result("phase-5")
+        self.assertFalse(result5["ok"])
+        self._assert_rule(result5, "missing-json")
+
+    def test_phase4_nonterminal_forbids_terminal_collections(self) -> None:
+        write_json(self.orchestrate / "trace/phase-4.trace.json", {
+            "trace-schema": PHASE_TRACE_SCHEMAS["phase-4"],
+            "trace-contract-version": TRACE_CONTRACT_VERSION,
+            "status": "blocked",
+            "issues": ["上游coverage尚未收敛。"],
+        })
+        result = self._result("phase-4")
+        self.assertFalse(result["ok"])
+        self._assert_rule(result, "phase4-nonfinal-terminal-artifact")
+
     def test_phase4_renderer_cleans_legacy_artifacts(self) -> None:
         legacy_file = self._write("openspec/orchestrate/phase-works/phase-4/input-change-plan.md", "legacy\n")
         legacy_dir = self.orchestrate / "phase-works/phase-4/source-window-dossiers"
@@ -724,6 +989,13 @@ class SourceAlignedPhase45Test(unittest.TestCase):
         render_orchestrate(self.orchestrate, "phase4-evidence-collections", write=True)
         self.assertFalse(legacy_file.exists())
         self.assertFalse(legacy_dir.exists())
+
+    def test_phase4_renderer_rebuilds_malformed_derived_index(self) -> None:
+        index = self.orchestrate / "phase-works/phase-4/source-evidence-collections/evidence-collection-index.json"
+        index.write_text("{malformed\n", encoding="utf-8")
+        render_orchestrate(self.orchestrate, "phase4-evidence-collections", write=True)
+        self.assertEqual(json.loads(index.read_text(encoding="utf-8"))["trace-schema"], EVIDENCE_COLLECTION_INDEX_SCHEMA)
+        self.assertTrue(self._result("phase-4")["ok"])
 
     def test_phase5_helper_has_no_config_interface(self) -> None:
         completed = subprocess.run(

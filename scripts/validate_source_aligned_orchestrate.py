@@ -16,6 +16,7 @@ from source_aligned_trace_lib import (
     DIRECT_PROJECTIONS,
     EVIDENCE_COLLECTION_INDEX_SCHEMA,
     FINAL_PACKET_INDEX_SCHEMA,
+    FRAMEWORK_REFIT_TRACE_SCHEMA,
     GLOBAL_ATOM_ID_RE,
     GLOBAL_ATOM_INDEX_SCHEMA,
     KEBAB_CASE_RE,
@@ -41,20 +42,27 @@ from source_aligned_trace_lib import (
 )
 from render_source_aligned_orchestrate import (
     RENDER_CONTRACT_VERSION,
+    build_evidence_collection_index,
     render_atom_plan_mapping,
+    render_framework_refit_review,
     render_capability_baseline,
     render_global_index,
+    render_phase2_index,
     render_phase2_source_atoms,
     render_coverage_review,
     render_evidence_collections,
 )
 from phase5_plan_refit import (
     build_baseline as build_phase5_baseline,
+    load_framework_refit,
     load_evidence as load_phase5_evidence,
     load_mapping as load_phase5_mapping,
     parse_final_plan,
+    render_anchor_index,
     render_capability_view,
     render_packet,
+    validate_framework_refit,
+    validate_refit_mapping_crosscheck,
     validate_mapping as validate_phase5_mapping,
 )
 
@@ -161,11 +169,6 @@ def reject_legacy_capability_fields(
             path,
             f"{context} 将 v1 capability field 混入了 v2 契约：{', '.join(present)}",
         )
-
-
-def markdown_target(value: object) -> str:
-    target = normalize_code(value)
-    return "none" if target.lower() in {"none", "none/change-only"} else target
 
 
 def trace_decision_status(path: Path) -> str:
@@ -422,49 +425,68 @@ def phase1_sources(orchestrate_dir: Path, repo_root: Path) -> List[Dict[str, obj
     return sources if isinstance(sources, list) else []
 
 
-def expected_manifest_artifacts(orchestrate_dir: Path, repo_root: Path) -> Dict[str, Tuple[str, str]]:
-    specs: List[Tuple[Path, str, str]] = [
-        (orchestrate_dir / "trace/phase-1.trace.json", PHASE_TRACE_SCHEMAS["phase-1"], "phase-1"),
-        (orchestrate_dir / "trace/phase-2.trace.json", PHASE_TRACE_SCHEMAS["phase-2"], "phase-2"),
+def expected_manifest_artifacts(orchestrate_dir: Path, repo_root: Path) -> Dict[str, Tuple[str, str, str, str]]:
+    specs: List[Tuple[Path, str, str, str, str]] = [
+        (orchestrate_dir / "trace/phase-1.trace.json", PHASE_TRACE_SCHEMAS["phase-1"], "phase-1", "control", "phase-trace"),
+        (orchestrate_dir / "trace/phase-2.trace.json", PHASE_TRACE_SCHEMAS["phase-2"], "phase-2", "control", "phase-trace"),
         (
             orchestrate_dir / "change-capability-anchors/obligation-atom-index.json",
             GLOBAL_ATOM_INDEX_SCHEMA,
             "phase-3",
+            "semantic",
+            "global-atom-index",
         ),
         (
             orchestrate_dir / "phase-works/phase-3/coverage-review.json",
             PHASE3_COVERAGE_REVIEW_SCHEMA,
             "phase-3",
+            "semantic",
+            "coverage-review",
         ),
-        (orchestrate_dir / "trace/phase-3.trace.json", PHASE_TRACE_SCHEMAS["phase-3"], "phase-3"),
+        (orchestrate_dir / "trace/phase-3.trace.json", PHASE_TRACE_SCHEMAS["phase-3"], "phase-3", "control", "phase-trace"),
         (
             orchestrate_dir / "phase-works/phase-4/source-evidence-collections/evidence-collection-index.json",
             EVIDENCE_COLLECTION_INDEX_SCHEMA,
             "phase-4",
+            "derived",
+            "evidence-collection-index",
         ),
-        (orchestrate_dir / "trace/phase-4.trace.json", PHASE_TRACE_SCHEMAS["phase-4"], "phase-4"),
+        (orchestrate_dir / "trace/phase-4.trace.json", PHASE_TRACE_SCHEMAS["phase-4"], "phase-4", "control", "phase-trace"),
+        (
+            orchestrate_dir / "phase-works/phase-5/framework-refit-trace.json",
+            FRAMEWORK_REFIT_TRACE_SCHEMA,
+            "phase-5",
+            "semantic",
+            "framework-refit-trace",
+        ),
         (
             orchestrate_dir / "phase-works/phase-5/atom-plan-mapping.json",
             ATOM_PLAN_MAPPING_SCHEMA,
             "phase-5",
+            "semantic",
+            "atom-plan-mapping",
         ),
         (
             orchestrate_dir / "phase-works/phase-5/capability-baseline-reconciliation.json",
             CAPABILITY_BASELINE_SCHEMA,
             "phase-5",
+            "derived",
+            "capability-baseline",
         ),
         (
             orchestrate_dir / "phase-works/phase-5/final-packet-index.json",
             FINAL_PACKET_INDEX_SCHEMA,
             "phase-5",
+            "derived",
+            "final-packet-index",
         ),
-        (orchestrate_dir / "trace/phase-5.trace.json", PHASE_TRACE_SCHEMAS["phase-5"], "phase-5"),
+        (orchestrate_dir / "trace/phase-5.trace.json", PHASE_TRACE_SCHEMAS["phase-5"], "phase-5", "control", "phase-trace"),
     ]
     atom_root = orchestrate_dir / "phase-works/phase-2/source-obligation-atoms"
-    specs.extend((path, SOURCE_ATOMS_SCHEMA, "phase-2") for path in sorted(atom_root.glob("*.atoms.json")))
+    specs.extend((path, SOURCE_ATOMS_SCHEMA, "phase-2", "semantic", "source-atoms") for path in sorted(atom_root.glob("*.atoms.json")))
     return {
-        rel(path, repo_root): (schema, phase)
-        for path, schema, phase in specs
+        rel(path, repo_root): (schema, phase, authority, role)
+        for path, schema, phase, authority, role in specs
         if path.exists()
     }
 
@@ -474,6 +496,16 @@ def validate_manifest(orchestrate_dir: Path, repo_root: Path, reporter: IssueRep
     data = json_obj(path, reporter, MANIFEST_SCHEMA)
     if not data:
         return
+    exact_fields(
+        data,
+        {"trace-schema", "trace-contract-version", "authority", "orchestrate-dir", "phase-statuses", "artifacts"},
+        path,
+        reporter,
+        "manifest-fields",
+        "manifest v2",
+    )
+    if data.get("authority") != "control":
+        reporter.error("manifest-authority", path, "manifest v2 authority必须是control")
     if data.get("orchestrate-dir") != rel(orchestrate_dir, repo_root):
         reporter.error("manifest-orchestrate-dir", path, "orchestrate-dir 与 CLI --orchestrate-dir 不一致")
     phase_statuses = data.get("phase-statuses")
@@ -552,44 +584,56 @@ def validate_manifest(orchestrate_dir: Path, repo_root: Path, reporter: IssueRep
         reporter.error("manifest-artifacts", path, "artifacts 必须是 array")
         return
     expected_artifacts = expected_manifest_artifacts(orchestrate_dir, repo_root)
-    seen_trace_paths: Set[str] = set()
+    seen_json_paths: Set[str] = set()
     for index, item in enumerate(artifacts):
         if not isinstance(item, dict):
             reporter.error("manifest-artifact", path, f"artifacts[{index}] 必须是 object")
             continue
-        trace_rel = item.get("trace-path")
+        exact_fields(
+            item,
+            {"json-path", "trace-schema", "sha256", "phase", "role", "authority"},
+            path,
+            reporter,
+            "manifest-artifact-fields",
+            f"artifacts[{index}]",
+        )
+        trace_rel = item.get("json-path")
         digest = item.get("sha256")
         if not isinstance(trace_rel, str) or not trace_rel:
-            reporter.error("manifest-artifact-trace-path", path, f"artifacts[{index}] 缺少 trace-path")
+            reporter.error("manifest-artifact-json-path", path, f"artifacts[{index}] 缺少 json-path")
             continue
-        if trace_rel in seen_trace_paths:
-            reporter.error("manifest-artifact-duplicate", path, f"trace-path 重复：{trace_rel}")
-        seen_trace_paths.add(trace_rel)
-        for field in ("artifact-path", "trace-schema", "phase", "role"):
+        if trace_rel in seen_json_paths:
+            reporter.error("manifest-artifact-duplicate", path, f"json-path 重复：{trace_rel}")
+        seen_json_paths.add(trace_rel)
+        for field in ("trace-schema", "phase", "role", "authority"):
             if not isinstance(item.get(field), str) or not str(item.get(field)).strip():
                 reporter.error("manifest-artifact-field", path, f"{trace_rel} 缺少非空 {field}")
         trace_path = repo_root / trace_rel
         if not trace_path.exists():
-            reporter.error("manifest-artifact-trace-path", path, f"{trace_rel} 不存在")
+            reporter.error("manifest-artifact-json-path", path, f"{trace_rel} 不存在")
             continue
         current = sha256_file(trace_path)
         if digest != current:
             reporter.error("manifest-digest", path, f"{trace_rel} 的 sha256 不匹配")
         expected = expected_artifacts.get(trace_rel)
         if expected:
-            expected_schema, expected_phase = expected
+            expected_schema, expected_phase, expected_authority, expected_role = expected
             if item.get("trace-schema") != expected_schema:
                 reporter.error("manifest-artifact-schema", path, f"{trace_rel} 的 trace-schema 必须为 {expected_schema}")
             if item.get("phase") != expected_phase:
                 reporter.error("manifest-artifact-phase", path, f"{trace_rel} 的 phase 必须为 {expected_phase}")
+            if item.get("authority") != expected_authority:
+                reporter.error("manifest-artifact-authority", path, f"{trace_rel} 的 authority 必须为 {expected_authority}")
+            if item.get("role") != expected_role:
+                reporter.error("manifest-artifact-role", path, f"{trace_rel} 的 role 必须为 {expected_role}")
         try:
             trace_data = read_json(trace_path)
         except Exception:  # noqa: BLE001
             trace_data = {}
         if trace_data and item.get("trace-schema") != trace_data.get("trace-schema"):
             reporter.error("manifest-artifact-schema", path, f"{trace_rel} 的 trace-schema 与 canonical JSON 不一致")
-    for trace_rel in sorted(set(expected_artifacts) - seen_trace_paths):
-        reporter.error("manifest-artifact-missing", path, f"manifest artifacts 缺少 canonical JSON：{trace_rel}")
+    for trace_rel in sorted(set(expected_artifacts) - seen_json_paths):
+        reporter.error("manifest-artifact-missing", path, f"manifest artifacts 缺少应登记JSON：{trace_rel}")
 
 
 def validate_phase_1(orchestrate_dir: Path, repo_root: Path, reporter: IssueReporter) -> None:
@@ -773,6 +817,15 @@ def validate_phase2_mirror(orchestrate_dir: Path, reporter: IssueReporter) -> No
             reporter,
             "phase2-source-atoms",
         )
+    index_path = atom_root / "index.md"
+    if index_path.exists():
+        try:
+            expected = render_phase2_index(orchestrate_dir)
+        except Exception as exc:  # noqa: BLE001
+            reporter.error("phase2-index-render-error", index_path, f"无法重渲染Phase 2 index：{exc}")
+        else:
+            if index_path.read_text(encoding="utf-8") != expected:
+                reporter.error("rendered-markdown-drift", index_path, "Phase 2 index与atoms JSON/work queue/trace重渲染结果不一致")
 
 
 def validate_phase_2(orchestrate_dir: Path, repo_root: Path, reporter: IssueReporter) -> None:
@@ -1515,9 +1568,7 @@ def resolve_global_evidence(
 def validate_phase_4(orchestrate_dir: Path, repo_root: Path, reporter: IssueReporter) -> None:
     phase4_trace_path = orchestrate_dir / "trace/phase-4.trace.json"
     phase4_trace = json_obj(phase4_trace_path, reporter, PHASE_TRACE_SCHEMAS["phase-4"])
-    status = ""
-    if phase4_trace:
-        status = validate_trace_status(phase4_trace, phase4_trace_path, reporter, "phase-4", "phase4-status")
+    status = validate_trace_status(phase4_trace, phase4_trace_path, reporter, "phase-4", "phase4-status") if phase4_trace else ""
     phase1_plan_path = orchestrate_dir / "phase-works/phase-1/initial-change-plan.md"
     require_file(phase1_plan_path, reporter, "phase4-interface-input", "缺少 Phase 4 输入：Phase 1 initial-change-plan.md")
     require_file(orchestrate_dir / "phase-works/phase-4/phase-4-agent-report.md", reporter, "phase4-interface-artifact", "缺少 Phase 4 agent 报告")
@@ -1530,114 +1581,91 @@ def validate_phase_4(orchestrate_dir: Path, repo_root: Path, reporter: IssueRepo
     for legacy in legacy_paths:
         if legacy.exists():
             reporter.error("phase4-legacy-artifact", legacy, "旧 Phase 4 source-window artifact 已废弃，必须清理并重跑 Phase 4")
-    global_atoms = load_global_atoms(orchestrate_dir, reporter)
-    resolved_evidence = resolve_global_evidence(orchestrate_dir, global_atoms, reporter)
-    changes, capabilities = phase1_framework_ids(orchestrate_dir)
     index_path = orchestrate_dir / "phase-works/phase-4/source-evidence-collections/evidence-collection-index.json"
+    collection_root = index_path.parent
+    if status in NON_FINAL_PHASE4_STATUSES:
+        exact_fields(
+            phase4_trace,
+            {"trace-schema", "trace-contract-version", "status", "issues"},
+            phase4_trace_path,
+            reporter,
+            "phase4-trace-fields",
+            "nonterminal phase-4 trace",
+        )
+        if not isinstance(phase4_trace.get("issues"), list) or not phase4_trace.get("issues"):
+            reporter.error("phase4-trace-issues", phase4_trace_path, f"{status}状态要求非空issues[]")
+        if index_path.exists():
+            reporter.error("phase4-nonfinal-terminal-artifact", index_path, f"{status}状态不得保留terminal index")
+        if collection_root.exists():
+            for path in collection_root.rglob("*.md"):
+                reporter.error("phase4-nonfinal-terminal-artifact", path, f"{status}状态不得保留terminal collection")
+        return
+    if status != "assembled":
+        return
+    exact_fields(
+        phase4_trace,
+        {"trace-schema", "trace-contract-version", "status", "assembled"},
+        phase4_trace_path,
+        reporter,
+        "phase4-trace-fields",
+        "assembled phase-4 trace",
+    )
+    assembled = phase4_trace.get("assembled")
+    if not isinstance(assembled, dict):
+        reporter.error("phase4-trace-assembled", phase4_trace_path, "assembled必须是object")
+        assembled = {}
+    else:
+        exact_fields(
+            assembled,
+            {"evidence-collection-index-path", "evidence-collection-index-sha256", "renderer-result-summary"},
+            phase4_trace_path,
+            reporter,
+            "phase4-trace-assembled-fields",
+            "assembled",
+        )
     data = json_obj(index_path, reporter, EVIDENCE_COLLECTION_INDEX_SCHEMA)
     if data:
         exact_fields(
             data,
-            {"trace-schema", "trace-contract-version", "status", "rows", "issues", "language-self-check"},
+            {"trace-schema", "trace-contract-version", "generated-from", "rows", "rendered-artifacts"},
             index_path,
             reporter,
             "phase4-index-fields",
-            "evidence-collection-index",
+            "derived evidence collection index",
         )
-    index_status = phase_status_value(data.get("status"))
-    if index_status not in PHASE_ALLOWED_TRACE_STATUSES["phase-4"]:
-        reporter.error("phase4-index-status", index_path, f"collection index status非法：{index_status}")
-    if status and index_status and status != index_status:
-        reporter.error("phase4-status-drift", index_path, f"collection index status {index_status} 与 phase trace status {status} 不一致")
-    language_self_check = squash(data.get("language-self-check"))
-    if not language_self_check:
-        reporter.error("phase4-language-self-check", index_path, "language-self-check必须是非空string")
-    elif not re.search(r"[\u4e00-\u9fff]", language_self_check):
-        reporter.error("phase4-language-self-check", index_path, "language-self-check必须使用简体中文解释")
-    rows = data.get("rows")
-    if not isinstance(rows, list):
-        reporter.error("phase4-rows", index_path, "rows 必须是 array")
+    try:
+        expected_outputs = render_evidence_collections(orchestrate_dir)
+        expected_index = build_evidence_collection_index(orchestrate_dir, expected_outputs)
+    except Exception as exc:  # noqa: BLE001
+        reporter.error("phase4-assembly", index_path, f"无法从Phase 1–3重算evidence collections/index：{exc}")
         return
-    issues = data.get("issues")
-    if not isinstance(issues, list):
-        reporter.error("phase4-issues", index_path, "issues 必须是 array")
-    elif status == "assembled" and issues:
-        reporter.error("phase4-issues", index_path, "assembled 状态要求 issues 为空")
-    elif status in NON_FINAL_PHASE4_STATUSES and not issues:
-        reporter.error("phase4-issues", index_path, f"{status} 状态要求非空 issues")
-    seen: Set[str] = set()
-    row_fields = {"global-atom-id", "evidence-ref", "change-bucket", "capability-bucket"}
-    for row in rows:
-        if not isinstance(row, dict):
-            reporter.error("phase4-row", index_path, "rows item 必须是 object")
-            continue
-        ga = normalize_code(row.get("global-atom-id"))
-        exact_fields(row, row_fields, index_path, reporter, "phase4-row-fields", ga or "row")
-        if ga in seen:
-            reporter.error("phase4-ga-duplicate", index_path, f"collection row重复：{ga}")
-        seen.add(ga)
-        global_row = global_atoms.get(ga)
-        evidence = resolved_evidence.get(ga)
-        if global_row is None or evidence is None:
-            reporter.error("phase4-ga-dangling", index_path, f"collection引用未知GA：{ga}")
-            continue
-        if row.get("evidence-ref") != global_row.get("evidence-ref"):
-            reporter.error("phase4-evidence-ref-drift", index_path, f"{ga} evidence-ref与global index不一致")
-        kind = normalize_code(global_row.get("evidence-ref", {}).get("kind")) if isinstance(global_row.get("evidence-ref"), dict) else ""
-        owner_hint = normalize_code(evidence.get("candidate-owner-change"))
-        target_hint = normalize_code(evidence.get("candidate-target-capability"))
-        expected_change = owner_hint if kind == "phase-2-source-atom" and owner_hint in changes else "unassigned-and-gap"
-        expected_capability = target_hint if kind == "phase-2-source-atom" and target_hint in capabilities else "none"
-        if normalize_code(row.get("change-bucket")) != expected_change:
-            reporter.error("phase4-change-bucket", index_path, f"{ga} change-bucket应为{expected_change}")
-        if normalize_code(row.get("capability-bucket")) != expected_capability:
-            reporter.error("phase4-capability-bucket", index_path, f"{ga} capability-bucket应为{expected_capability}")
-    if status == "assembled" and seen != set(global_atoms):
-        reporter.error("phase4-ga-coverage", index_path, f"assembled要求每个GA恰好一行；缺少={sorted(set(global_atoms)-seen)}，多余={sorted(seen-set(global_atoms))}")
-    if phase4_trace:
-        exact_fields(
-            phase4_trace,
-            {
-                "trace-schema", "trace-contract-version", "status",
-                "evidence-collection-index-path", "evidence-collection-index-sha256",
-                "renderer-result-summary",
-            },
-            phase4_trace_path,
-            reporter,
-            "phase4-trace-fields",
-            "phase-4 trace",
-        )
-        expected_path = rel(index_path, repo_root)
-        if phase4_trace.get("evidence-collection-index-path") != expected_path:
-            reporter.error("phase4-trace-index-path", phase4_trace_path, f"collection index path应为{expected_path}")
-        if index_path.exists() and phase4_trace.get("evidence-collection-index-sha256") != sha256_file(index_path):
-            reporter.error("phase4-trace-index-sha", phase4_trace_path, "collection index digest不一致")
-    if status == "assembled" and index_path.exists():
-        try:
-            expected_outputs = render_evidence_collections(orchestrate_dir, index_path)
-        except Exception as exc:
-            reporter.error("phase4-render", index_path, f"无法渲染evidence collections：{exc}")
-        else:
-            expected_summary = {
-                "render-contract-version": RENDER_CONTRACT_VERSION,
-                "rendered-files": len(expected_outputs),
-                "global-atoms": len(global_atoms),
-            }
-            if phase4_trace.get("renderer-result-summary") != expected_summary:
-                reporter.error("phase4-renderer-summary", phase4_trace_path, f"renderer-result-summary应为{expected_summary}")
-            for output_path, expected_text in expected_outputs.items():
-                if not output_path.exists():
-                    reporter.error("phase4-rendered-collection", output_path, "缺少rendered evidence collection")
-                elif output_path.read_text(encoding="utf-8") != expected_text:
-                    reporter.error("phase4-rendered-collection-drift", output_path, "evidence collection与canonical index/resolved evidence不一致")
-            expected_paths = {path.resolve() for path in expected_outputs}
-            actual_paths = {
-                path.resolve()
-                for pattern in ("index.md", "unassigned-and-gap.md", "by-input-change/*.md", "by-input-capability/*.md")
-                for path in index_path.parent.glob(pattern)
-            }
-            for extra in sorted(actual_paths - expected_paths):
-                reporter.error("phase4-rendered-collection-extra", extra, "存在不属于当前initial framework的stale evidence collection")
+    if data != expected_index:
+        reporter.error("phase4-derived-index-drift", index_path, "派生index与Phase 1–3 authority及机械生成的Markdown不一致")
+    expected_path = rel(index_path, repo_root)
+    if assembled.get("evidence-collection-index-path") != expected_path:
+        reporter.error("phase4-trace-index-path", phase4_trace_path, f"collection index path应为{expected_path}")
+    if index_path.exists() and assembled.get("evidence-collection-index-sha256") != sha256_file(index_path):
+        reporter.error("phase4-trace-index-sha", phase4_trace_path, "collection index digest不一致")
+    expected_summary = {
+        "render-contract-version": RENDER_CONTRACT_VERSION,
+        "rendered-files": len(expected_outputs),
+        "global-atoms": len(expected_index.get("rows", [])),
+    }
+    if assembled.get("renderer-result-summary") != expected_summary:
+        reporter.error("phase4-renderer-summary", phase4_trace_path, f"renderer-result-summary应为{expected_summary}")
+    for output_path, expected_text in expected_outputs.items():
+        if not output_path.exists():
+            reporter.error("phase4-rendered-collection", output_path, "缺少机械生成的evidence collection Markdown")
+        elif output_path.read_text(encoding="utf-8") != expected_text:
+            reporter.error("phase4-rendered-collection-drift", output_path, "evidence collection与Phase 1–3 authority重渲染结果不一致")
+    expected_paths = {path.resolve() for path in expected_outputs}
+    actual_paths = {
+        path.resolve()
+        for pattern in ("index.md", "unassigned-and-gap.md", "by-input-change/*.md", "by-input-capability/*.md")
+        for path in collection_root.glob(pattern)
+    }
+    for extra in sorted(actual_paths - expected_paths):
+        reporter.error("phase4-rendered-collection-extra", extra, "存在不属于当前initial framework的stale evidence collection")
 
 
 def validate_mapping_mirror(orchestrate_dir: Path, reporter: IssueReporter) -> None:
@@ -1653,22 +1681,6 @@ def validate_mapping_mirror(orchestrate_dir: Path, reporter: IssueReporter) -> N
         reporter,
         "phase5-atom-plan-mapping",
     )
-
-
-def _phase5_review_status(path: Path) -> str:
-    if not path.exists():
-        return ""
-    match = re.search(
-        r"(?mi)^-?\s*Status[：:]\s*`?(accepted|adjusted|needs-coverage-recheck|blocked)`?\s*$",
-        path.read_text(encoding="utf-8"),
-    )
-    return match.group(1) if match else ""
-
-
-def _review_final_ids(value: object) -> List[str]:
-    text = str(value or "").strip()
-    values = re.findall(r"`([^`]+)`", text) or re.split(r"\s*[,，、;]\s*", text)
-    return [normalize_code(item) for item in values if normalize_code(item).lower() not in {"", "none", "无"}]
 
 
 def _phase1_change_order(orchestrate_dir: Path) -> List[str]:
@@ -1767,117 +1779,43 @@ def _final_framework_semantics(
     return changes, capabilities
 
 
-def _validate_phase5_review(
+def _validate_phase5_refit(
     orchestrate_dir: Path,
     reporter: IssueReporter,
     final_changes: List[object] | None,
     final_capabilities: List[object] | None,
     final_overlay: Dict[tuple[str, str], str] | None,
 ) -> str:
+    refit_path = orchestrate_dir / "phase-works/phase-5/framework-refit-trace.json"
     review_path = orchestrate_dir / "phase-works/phase-5/plan-refit-review.md"
-    require_file(review_path, reporter, "phase5-review", "缺少 plan-refit-review.md")
-    if not review_path.exists():
+    data = json_obj(refit_path, reporter, FRAMEWORK_REFIT_TRACE_SCHEMA)
+    if not data:
         return ""
-    text = review_path.read_text(encoding="utf-8")
-    headings = ["## Capability Review", "## Change Review", "## Unassigned and Gap Review", "## Final Decision"]
-    positions = [text.find(heading) for heading in headings]
-    if any(position < 0 for position in positions) or positions != sorted(positions):
-        reporter.error("phase5-review-headings", review_path, "review必须按固定顺序包含四个heading")
-
-    initial_changes, initial_capabilities = phase1_framework_ids(orchestrate_dir)
-    capability_rows = table_rows(
-        review_path,
-        ["Input Capability", "Evidence Collection", "Decision", "Final Capability(s)", "Failed or Passed Gates", "Reason"],
-    )
-    change_rows = table_rows(
-        review_path,
-        ["Input Change", "Evidence Collection", "Decision", "Final Change(s)", "Failed or Passed Gates", "Reason"],
-    )
-    gap_rows = table_rows(
-        review_path,
-        ["GA", "Provenance", "Source Fact Reference", "Disposition", "Final Change", "Final Capability", "Reason"],
-    )
-    capability_decisions: Dict[str, str] = {}
-    change_decisions: Dict[str, str] = {}
-    allowed_capability = {"keep", "split", "merge", "remove", "rename"}
-    allowed_change = {"keep", "split", "merge", "scope-adjusted", "remove", "rename", "reorder"}
-    final_cap_ids = {getattr(item, "slug", "") for item in final_capabilities or []}
-    final_change_ids = {getattr(item, "slug", "") for item in final_changes or []}
-
-    for row in capability_rows:
-        source = normalize_code(cell(row, "Input Capability"))
-        decision = normalize_code(cell(row, "Decision"))
-        if source in capability_decisions:
-            reporter.error("phase5-review-capability-duplicate", review_path, f"Capability review重复：{source}")
-        capability_decisions[source] = decision
-        if decision not in allowed_capability:
-            reporter.error("phase5-review-capability-decision", review_path, f"{source} decision非法：{decision}")
-        if not squash(cell(row, "Evidence Collection")) or not squash(cell(row, "Failed or Passed Gates")) or not squash(cell(row, "Reason")):
-            reporter.error("phase5-review-capability-fields", review_path, f"{source} review字段不完整")
-        for target in _review_final_ids(cell(row, "Final Capability(s)")):
-            if final_capabilities is not None and target not in final_cap_ids:
-                reporter.error("phase5-review-final-capability", review_path, f"{source}引用未知final Capability：{target}")
-    if set(capability_decisions) != initial_capabilities:
-        reporter.error(
-            "phase5-review-capability-coverage",
-            review_path,
-            f"每个initial Capability必须恰好一行；缺少={sorted(initial_capabilities-set(capability_decisions))}，多余={sorted(set(capability_decisions)-initial_capabilities)}",
-        )
-
-    for row in change_rows:
-        source = normalize_code(cell(row, "Input Change"))
-        decision = normalize_code(cell(row, "Decision"))
-        if source in change_decisions:
-            reporter.error("phase5-review-change-duplicate", review_path, f"Change review重复：{source}")
-        change_decisions[source] = decision
-        if decision not in allowed_change:
-            reporter.error("phase5-review-change-decision", review_path, f"{source} decision非法：{decision}")
-        if not squash(cell(row, "Evidence Collection")) or not squash(cell(row, "Failed or Passed Gates")) or not squash(cell(row, "Reason")):
-            reporter.error("phase5-review-change-fields", review_path, f"{source} review字段不完整")
-        for target in _review_final_ids(cell(row, "Final Change(s)")):
-            if final_changes is not None and target not in final_change_ids:
-                reporter.error("phase5-review-final-change", review_path, f"{source}引用未知final Change：{target}")
-    if set(change_decisions) != initial_changes:
-        reporter.error(
-            "phase5-review-change-coverage",
-            review_path,
-            f"每个initial Change必须恰好一行；缺少={sorted(initial_changes-set(change_decisions))}，多余={sorted(set(change_decisions)-initial_changes)}",
-        )
-
-    collection_path = orchestrate_dir / "phase-works/phase-4/source-evidence-collections/evidence-collection-index.json"
-    collection = read_json(collection_path) if collection_path.exists() else {}
-    expected_gap = {
-        normalize_code(row.get("global-atom-id"))
-        for row in collection.get("rows", [])
-        if isinstance(row, dict) and normalize_code(row.get("change-bucket")) == "unassigned-and-gap"
-    }
-    reviewed_gap: Set[str] = set()
-    for row in gap_rows:
-        ga = normalize_code(cell(row, "GA"))
-        if ga in reviewed_gap:
-            reporter.error("phase5-review-gap-duplicate", review_path, f"unassigned/gap review重复：{ga}")
-        reviewed_gap.add(ga)
-        for field in ("Provenance", "Source Fact Reference", "Disposition", "Final Change", "Reason"):
-            if not squash(cell(row, field)):
-                reporter.error("phase5-review-gap-fields", review_path, f"{ga} 缺少{field}")
-        final_change = normalize_code(cell(row, "Final Change"))
-        final_capability = markdown_target(cell(row, "Final Capability"))
-        if final_changes is not None and final_change not in final_change_ids:
-            reporter.error("phase5-review-gap-change", review_path, f"{ga}引用未知final Change：{final_change}")
-        if final_capabilities is not None and final_capability != "none" and final_capability not in final_cap_ids:
-            reporter.error("phase5-review-gap-capability", review_path, f"{ga}引用未知final Capability：{final_capability}")
-    if reviewed_gap != expected_gap:
-        reporter.error(
-            "phase5-review-gap-coverage",
-            review_path,
-            f"每个unassigned-and-gap GA必须恰好一行；缺少={sorted(expected_gap-reviewed_gap)}，多余={sorted(reviewed_gap-expected_gap)}",
-        )
-
-    status = _phase5_review_status(review_path)
-    if not status:
-        reporter.error("phase5-review-status", review_path, "Final Decision缺少有效Status")
-        return ""
+    status = normalize_code(data.get("status"))
+    try:
+        validate_framework_refit(orchestrate_dir, data, final_changes, final_capabilities, final_overlay)
+    except (OSError, ValueError, json.JSONDecodeError) as exc:
+        reporter.error("phase5-refit-contract", refit_path, str(exc))
+    require_file(review_path, reporter, "phase5-review", "缺少由framework-refit-trace.json渲染的plan-refit-review.md")
+    if review_path.exists():
+        try:
+            expected_review = render_framework_refit_review(orchestrate_dir, refit_path)
+        except Exception as exc:  # noqa: BLE001
+            reporter.error("phase5-review-render", refit_path, f"无法渲染plan-refit-review.md：{exc}")
+        else:
+            if review_path.read_text(encoding="utf-8") != expected_review:
+                reporter.error("rendered-markdown-drift", review_path, "plan-refit-review.md与framework-refit-trace.json重渲染结果不一致")
     if final_changes is not None and final_capabilities is not None and final_overlay is not None:
+        initial_changes, initial_capabilities = phase1_framework_ids(orchestrate_dir)
+        capability_decisions = {
+            normalize_code(row.get("input-capability")): normalize_code(row.get("decision"))
+            for row in data.get("capability-reviews", []) if isinstance(row, dict)
+        }
+        change_decisions = {
+            normalize_code(row.get("input-change")): normalize_code(row.get("decision"))
+            for row in data.get("change-reviews", []) if isinstance(row, dict)
+        }
+        final_cap_ids = {getattr(item, "slug", "") for item in final_capabilities}
         initial_change_order = _phase1_change_order(orchestrate_dir)
         final_change_semantics, final_capability_semantics = _final_framework_semantics(final_changes, final_capabilities)
         same_framework = (
@@ -1889,9 +1827,9 @@ def _validate_phase5_review(
         )
         all_keep = all(value == "keep" for value in capability_decisions.values()) and all(value == "keep" for value in change_decisions.values())
         if status == "accepted" and (not same_framework or not all_keep):
-            reporter.error("phase5-review-status-consistency", review_path, "accepted要求initial framework集合、顺序、overlay不变且逐项decision为keep")
-        if status == "adjusted" and same_framework and all_keep:
-            reporter.error("phase5-review-status-consistency", review_path, "adjusted要求至少一项source-backed framework调整")
+            reporter.error("phase5-refit-status-consistency", refit_path, "accepted要求initial framework语义、集合、顺序、overlay不变且逐项decision为keep")
+        if status == "adjusted" and same_framework:
+            reporter.error("phase5-refit-status-consistency", refit_path, "adjusted要求至少一项source-backed framework调整")
     return status
 
 
@@ -1921,6 +1859,8 @@ def _validate_phase5_derived_outputs(
         evidence = load_phase5_evidence(orchestrate_dir)
         mapping = load_phase5_mapping(mapping_path)
         validate_phase5_mapping(evidence, mapping, changes, capabilities, overlay)
+        refit = load_framework_refit(work / "framework-refit-trace.json")
+        validate_refit_mapping_crosscheck(refit, mapping)
     except (OSError, ValueError, json.JSONDecodeError) as exc:
         reporter.error("phase5-mapping-contract", mapping_path, str(exc))
         return
@@ -1973,6 +1913,8 @@ def _validate_phase5_derived_outputs(
             "phase5-packet-fields",
             slug,
         )
+        if row.get("change-kind") != "business":
+            reporter.error("phase5-packet-kind", packet_index_path, f"{slug} change-kind必须是business")
         expected_direct = sorted(ga for ga, item in mapping.items() if item.owner_change == slug and item.relation == "direct")
         expected_non_direct = sorted(ga for ga, item in mapping.items() if item.owner_change == slug and item.relation != "direct")
         if row.get("direct-atom-ids") != expected_direct or row.get("owner-scoped-non-direct-atom-ids") != expected_non_direct:
@@ -1997,6 +1939,22 @@ def _validate_phase5_derived_outputs(
                 reporter.error("phase5-capability-view-missing", cap_path, f"缺少{slug}/{cap} Capability view")
             elif cap_path.read_text(encoding="utf-8") != render_capability_view(slug, cap, evidence, mapping):
                 reporter.error("phase5-capability-view-drift", cap_path, "Capability view与frozen source-fact或mapping不一致")
+        cap_dir = expected_packet.parent / "capability-anchors"
+        actual_cap_paths = {path.resolve() for path in cap_dir.glob("*.md")} if cap_dir.exists() else set()
+        expected_cap_paths = {(repo_root / path).resolve() for path in expected_paths}
+        for stale in sorted(actual_cap_paths - expected_cap_paths):
+            reporter.error("phase5-capability-view-extra", stale, f"{slug}存在stale Capability view")
+    anchors = orchestrate_dir / "change-capability-anchors"
+    anchor_index = anchors / "index.md"
+    if anchor_index.exists():
+        expected_anchor_index = render_anchor_index(changes, mapping, repo_root, anchors)
+        if anchor_index.read_text(encoding="utf-8") != expected_anchor_index:
+            reporter.error("phase5-anchor-index-drift", anchor_index, "anchor index与final plan、mapping及Capability views不一致")
+    expected_change_dirs = {getattr(change, "slug", "") for change in changes}
+    if anchors.exists():
+        for child in anchors.iterdir():
+            if child.is_dir() and child.name not in expected_change_dirs:
+                reporter.error("phase5-stale-change-anchor", child, "存在不属于final roadmap的stale Change anchor")
 
 
 def validate_phase_5(orchestrate_dir: Path, repo_root: Path, reporter: IssueReporter, complete: bool = False) -> None:
@@ -2024,15 +1982,16 @@ def validate_phase_5(orchestrate_dir: Path, repo_root: Path, reporter: IssueRepo
             final_changes, final_capabilities, final_overlay = parse_final_plan(final_plan_path)
         except (OSError, ValueError) as exc:
             reporter.error("phase5-final-plan-contract", final_plan_path, str(exc))
-    review_status = _validate_phase5_review(orchestrate_dir, reporter, final_changes, final_capabilities, final_overlay)
-    if trace_status and review_status and trace_status != review_status:
-        reporter.error("phase5-status-drift", trace_path, f"trace status {trace_status}与review status {review_status}不一致")
+    refit_status = _validate_phase5_refit(orchestrate_dir, reporter, final_changes, final_capabilities, final_overlay)
+    if trace_status and refit_status and trace_status != refit_status:
+        reporter.error("phase5-status-drift", trace_path, f"phase trace status {trace_status}与framework refit status {refit_status}不一致")
 
     if trace_status in NON_FINAL_PHASE5_STATUSES:
         exact_fields(
             trace,
             {
                 "trace-schema", "trace-contract-version", "status",
+                "framework-refit-trace-path", "framework-refit-trace-sha256",
                 "plan-refit-review-path", "plan-refit-review-sha256", "issues",
             },
             trace_path,
@@ -2041,6 +2000,12 @@ def validate_phase_5(orchestrate_dir: Path, repo_root: Path, reporter: IssueRepo
             "nonterminal phase-5 trace",
         )
         review_path = work / "plan-refit-review.md"
+        refit_path = work / "framework-refit-trace.json"
+        expected_refit_path = rel(refit_path, repo_root)
+        if trace.get("framework-refit-trace-path") != expected_refit_path:
+            reporter.error("phase5-trace-path", trace_path, f"framework-refit-trace-path应为{expected_refit_path}")
+        if refit_path.exists() and trace.get("framework-refit-trace-sha256") != sha256_file(refit_path):
+            reporter.error("phase5-trace-sha", trace_path, "framework-refit-trace digest与trace不一致")
         expected_review_path = rel(review_path, repo_root)
         if trace.get("plan-refit-review-path") != expected_review_path:
             reporter.error("phase5-trace-path", trace_path, f"plan-refit-review-path应为{expected_review_path}")
@@ -2048,6 +2013,10 @@ def validate_phase_5(orchestrate_dir: Path, repo_root: Path, reporter: IssueRepo
             reporter.error("phase5-trace-sha", trace_path, "plan-refit-review digest与trace不一致")
         if not isinstance(trace.get("issues"), list) or not trace.get("issues"):
             reporter.error("phase5-trace-issues", trace_path, f"{trace_status}状态要求非空issues[]")
+        if refit_path.exists():
+            refit_data = read_json(refit_path)
+            if trace.get("issues") != refit_data.get("issues"):
+                reporter.error("phase5-trace-issues", trace_path, "nonterminal trace issues必须与framework refit issues一致")
         terminal_paths = [
             final_plan_path,
             work / "atom-plan-mapping.json",
@@ -2079,6 +2048,7 @@ def validate_phase_5(orchestrate_dir: Path, repo_root: Path, reporter: IssueRepo
         {
             "trace-schema", "trace-contract-version", "status",
             "final-change-plan-path", "final-change-plan-sha256",
+            "framework-refit-trace-path", "framework-refit-trace-sha256",
             "plan-refit-review-path", "plan-refit-review-sha256",
             "atom-plan-mapping-path", "atom-plan-mapping-sha256",
             "capability-baseline-reconciliation-path", "capability-baseline-reconciliation-sha256",
@@ -2092,6 +2062,7 @@ def validate_phase_5(orchestrate_dir: Path, repo_root: Path, reporter: IssueRepo
 
     required = [
         final_plan_path,
+        work / "framework-refit-trace.json",
         work / "plan-refit-review.md",
         work / "atom-plan-mapping.json",
         work / "atom-plan-mapping.md",
@@ -2109,6 +2080,7 @@ def validate_phase_5(orchestrate_dir: Path, repo_root: Path, reporter: IssueRepo
 
     trace_specs = [
         ("final-change-plan", final_plan_path),
+        ("framework-refit-trace", work / "framework-refit-trace.json"),
         ("plan-refit-review", work / "plan-refit-review.md"),
         ("atom-plan-mapping", work / "atom-plan-mapping.json"),
         ("capability-baseline-reconciliation", work / "capability-baseline-reconciliation.json"),

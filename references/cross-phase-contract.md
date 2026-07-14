@@ -6,7 +6,8 @@
 
 - source document是production obligation的原始语义来源。
 - Phase 2/3通过原始source验证并冻结`source-fact`；Phase 4/5只通过evidence resolver消费frozen evidence，不重新读取source或扩展source window。
-- canonical JSON是machine-readable authority；renderer-backed Markdown只是review mirror。
+- authority按Phase划分：Phase 1 initial plan和Phase 5 final plan以Markdown为内容权威；Phase 2/3以JSON为语义权威；Phase 4 collection Markdown是确定性assembler的内容权威，JSON index只是派生机器索引；Phase 5 refit与GA mapping以JSON为语义权威，review和其他派生Markdown不是第二份权威。
+- work queue、agent report、reviewer report和repair report是非canonical流程证据，不进入manifest。
 - Phase 2 source atom通过reviewer后冻结。Phase 3只在uncovered range补充gap atom；broad Phase 2 atom必须targeted回Phase 2重提取。
 - contract冲突时停止并报告blocker，不得弱化规则。
 
@@ -28,9 +29,9 @@
 
 - Phase 1和Phase 5必须直接读取同一份`change-capability-framework-principles.md`。
 - Phase 1使用共享标准初次生成coarse hypothesis；不执行atom extraction、coverage或final`New` / `Modified`。
-- Phase 4只按Phase 2 candidate hint和Phase 3 provenance汇总frozen source fact；不做semantic profile、refit、owner、projection、relation或Capability impact判断。
+- Phase 4 assembler只按Phase 2 candidate hint和Phase 3 provenance直接生成Markdown collection，再生成派生index；不做semantic profile、refit、owner、projection、relation或Capability impact判断。
 - Phase 5使用共享标准复审initial framework；默认保留，只在Phase 4 evidence collection证明gate失败时做最小refit。
-- Phase 5先冻结final framework，再完成repository baseline reconciliation和逐GA mapping。
+- Phase 5先在`framework-refit-trace.json`中冻结refit decision和final framework，再直接编写final plan并完成repository baseline reconciliation和逐GA mapping；review Markdown只能由refit JSON渲染。
 
 ## Ownership、projection与Capability
 

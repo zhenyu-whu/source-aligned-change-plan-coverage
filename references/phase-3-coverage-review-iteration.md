@@ -46,7 +46,7 @@ Phase 3 只保留以下五个 artifact：
 6. 对 uncovered range 中遗漏的 production obligation 创建 `P3-GAP-####`，再为每个 gap atom分配一个独立 GA。
 7. 将其余 uncovered range分类为 `safe-non-obligation`、`requires-reextract` 或 `blocked`；遗漏 obligation 使用 `missing-obligation` 并链接 gap atom。
 8. 如果上游 reviewer、validator 或当前机械证据指出 Phase 2 atom broad，记录 targeted recheck source/atom/range，返回 `needs-extraction-recheck`。Phase 3 不读取该 covered range做拆分。
-9. 写入 coverage decision，并用 renderer 生成两个 Markdown mirror。
+9. 写入coverage decision和`language-self-check`，并用v6 renderer生成两个Markdown mirror。
 
 ## 明确禁止
 
@@ -192,3 +192,5 @@ python3 .codex/skills/source-aligned-change-plan-coverage/scripts/render_source_
 ```
 
 writer 最终只向 main agent 简要报告 decision、gap atom数量、recheck source和 blocker；不额外创建报告文件。
+
+coverage mirror必须把`covered-ranges[]`、`candidate-uncovered-ranges[]`和`recheck-sources[].line-ranges[]`中的每个`{start,end}`机械显示为`Lx-Ly`，并呈现`language-self-check`。validator对global index和coverage review两个mirror逐字重渲染比较。
