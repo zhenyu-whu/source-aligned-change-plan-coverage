@@ -9,9 +9,11 @@ writer 必须直接完整读取 `references/cross-phase-contract.md`、本文件
 - `phase-works/phase-1/source-doc-manifest.md`
 - `phase-works/phase-2/source-obligation-atoms/<source>.atoms.json`
 - 用户指定的 source document
-- `scripts/phase3_line_range_audit.py` 或等价机械补集计算
+- `scripts/phase3_line_range_audit.py`（必须用于合并 covered range 和计算 complement）
 
 Phase 2 Markdown mirror 只用于 review；canonical extraction evidence 是 `.atoms.json`。
+
+writer 必须执行随技能提供的 `scripts/phase3_line_range_audit.py`，不得手工计算 complement，不得用模型推理、临时脚本或其他等价实现替代。脚本 stdout 是 Phase 3 covered/complement range 的唯一 writer 输入；validator 仍须独立机械重算并检查 drift。
 
 ## 固定输出
 
@@ -29,7 +31,16 @@ Phase 3 只保留以下五个 artifact：
 
 1. 从 Phase 1 manifest 取得全部 `read-full` source。
 2. 验证每份 source 恰好有一个有效 Phase 2 atom JSON，且 source/artifact digest 当前有效。
-3. 对每份 source 合并 Phase 2 atom 的 `line-ranges[]`，机械计算 `L1..line-count` 的 complement。
+3. 必须执行以下命令，由脚本对每份 source 合并 Phase 2 atom 的 `line-ranges[]` 并计算 `L1..line-count` 的 complement：
+
+   ```bash
+   python3 .codex/skills/source-aligned-change-plan-coverage/scripts/phase3_line_range_audit.py \
+     --orchestrate-dir openspec/orchestrate \
+     --workspace-root . \
+     --pretty
+   ```
+
+   将 stdout `documents.<source>.merged_covered_ranges` 原样转换为 `documents[].covered-ranges[]`，将 `documents.<source>.candidate_uncovered_ranges` 原样转换为 `documents[].candidate-uncovered-ranges[]`；只允许进行 tuple/list 到 `{start, end}` 的结构转换，不得修改、补算或重新解释 range。若脚本失败、source 不存在、存在 malformed row，或脚本结果无法覆盖全部 `read-full` source，返回 `blocked`。
 4. 按稳定顺序为每个 Phase 2 source atom 一对一分配 `GA-####`。
 5. 只阅读 candidate uncovered range及理解该 range 所需的最小局部上下文。
 6. 对 uncovered range 中遗漏的 production obligation 创建 `P3-GAP-####`，再为每个 gap atom分配一个独立 GA。
