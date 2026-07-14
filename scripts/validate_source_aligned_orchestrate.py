@@ -433,6 +433,52 @@ def check_ranges(
             )
 
 
+def check_atom_range(
+    path: Path,
+    reporter: IssueReporter,
+    line_ranges: object,
+    source_document: str,
+    repo_root: Path,
+    context: str,
+) -> None:
+    check_ranges(path, reporter, line_ranges, source_document, repo_root, context)
+    if isinstance(line_ranges, list) and len(line_ranges) != 1:
+        reporter.error(
+            "atom-line-range-cardinality",
+            path,
+            f"{context} 的 line-ranges 必须且只能包含一个连续 range，实际为 {len(line_ranges)} 个",
+        )
+
+
+def check_source_fact_quote(
+    path: Path,
+    reporter: IssueReporter,
+    source_fact: object,
+    line_ranges: object,
+    source_document: str,
+    repo_root: Path,
+    context: str,
+) -> None:
+    if not isinstance(source_fact, str) or not source_fact.strip():
+        reporter.error("source-fact-quote", path, f"{context} 缺少非空 source-fact 原文摘录")
+        return
+    ranges = valid_range_items(line_ranges)
+    if len(ranges) != 1:
+        return
+    source_path = repo_root / source_document
+    if not source_path.exists():
+        return
+    source_lines = source_path.read_text(encoding="utf-8").splitlines()
+    source_range = ranges[0]
+    excerpt_window = "\n".join(source_lines[source_range["start"] - 1 : source_range["end"]])
+    if source_fact not in excerpt_window:
+        reporter.error(
+            "source-fact-quote",
+            path,
+            f"{context} 的 source-fact 不是唯一 line range 内的原文连续摘录",
+        )
+
+
 def validate_rendered_markdown(
     orchestrate_dir: Path,
     json_path: Path,
@@ -934,7 +980,7 @@ def validate_phase_2(orchestrate_dir: Path, repo_root: Path, reporter: IssueRepo
             elif context in atom_ids:
                 reporter.error("phase2-source-atom-duplicate", sidecar, f"source-atom-id 重复：{context}")
             atom_ids.add(context)
-            check_ranges(sidecar, reporter, row.get("line-ranges"), source_document, repo_root, context)
+            check_atom_range(sidecar, reporter, row.get("line-ranges"), source_document, repo_root, context)
             status = normalize_code(row.get("candidate-status"))
             projection = normalize_code(row.get("candidate-artifact-projection"))
             owner = normalize_code(row.get("candidate-owner-change"))
@@ -942,8 +988,15 @@ def validate_phase_2(orchestrate_dir: Path, repo_root: Path, reporter: IssueRepo
             atom_type = normalize_code(row.get("atom-type"))
             normativity = normalize_code(row.get("normativity"))
             rationale = squash(row.get("rationale"))
-            if not squash(row.get("source-fact")):
-                reporter.error("phase2-source-fact", sidecar, f"{context} 缺少 source-fact")
+            check_source_fact_quote(
+                sidecar,
+                reporter,
+                row.get("source-fact"),
+                row.get("line-ranges"),
+                source_document,
+                repo_root,
+                context,
+            )
             if status not in PHASE2_CANDIDATE_STATUSES:
                 reporter.error("phase2-candidate-status", sidecar, f"{context} 的 candidate-status 非法：{status}")
             if projection not in PHASE2_PROJECTIONS:
@@ -1322,7 +1375,16 @@ def validate_phase_3(orchestrate_dir: Path, repo_root: Path, reporter: IssueRepo
     for atom_id, row in global_atoms.items():
         reject_legacy_capability_fields(row, index_path, reporter, atom_id)
         source_document = str(row.get("source-document", ""))
-        check_ranges(index_path, reporter, row.get("line-ranges"), source_document, repo_root, atom_id)
+        check_atom_range(index_path, reporter, row.get("line-ranges"), source_document, repo_root, atom_id)
+        check_source_fact_quote(
+            index_path,
+            reporter,
+            row.get("source-fact"),
+            row.get("line-ranges"),
+            source_document,
+            repo_root,
+            atom_id,
+        )
         projection = str(row.get("artifact-projection", ""))
         status = str(row.get("coverage-status", ""))
         if not projection:
@@ -1393,6 +1455,12 @@ def validate_phase_3(orchestrate_dir: Path, repo_root: Path, reporter: IssueRepo
         mapped_keys.add(source_key)
         phase2_row = phase2_atoms.get(source_key)
         if phase2_row:
+            if row.get("line-ranges") != phase2_row.get("line-ranges"):
+                reporter.error(
+                    "phase3-map-evidence-drift",
+                    map_path,
+                    f"{source_key} 的 line-ranges 与不可变的 Phase 2 evidence 不一致",
+                )
             for field in (
                 "candidate-status",
                 "candidate-artifact-projection",
@@ -1429,7 +1497,7 @@ def validate_phase_3(orchestrate_dir: Path, repo_root: Path, reporter: IssueRepo
                         map_path,
                         f"{source_document}::{atom_id} 的 {field} 与 {global_atom_id} 不一致",
                     )
-        check_ranges(map_path, reporter, row.get("line-ranges"), source_document, repo_root, atom_id)
+        check_atom_range(map_path, reporter, row.get("line-ranges"), source_document, repo_root, atom_id)
 
     for key in phase2_atoms:
         if key not in mapped_keys:
@@ -2024,7 +2092,26 @@ def validate_phase_5(orchestrate_dir: Path, repo_root: Path, reporter: IssueRepo
             atom_id,
         )
         source_document = str(row.get("source-document", ""))
-        check_ranges(orchestrate_dir / "phase-works/phase-5/atom-plan-mapping.json", reporter, row.get("line-ranges"), source_document, repo_root, atom_id)
+        mapping_path = orchestrate_dir / "phase-works/phase-5/atom-plan-mapping.json"
+        check_atom_range(mapping_path, reporter, row.get("line-ranges"), source_document, repo_root, atom_id)
+        global_row = global_atoms.get(atom_id)
+        if global_row:
+            for field in ("source-document", "line-ranges"):
+                if row.get(field) != global_row.get(field):
+                    reporter.error(
+                        "phase5-mapping-source-drift",
+                        mapping_path,
+                        f"{atom_id} 的 {field} 与 global atom evidence 不一致",
+                    )
+            check_source_fact_quote(
+                orchestrate_dir / "change-capability-anchors/obligation-atom-index.json",
+                reporter,
+                global_row.get("source-fact"),
+                global_row.get("line-ranges"),
+                str(global_row.get("source-document", "")),
+                repo_root,
+                atom_id,
+            )
         relation = str(row.get("final-relation", ""))
         projection = str(row.get("final-artifact-projection", ""))
         impact = normalize_code(row.get("final-capability-impact"))

@@ -55,7 +55,7 @@ writer 完成后返回 main agent，由 main agent 完整执行 `references/revi
 
 ## Artifact 语言门禁
 
-继承 `references/cross-phase-contract.md` 的 Artifact Language Gate。Phase 3 的 `Source Fact`、`Review Judgment`、`Reason`、`Interpretation`、semantic classification、duplicate/ownership resolution、non-atom range reason、handoff、metric interpretation 和 report summary 必须使用简体中文。
+继承 `references/cross-phase-contract.md` 的 Artifact Language Gate。`Source Fact` 必须保持 source 原文，不受简体中文要求约束；Phase 3 的 `Review Judgment`、`Reason`、`Interpretation`、semantic classification、duplicate/ownership resolution、non-atom range reason、handoff、metric interpretation 和 report summary 必须使用简体中文。
 
 ## global atom 索引
 
@@ -70,6 +70,7 @@ writer 完成后返回 main agent，由 main agent 完整执行 `references/revi
 
 - 为每项 production obligation 分配且只分配一个 `Global Atom ID`。
 - 每个 `Global Atom ID` 必须使用 canonical `GA-####` 格式，例如 `GA-0001`。不得使用其他 global 前缀、范围或 Phase 2 source-local atom ID 作为规范化 global atom ID。
+- 每个 global atom 必须且只能保留一个 canonical source document 和一个连续 `line-ranges[]` range；`Source Fact` 必须是该 range 内的原文连续摘录。其他 duplicate/refinement/dependency evidence 通过 source-to-global map 和 relation 保留，不得合并为多 range global atom。
 - 如果两个 source atom 行描述同一 source obligation，保留一个 global atom，并将其他行映射到同一 global atom 或 non-direct relation。
 - 如果后续 obligation 确实增强或缩窄早期 obligation，只为额外的 source-backed delta 创建新 atom，并将 `Atom Relation` 设为 `refines:<global-atom-id>` 或 `modifies:<global-atom-id>`。
 - 如果 source fact 只 preserve 或依赖另一 atom，使用 `preserves:<global-atom-id>` 或 `depends-on:<global-atom-id>` 等 `Atom Relation`，不得计入 duplicate direct coverage。
@@ -142,7 +143,7 @@ coverage status：
 4. 提取每个 Phase 2 atom candidate 的 source document、source-local atom ID、行范围、atom type、source fact、normativity、candidate status、candidate artifact projection、candidate owner Change、candidate target Capability、rationale 和 artifact origin。
 5. 运行 `scripts/phase3_line_range_audit.py` 或等效 Phase 3 code，机械解析 Phase 2 source atom 范围、规范化并合并行范围、列出 candidate uncovered interval 和 overlap。该 output 不是 semantic decision；`line-ranges[]` 是唯一 canonical line evidence，不再校验冗余 `lines` 字符串格式。
 6. 跨已提取 atom 建立 semantic duplicate review。同一 source document/range、等价 source fact 或等价 state/action/verification obligation 在完成 review 前都属于 duplicate candidate。duplicate 是 Phase 3 finding，不要求 Phase 2 预判。
-7. 如果一个 Phase 2 行覆盖多个 mandatory UI/flow/data/verification obligation，拆分 broad atom。每个 split atom 必须保留 source evidence 和 source-local origin 或 Phase 3 missing-atom finding ID。
+7. 如果一个 Phase 2 行覆盖多个 mandatory UI/flow/data/verification obligation，拆分 broad atom。每个 split atom 必须只有一个连续 source range，并保留 source-local origin 或 Phase 3 missing-atom finding ID；不得用多 range atom 重新聚合。
 8. 建立 `change-capability-anchors/obligation-atom-index.json`：每项 production obligation 对应一个 global atom；每个 global atom 具有一个规范化 artifact projection、一个 candidate owner Change/status，以及规范化 capability impact/target/related field。
 9. 从 canonical global atom trace sidecar 渲染 `change-capability-anchors/obligation-atom-index.md`。
 10. 写入 `phase-works/phase-3/phase-3-trace/source-to-global-atom-map.json`，将每个 Phase 2 atom 行恰好映射到一个 global atom ID、relation、non-direct status 或 blocker，再从 JSON 渲染 `source-to-global-atom-map.md`。

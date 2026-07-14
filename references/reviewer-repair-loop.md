@@ -72,13 +72,13 @@ Phase 1 reviewer 检查项：
 
 Phase 2 reviewer 检查项：
 
-- 对 source 正文与 atom ledger 做独立语义抽查，检查所有有产品/系统语义的内容是否已提取、atom evidence range 是否紧凑、atom 是否 broad，以及 projection/status/现有 framework mapping 是否仅作为候选。全文 remainder disposition 由 Phase 3 独立闭合。
+- 对 source 正文与 atom ledger 做独立语义抽查，检查所有有产品/系统语义的内容是否已提取、每个 atom 是否恰好一个紧凑连续 range、`Source Fact` 是否为该 range 内原文连续摘录、atom 是否 broad，以及 projection/status/现有 framework mapping 是否仅作为候选。全文 remainder disposition 由 Phase 3 独立闭合。
 - 检查 Phase 2 未执行 duplicate 判断、new/refit Change 判断、new Capability 判断或 Capability impact 判断。
 - 检查每个 `read-full` source 是否正好一个 canonical owner 和一个 `.atoms.md/.json`。
 
 Phase 3 reviewer 检查项：
 
-- 检查 `GA-####` 归一、source-to-global 全覆盖、non-coverage 合理性、duplicate/broad split 处理。
+- 检查 `GA-####` 归一、每个 global atom 的单一 canonical range 与原文 `Source Fact`、source-to-global 全覆盖、non-coverage 合理性、duplicate/broad split 处理。
 - 检查 direct 或 `phase-5-refit-required` atom 没有使用 `contextual-only`。
 
 Phase 4 reviewer 检查项：

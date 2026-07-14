@@ -8,7 +8,7 @@
 - 所有 JSON key 必须使用 kebab-case。
 - 所有 ID 字段不得包含 Markdown 反引号。
 - 多 ID 字段必须使用数组，不得使用逗号字符串。
-- `line-ranges: [{"start": 1, "end": 2}]` 是 canonical line evidence。Phase 2 source atom v4 与 Phase 3 source-to-global map v3 不得重复保存 `lines` 字符串；renderer 从 `line-ranges[]` 生成 Markdown `Lines`。其他仍采用既有 schema 的 artifact 按各自数据模型处理。
+- `line-ranges: [{"start": 1, "end": 2}]` 是 canonical line evidence。Phase 2 source atom、Phase 3 global atom/source-to-global map 和 Phase 5 atom-plan mapping 中的每个 atom row 必须且只能包含一个连续 range。Phase 2 source atom 与 Phase 3 source-to-global map 不重复保存 `lines` 字符串，renderer 从 `line-ranges[]` 生成 Markdown `Lines`；其他 artifact 是否保留展示字段由各自 schema 决定。remainder review 和 source-window artifact 不是 atom row，可按各自数据模型使用多个 range。
 - 每个 trace JSON 必须包含 `trace-schema` 和 `trace-contract-version`。
 - Renderer-backed Markdown mirror 可包含中文解释，但必须由 canonical JSON 重新渲染得到，不得手工修补 canonical 字段。
 - render contract version 为 `source-aligned-render-v4`。
@@ -146,14 +146,15 @@ Phase 2 source atom sidecar：
 - 顶层字段：`source-document`、`source-sha256`、`read-status`、`canonical-owner`、`source-role`、`phase-1-candidate-changes-capabilities-considered`、`source-atoms[]`、`blockers[]`、`language-self-check`。
 - `phase-1-candidate-changes-capabilities-considered` 是 object array；每项为 `change`、`capabilities[]` 和中文 `note`。`blockers[]` 是中文 string array；`language-self-check` 是非空中文 string。
 - `source-atoms[]` 只包含：`source-atom-id`、`line-ranges[]`、`atom-type`、`source-fact`、`normativity`、`candidate-status`、`candidate-artifact-projection`、`candidate-owner-change`、`candidate-target-capability`、`rationale`。
+- 每个 `source-atoms[]` row 的 `line-ranges[]` 长度必须为 1；`source-fact` 必须是该 range 对应 source text 中未经转述、翻译或字符改写的非空连续 substring。解析后的 canonical JSON string 保留原始字符和换行；Markdown mirror 可执行展示层转义或折行处理，但不得成为第二份 canonical fact。
 - `candidate-status` 只允许 `direct-candidate | unassigned | contextual-candidate | unresolved-conflict | unclassified`。guard/non-goal 语义由 `atom-type: scope-guard`、`normativity: must-not` 和 `candidate-artifact-projection: spec-guard` 表达；Phase 2 禁止 `duplicate-candidate`、`candidate-new-change` 和 `candidate-new-capability`。
 - `candidate-target-capability` 只映射现有 Phase 1 Capability，或使用 `unresolved` / `none`；Phase 2 不记录 Capability impact、related Capability、role、propose use 或 evidence need。
 - Phase 2 atom 的 `line-ranges[]` 提供直接 evidence；Phase 3 根据 atom range complement 在 `source-remainder-review.json` 中提供全文 disposition evidence。
 
 Phase 3：
 
-- `obligation-atom-index.json`：`global-atoms[]` 包含精确 `GA-####`、source field、status、projection、owner Change、`capability-impact`、`target-capability`、`related-capabilities[]`、relation、`origins[]` 和 `line-ranges[]`；不得输出 `owner-capability`
-- `source-to-global-atom-map.json`：每个 Phase 2 atom 行对应一行，保留 Phase 2 的 candidate status/projection/owner/target，并增加规范化 `global-capability-impact`、`global-target-capability`、`global-related-capabilities[]`；mapping outcome 必须且只能是 `global-atom-id`、`global-relation`、`non-coverage-status` 或 `blocker` 之一
+- `obligation-atom-index.json`：`global-atoms[]` 包含精确 `GA-####`、source field、status、projection、owner Change、`capability-impact`、`target-capability`、`related-capabilities[]`、relation、`origins[]` 和长度为 1 的 `line-ranges[]`；`source-fact` 必须是该唯一 range 内的原文连续摘录；不得输出 `owner-capability`
+- `source-to-global-atom-map.json`：每个 Phase 2 atom 行对应一行，原样保留 Phase 2 的唯一 `line-ranges[]`、candidate status/projection/owner/target，并增加规范化 `global-capability-impact`、`global-target-capability`、`global-related-capabilities[]`；mapping outcome 必须且只能是 `global-atom-id`、`global-relation`、`non-coverage-status` 或 `blocker` 之一
 - `source-remainder-review.json`：使用 `audit-documents[]` 和 `rows[]` 保存 mechanical Phase 2 atom line coverage，以及对每个 candidate uncovered source range 的 semantic review
   - 每个 `audit-documents[]` 行包含 `source-document`、`source-sha256`、`line-count`、`evidence-ranges[]` 和 `candidate-uncovered-ranges[]`
   - 每个 `rows[]` 行包含 `source-document`、`lines`、`line-ranges[]`、`how-found`、`read-scope`、`semantic-classification`、`production-obligation`、`linked-global-atom-ids[]`、`non-coverage-status`、`blocker` 和 `reason`
@@ -168,7 +169,7 @@ Phase 4：
 
 Phase 5：
 
-- `atom-plan-mapping.json`：`accepted` 或 `adjusted` 时必需；每个 global atom 一行，包含 final owner type/Change/projection/relation、`final-capability-impact`、`final-target-capability`、`related-capabilities[]`、decision 和 reason。executable direct 行使用 `final-owner-type: executable-change` 和恰好一个 `final-owner-change`；不得输出 `final-owner-capability` 或 `capability-advancement`。
+- `atom-plan-mapping.json`：`accepted` 或 `adjusted` 时必需；每个 global atom 一行，原样保留 global atom 的 source document 和唯一 `line-ranges[]`，并包含 final owner type/Change/projection/relation、`final-capability-impact`、`final-target-capability`、`related-capabilities[]`、decision 和 reason。executable direct 行使用 `final-owner-type: executable-change` 和恰好一个 `final-owner-change`；不得输出 `final-owner-capability` 或 `capability-advancement`。
 - `final-packet-index.json`：`accepted` 或 `adjusted` 时必需；每个 executable planned Change 包含 direct atom ID、owner-scoped non-direct atom ID、从显式 mapping impact/target pair 派生的 Capability view path、packet path、packet digest 和 `change-kind`。`change-kind` 必须为 `foundation` 或 `business`；最多允许一个 foundation packet，且必须是第一个 packet。zero-business-Capability plan 不生成 business Capability view path；Phase 5 refit config 可以使用 `capabilities: []`。
 - `capability-baseline-reconciliation.json`：schema 为 `source-aligned-capability-baseline-v1`，是 baseline reconciliation 的 canonical authority；包含 `repository-specs-root` 和 `capabilities[]`。每个被 final business spec atom 直接推进的 Capability 恰好一行，记录 `capability`、`baseline-status: existing | absent`、`spec-path`、`spec-sha256`、`baseline-evidence`、`first-planned-advancement`、`required-first-relation` 和 `later-relation-rule`。匹配 Markdown 必须由 JSON 渲染；该 sidecar 只拥有 repository identity/existence evidence，不是 production obligation authority。
 - `phase-5.trace.json`：包含 final status、atom-plan mapping path、final packet index path、`capability-baseline-reconciliation-path`、`capability-baseline-reconciliation-sha256`、complexity summary、Capability progression summary 和 reviewer/validator gate outcome

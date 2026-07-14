@@ -120,7 +120,7 @@ Phase 4 status 为 `grounded` 时，`source-window-index.json` 必须包含非�
 
 规则：
 
-- 根据复制的 source window 推导每个 semantic profile，不得只依赖 `Source Fact` summary。
+- 根据复制的 source window 推导每个 semantic profile，不得只依赖 atom 的单 range `Source Fact` 原文摘录；周边上下文仍由 Phase 4 source window 提供。
 - 对 input Change，判断 source window 是否描述一个 intent-cohesive、可独立决策/实现/验收/archive 的 delivery unit；检查 trigger/context、normative behavior、observable outcome/invariant、重要异常和 acceptance evidence 是否共同支持该 boundary，而不是要求每项都具有固定 entry/fact/projection 形态。
 - 对 input Capability，判断 source window 描述的是具有清晰 Purpose、Owns/Excludes 且实现替换后仍成立的持久 behavior boundary，还是临时 implementation-only module、页面、source section 或 one-Change alias。stable component/interface contract 不得仅因技术名称被拒绝。
 - 如果 source window 表明一个真实 outcome 直接需要多个 Capability，记录 Phase 5 应保留这些 delta 的整体性；只有 source-window-backed split 能保持独立 intent、acceptance 和 coherent archive state 时才可拆分。

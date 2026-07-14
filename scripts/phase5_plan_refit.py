@@ -26,7 +26,7 @@ from source_aligned_trace_lib import (
     GLOBAL_ATOM_INDEX_SCHEMA,
     PHASE_TRACE_SCHEMAS,
     TRACE_CONTRACT_VERSION,
-    parse_line_ranges,
+    line_ranges_label,
     sha256_file,
     write_json,
 )
@@ -96,6 +96,7 @@ class AtomRow:
     atom_id: str
     source_document: str
     lines: str
+    line_ranges: Tuple[Tuple[int, int], ...]
     atom_type: str
     source_fact: str
     normativity: str
@@ -215,6 +216,16 @@ def write_text(path: Path, content: str) -> None:
     path.write_text(content, encoding="utf-8")
 
 
+def single_atom_line_range(raw: object, context: str) -> Tuple[Tuple[int, int], ...]:
+    if not isinstance(raw, list) or len(raw) != 1 or not isinstance(raw[0], dict):
+        raise ValueError(f"{context} 的 line-ranges 必须且只能包含一个连续 range")
+    start = raw[0].get("start")
+    end = raw[0].get("end")
+    if not isinstance(start, int) or not isinstance(end, int) or start <= 0 or end < start:
+        raise ValueError(f"{context} 的唯一 line range 非法：{raw[0]}")
+    return ((start, end),)
+
+
 def load_global_atoms_json(path: Path) -> Dict[str, AtomRow]:
     data = require_v2_json_contract(
         json.loads(path.read_text(encoding="utf-8")),
@@ -233,10 +244,15 @@ def load_global_atoms_json(path: Path) -> Dict[str, AtomRow]:
             raise ValueError(f"global atom index JSON 中的 Global Atom ID 必须匹配 GA-####: {atom_id}")
         if atom_id in atoms:
             raise ValueError(f"global atom index JSON 中存在重复 ID: {atom_id}")
+        line_ranges = single_atom_line_range(raw.get("line-ranges"), f"global atom {atom_id}")
+        canonical_lines = line_ranges_label(
+            [{"start": start, "end": end} for start, end in line_ranges]
+        )
         atoms[atom_id] = AtomRow(
             atom_id=atom_id,
             source_document=normalize_code(str(raw.get("source-document", ""))),
-            lines=normalize_code(str(raw.get("lines", ""))),
+            lines=canonical_lines,
+            line_ranges=line_ranges,
             atom_type=normalize_code(str(raw.get("atom-type", ""))),
             source_fact=str(raw.get("source-fact", "")),
             normativity=normalize_code(str(raw.get("normativity", ""))),
@@ -634,13 +650,15 @@ def mapping_json_rows(final_atoms: Sequence[FinalAtom]) -> List[Dict[str, object
     for item in final_atoms:
         source = item.source
         mapping = item.mapping
-        _, line_ranges, _, _ = parse_line_ranges(source.lines)
         rows.append(
             {
                 "global-atom-id": source.atom_id,
                 "source-document": source.source_document,
                 "lines": source.lines,
-                "line-ranges": line_ranges,
+                "line-ranges": [
+                    {"start": start, "end": end}
+                    for start, end in source.line_ranges
+                ],
                 "phase-3-owner-status": f"{source.owner_change} / {source.coverage_status}",
                 "phase-3-artifact-projection": source.artifact_projection,
                 "final-owner-type": mapping.final_owner_type,

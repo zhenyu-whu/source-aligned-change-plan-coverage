@@ -106,16 +106,16 @@ reviewer 与 repair-writer 的权限由 `references/reviewer-repair-loop.md` 定
 - 保留同一规则的 condition + trigger/action + expected effect，不机械拆分。
 - 多个 behavior、不同 normativity、不同 projection、不同 failure/recovery path 或不同 acceptance obligation 可以独立变化时才拆分。
 - 不得用 “page detail”“flow behavior” 或宽泛 summary 覆盖整个页面、对象或流程。
-- 多个 source 片段分别提供同一规则的互补组成部分时，用一个 atom 的多个 `line-ranges[]` 表示；两个各自完整的有语义事实是否等价，留给 Phase 3 判断。
+- 每个 atom 的 `line-ranges[]` 必须且只能包含一个连续 range。连续多行可使用一个 `{start, end}`；互不连续的 source 片段必须分别提取为 atom，再由 Phase 3 判断它们属于 duplicate、refinement、dependency、preserve 还是其他 relation。
 
 对 UI/flow source，至少检查 page role、route/entry/exit、具名 state、trigger、可见行为、允许/禁用 action、failure/recovery、persistence/navigation/access/privacy、影响任务完成的 responsive behavior、acceptance 和 scope guard。
 
 ### 3. 写入 source-local identity 与 evidence
 
 - 使用稳定、可读、仅在当前 source 内唯一的 `source-atom-id`，例如 `intake-form.valid-submit`。
-- canonical JSON 只写结构化 `line-ranges: [{"start": 1, "end": 2}]`，不得写冗余的 `lines` 字符串。
+- canonical JSON 只写结构化 `line-ranges: [{"start": 1, "end": 2}]`，数组长度必须为 1，不得写冗余的 `lines` 字符串。
 - renderer 从 `line-ranges[]` 机械生成 Markdown 的 `Lines` 列，例如 `L1-L2`。Markdown `Lines` 是 review surface，不是第二份 canonical evidence。
-- `source-fact` 使用简体中文准确转述 source 语义，不用长段 quote 代替事实陈述。
+- `source-fact` 必须直接摘录唯一 range 内的原文连续片段，不得转述、翻译、概括或改写。解析后的 canonical JSON string 保留原始字符和换行；renderer 可为 Markdown table 执行展示层转义或折行处理，但不得回写、改造或替代 canonical value。
 
 ### 4. 选择 Candidate Status
 
@@ -198,6 +198,8 @@ Phase 2 不再记录 `candidate-capability-impact`、`candidate-related-capabili
 - `phase-1-candidate-changes-capabilities-considered` 是 array；每项包含 `change`、`capabilities[]` 和简短中文 `note`。
 - `blockers[]` 是简体中文 string array；没有 blocker 时为 `[]`。
 - `language-self-check` 是非空简体中文 string。
+- `source-atoms[].line-ranges[]` 必须恰好包含一个 range；`source-fact` 必须是该 range 对应 source text 的原文连续 substring。
+
 `phase-2.trace.json.sources[]` 每份 source 一行，包含 `source-document`、`atom-json-path`、`atom-json-sha256`、`atom-markdown-path`、`canonical-owner`、`read-status`、`atom-count` 和 `blockers[]`。
 
 ## 索引与报告
@@ -219,7 +221,7 @@ aggregate 不发布 duplicate statistic、candidate new boundary、global covera
 ## 完成门禁
 
 1. **Source gate**：每份 `read-full` source 在 work queue 中恰好一次，并有一个 canonical JSON 与 mirror。
-2. **Semantic gate**：每项有产品/系统语义的 source fact 都有 atom；atom evidence range 尽量紧凑，不使用整章或整页范围掩盖未提取语义。全文 remainder disposition 留给 Phase 3。
+2. **Semantic gate**：每项有产品/系统语义的 source fact 都有 atom；每个 atom 只有一个尽量紧凑的连续 evidence range，`source-fact` 是该 range 内的原文连续摘录，不使用整章或整页范围掩盖未提取语义。全文 remainder disposition 留给 Phase 3。
 3. **Atom gate**：atom 不 broad、不机械过拆；status 仅使用五种允许值；guard/non-goal 语义没有塞入 status；不存在 duplicate/new Change/new Capability 的 Phase 2 判断。
 4. **Mapping gate**：owner/target 只引用现有 framework 或使用 `unassigned` / `unresolved` / `none`；不存在 Capability impact 判断。
 5. **Artifact gate**：canonical JSON 使用 v4 schema 且只含 `line-ranges[]`；mirror 与 renderer output 一致。

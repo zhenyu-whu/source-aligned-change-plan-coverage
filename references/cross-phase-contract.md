@@ -18,7 +18,7 @@
 
 ## Evidence 与 identity
 
-- 原始 source document 是 production obligation 的语义来源。Phase 2 atom 行范围提供直接 trace evidence；Phase 3 根据 atom 范围的 complement 完成 remainder disposition 与全文 coverage closure。行范围本身不是 coverage 目标。
+- 原始 source document 是 production obligation 的语义来源。每个 atom 必须且只能引用一个连续 `line-ranges[]` range，`source-fact` 必须是该 range 内未经转述或翻译的原文连续摘录。Phase 3 根据 atom 范围的 complement 完成 remainder disposition 与全文 coverage closure；行范围本身不是 coverage 目标。
 - canonical JSON sidecar 是 machine-readable authority；renderer-backed Markdown 是 reviewer/proposal surface。修复 drift 时更新 JSON 或重新渲染，不得只手工修改 mirror。
 - Phase 2 canonical source atom JSON 通过 reviewer loop 后冻结。后续 missing、split、duplicate、grounding 或 ownership finding 进入 Phase 3–5，不回写 frozen evidence。
 - Phase 3 分配的 global atom ID 必须使用 `GA-####`。Phase 4、Phase 5 和后续 OpenSpec 工作必须原样保留，不得改写为其他 global 前缀或 source-local ID。
@@ -46,7 +46,7 @@
 
 - agent 编写的解释、判断、理由、风险、proof/evidence description、report 和 handoff 必须使用简体中文。
 - 固定 heading、table header、field label、enum/status、ID、path、command、code/API/DB/package symbol、filename、Capability ID、Change slug 和精确 source quote 可以保留英文。
-- 技术英文可以作为 identifier 或 noun phrase 保留，但周围解释性语句必须使用简体中文。`Source Phrase` 可以保留 source 原文。
+- 技术英文可以作为 identifier 或 noun phrase 保留，但周围解释性语句必须使用简体中文。`Source Fact` 和 `Source Phrase` 是精确 source quote，不受简体中文要求约束。
 - 每次写入或修改 artifact 后执行 language self-check；忽略上述固定结构后，剩余英文主导的自然语言句必须在当前 Phase 结束前改写。
 
 ## 交接检查

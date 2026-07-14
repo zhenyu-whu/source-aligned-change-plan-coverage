@@ -155,10 +155,10 @@ class SourceAlignedValidatorTest(unittest.TestCase):
             "openspec/orchestrate/phase-works/phase-3/source-doc-coverage/docs--source.coverage.md",
             "| Global Atom ID | Source Atom Origins | Lines | Atom Type | Coverage Status | Artifact Projection | Candidate / Owner Change | Capability Impact | Target Capability | Related Capabilities | Source Fact |\n"
             "| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |\n"
-            "| GA-0001 | atom.spec | L1-L2 | behavior | direct | spec-requirement | change-a | new | cap-a | None | spec fact |\n"
-            "| GA-0002 | atom.design | L3-L4 | architecture | direct | design-obligation | change-a | none | none | cap-support | design fact |\n"
-            "| GA-0003 | atom.verify | L5-L6 | verification | direct | verification-obligation | change-a | none | none | cap-support | verification fact |\n"
-            "| GA-0004 | atom.non-goal | L7-L8 | explicit-non-goal | explicit-non-goal | spec-guard | change-a | none | none | None | non-goal fact |\n"
+            "| GA-0001 | atom.spec | L1-L2 | behavior | direct | spec-requirement | change-a | new | cap-a | None | line 1 line 2 |\n"
+            "| GA-0002 | atom.design | L3-L4 | architecture | direct | design-obligation | change-a | none | none | cap-support | line 3 line 4 |\n"
+            "| GA-0003 | atom.verify | L5-L6 | verification | direct | verification-obligation | change-a | none | none | cap-support | line 5 line 6 |\n"
+            "| GA-0004 | atom.non-goal | L7-L8 | explicit-non-goal | explicit-non-goal | spec-guard | change-a | none | none | None | line 7 line 8 |\n"
             "\n"
             "| Source Section or Range | Expected Atom Type | Global Atom IDs | Coverage Judgment | Reason |\n"
             "| --- | --- | --- | --- | --- |\n"
@@ -248,7 +248,7 @@ class SourceAlignedValidatorTest(unittest.TestCase):
                 "source-atom-id": "atom.spec",
                 "line-ranges": [{"start": 1, "end": 2}],
                 "atom-type": "behavior",
-                "source-fact": "spec fact",
+                "source-fact": "line 1\nline 2",
                 "normativity": "must",
                 "candidate-status": "direct-candidate",
                 "candidate-artifact-projection": "spec-requirement",
@@ -260,7 +260,7 @@ class SourceAlignedValidatorTest(unittest.TestCase):
                 "source-atom-id": "atom.design",
                 "line-ranges": [{"start": 3, "end": 4}],
                 "atom-type": "architecture-runtime",
-                "source-fact": "design fact",
+                "source-fact": "line 3\nline 4",
                 "normativity": "must",
                 "candidate-status": "direct-candidate",
                 "candidate-artifact-projection": "design-obligation",
@@ -272,7 +272,7 @@ class SourceAlignedValidatorTest(unittest.TestCase):
                 "source-atom-id": "atom.verify",
                 "line-ranges": [{"start": 5, "end": 6}],
                 "atom-type": "verification",
-                "source-fact": "verification fact",
+                "source-fact": "line 5\nline 6",
                 "normativity": "must",
                 "candidate-status": "direct-candidate",
                 "candidate-artifact-projection": "verification-obligation",
@@ -284,7 +284,7 @@ class SourceAlignedValidatorTest(unittest.TestCase):
                 "source-atom-id": "atom.non-goal",
                 "line-ranges": [{"start": 7, "end": 8}],
                 "atom-type": "scope-guard",
-                "source-fact": "non-goal fact",
+                "source-fact": "line 7\nline 8",
                 "normativity": "must-not",
                 "candidate-status": "direct-candidate",
                 "candidate-artifact-projection": "spec-guard",
@@ -342,7 +342,7 @@ class SourceAlignedValidatorTest(unittest.TestCase):
                 "lines": "L1-L2",
                 "line-ranges": [{"start": 1, "end": 2}],
                 "atom-type": "behavior",
-                "source-fact": "spec fact",
+                "source-fact": "line 1\nline 2",
                 "normativity": "must",
                 "coverage-status": "direct",
                 "artifact-projection": "spec-requirement",
@@ -363,7 +363,7 @@ class SourceAlignedValidatorTest(unittest.TestCase):
                 "lines": "L3-L4",
                 "line-ranges": [{"start": 3, "end": 4}],
                 "atom-type": "architecture",
-                "source-fact": "design fact",
+                "source-fact": "line 3\nline 4",
                 "normativity": "must",
                 "coverage-status": "direct",
                 "artifact-projection": "design-obligation",
@@ -384,7 +384,7 @@ class SourceAlignedValidatorTest(unittest.TestCase):
                 "lines": "L5-L6",
                 "line-ranges": [{"start": 5, "end": 6}],
                 "atom-type": "verification",
-                "source-fact": "verification fact",
+                "source-fact": "line 5\nline 6",
                 "normativity": "must",
                 "coverage-status": "direct",
                 "artifact-projection": "verification-obligation",
@@ -405,7 +405,7 @@ class SourceAlignedValidatorTest(unittest.TestCase):
                 "lines": "L7-L8",
                 "line-ranges": [{"start": 7, "end": 8}],
                 "atom-type": "explicit-non-goal",
-                "source-fact": "non-goal fact",
+                "source-fact": "line 7\nline 8",
                 "normativity": "must-not",
                 "coverage-status": "explicit-non-goal",
                 "artifact-projection": "spec-guard",
@@ -1244,24 +1244,57 @@ class SourceAlignedValidatorTest(unittest.TestCase):
     def test_phase2_rendered_markdown_drift_fails(self) -> None:
         path = self.orchestrate / "phase-works/phase-2/source-obligation-atoms/docs--source.atoms.md"
         text = path.read_text(encoding="utf-8")
-        path.write_text(text.replace("spec fact", "spec fact edited only in markdown", 1), encoding="utf-8")
+        path.write_text(text.replace("line 1 line 2", "line 1 line 2 edited only in markdown", 1), encoding="utf-8")
         result = self._validate_phase("phase-2")
         self.assertFalse(result["ok"], result)
         self.assertTrue(any(issue["rule_id"] == "rendered-markdown-drift" for issue in result["issues"]), result)
 
     def test_phase2_render_after_json_change_passes(self) -> None:
+        source_path = self.root / "docs/source.md"
+        source_lines = source_path.read_text(encoding="utf-8").splitlines()
+        source_lines[0] = "line | 1"
+        source_path.write_text("\n".join(source_lines) + "\n", encoding="utf-8")
+        source_sha = sha256_file(source_path)
+
+        phase1_trace_path = self.orchestrate / "trace/phase-1.trace.json"
+        phase1_trace = json.loads(phase1_trace_path.read_text(encoding="utf-8"))
+        phase1_trace["source-documents"][0]["source-sha256"] = source_sha
+        write_json(phase1_trace_path, phase1_trace)
+
         path = self.orchestrate / "phase-works/phase-2/source-obligation-atoms/docs--source.atoms.json"
         data = json.loads(path.read_text(encoding="utf-8"))
-        data["source-atoms"][0]["source-fact"] = "中文事实包含 | 管道符和\n换行。"
+        data["source-sha256"] = source_sha
+        data["source-atoms"][0]["source-fact"] = "line | 1\nline 2"
         write_json(path, data)
         render_orchestrate(self.orchestrate, "phase2-source-atoms", write=True)
         markdown = (self.orchestrate / "phase-works/phase-2/source-obligation-atoms/docs--source.atoms.md").read_text(encoding="utf-8")
-        self.assertIn("中文事实包含 \\| 管道符和 换行。", markdown)
+        self.assertIn("line \\| 1 line 2", markdown)
+        self.assertEqual(data["source-atoms"][0]["source-fact"], "line | 1\nline 2")
         self.assertIn("Render contract: `source-aligned-render-v4`", markdown)
         self._sync_phase2_trace_source()
         self._write_manifest()
         result = self._validate_phase("phase-2")
         self.assertTrue(result["ok"], result)
+
+    def test_phase2_rewritten_source_fact_is_rejected(self) -> None:
+        path = self.orchestrate / "phase-works/phase-2/source-obligation-atoms/docs--source.atoms.json"
+        data = json.loads(path.read_text(encoding="utf-8"))
+        data["source-atoms"][0]["source-fact"] = "这是对原文的转述"
+        write_json(path, data)
+        render_orchestrate(self.orchestrate, "phase2-source-atoms", write=True)
+        self._sync_phase2_trace_source()
+        self._write_manifest()
+        self.assert_error("source-fact-quote")
+
+    def test_phase2_atom_multiple_line_ranges_are_rejected(self) -> None:
+        path = self.orchestrate / "phase-works/phase-2/source-obligation-atoms/docs--source.atoms.json"
+        data = json.loads(path.read_text(encoding="utf-8"))
+        data["source-atoms"][0]["line-ranges"].append({"start": 3, "end": 3})
+        write_json(path, data)
+        render_orchestrate(self.orchestrate, "phase2-source-atoms", write=True)
+        self._sync_phase2_trace_source()
+        self._write_manifest()
+        self.assert_error("atom-line-range-cardinality")
 
     def test_phase2_missing_rendered_markdown_fails(self) -> None:
         (self.orchestrate / "phase-works/phase-2/source-obligation-atoms/docs--source.atoms.md").unlink()
@@ -1276,6 +1309,42 @@ class SourceAlignedValidatorTest(unittest.TestCase):
         write_json(path, data)
         self._write_manifest()
         self.assert_error("phase3-ga-duplicate")
+
+    def test_phase3_global_atom_multiple_line_ranges_are_rejected(self) -> None:
+        path = self.orchestrate / "change-capability-anchors/obligation-atom-index.json"
+        data = json.loads(path.read_text(encoding="utf-8"))
+        data["global-atoms"][0]["line-ranges"].append({"start": 3, "end": 3})
+        write_json(path, data)
+        render_orchestrate(self.orchestrate, "phase3-global-index", write=True)
+        self._write_manifest()
+        self.assert_error("atom-line-range-cardinality")
+
+    def test_phase3_rewritten_global_source_fact_is_rejected(self) -> None:
+        path = self.orchestrate / "change-capability-anchors/obligation-atom-index.json"
+        data = json.loads(path.read_text(encoding="utf-8"))
+        data["global-atoms"][0]["source-fact"] = "这是对原文的概括"
+        write_json(path, data)
+        render_orchestrate(self.orchestrate, "phase3-global-index", write=True)
+        self._write_manifest()
+        self.assert_error("source-fact-quote")
+
+    def test_phase3_source_map_line_range_must_match_phase2(self) -> None:
+        path = self.orchestrate / "phase-works/phase-3/phase-3-trace/source-to-global-atom-map.json"
+        data = json.loads(path.read_text(encoding="utf-8"))
+        data["rows"][0]["line-ranges"] = [{"start": 1, "end": 1}]
+        write_json(path, data)
+        render_orchestrate(self.orchestrate, "phase3-source-map", write=True)
+        self._write_manifest()
+        self.assert_error("phase3-map-evidence-drift")
+
+    def test_phase5_mapping_line_range_must_match_global_atom(self) -> None:
+        path = self.orchestrate / "phase-works/phase-5/atom-plan-mapping.json"
+        data = json.loads(path.read_text(encoding="utf-8"))
+        data["rows"][0]["line-ranges"] = [{"start": 1, "end": 1}]
+        write_json(path, data)
+        render_orchestrate(self.orchestrate, "phase5-atom-plan-mapping", write=True)
+        self._write_manifest()
+        self.assert_error("phase5-mapping-source-drift")
 
     def test_phase3_non_direct_spec_atom_cannot_advance_capability(self) -> None:
         path = self.orchestrate / "change-capability-anchors/obligation-atom-index.json"
