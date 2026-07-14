@@ -23,7 +23,7 @@ from source_aligned_trace_lib import (
 )
 
 
-RENDER_CONTRACT_VERSION = "source-aligned-render-v2"
+RENDER_CONTRACT_VERSION = "source-aligned-render-v3"
 SUPPORTED_ARTIFACTS = {
     "phase2-source-atoms",
     "phase3-global-index",
@@ -102,9 +102,6 @@ def capability_target(value: object) -> str:
 
 
 def lines_from(row: Dict[str, object]) -> str:
-    raw = squash(row.get("lines", ""))
-    if raw:
-        return raw
     ranges = row.get("line-ranges")
     if isinstance(ranges, list):
         valid = [
@@ -213,14 +210,14 @@ def render_phase2_source_atoms(orchestrate_dir: Path, json_path: Path) -> str:
         lines.append(md(considered))
     else:
         lines.append("- `None`")
-    lines.extend(["", "## 来源章节清单", ""])
+    lines.extend(["", "## Section inventory", ""])
     lines.append(
         render_table(
-            ["Source Section or Range", "Read Status", "Production Meaning", "Atom IDs", "Non-Atom Classification", "Reason"],
+            ["Source Section", "Lines", "Production Meaning", "Atom IDs", "Non-Atom Classification", "Reason"],
             (
                 [
-                    md(row.get("source-section-or-range")),
-                    code(row.get("read-status")),
+                    md(row.get("source-section")),
+                    lines_from(row),
                     code(row.get("production-meaning")),
                     code_list(row.get("atom-ids")),
                     code(row.get("non-atom-classification")),
@@ -236,7 +233,6 @@ def render_phase2_source_atoms(orchestrate_dir: Path, json_path: Path) -> str:
         render_table(
             [
                 "Source Atom ID",
-                "Source Document",
                 "Lines",
                 "Atom Type",
                 "Source Fact",
@@ -244,18 +240,12 @@ def render_phase2_source_atoms(orchestrate_dir: Path, json_path: Path) -> str:
                 "Candidate Status",
                 "Candidate Artifact Projection",
                 "Candidate Owner Change",
-                "Candidate Capability Impact",
                 "Candidate Target Capability",
-                "Candidate Related Capabilities",
-                "Roles",
                 "Rationale",
-                "Propose Use",
-                "Evidence Need",
             ],
             (
                 [
                     code(row.get("source-atom-id")),
-                    code(row.get("source-document")),
                     lines_from(row),
                     code(row.get("atom-type")),
                     md(row.get("source-fact")),
@@ -263,64 +253,22 @@ def render_phase2_source_atoms(orchestrate_dir: Path, json_path: Path) -> str:
                     code(row.get("candidate-status")),
                     code(row.get("candidate-artifact-projection")),
                     code(row.get("candidate-owner-change")),
-                    code(row.get("candidate-capability-impact")),
                     capability_target(row.get("candidate-target-capability")),
-                    stable_code_list(row.get("candidate-related-capabilities")),
-                    code_list(row.get("roles")),
                     md(row.get("rationale")),
-                    md(row.get("propose-use")),
-                    code(row.get("evidence-need")),
                 ]
                 for row in data.get("source-atoms", [])
                 if isinstance(row, dict)
             ),
         ).rstrip()
     )
-    lines.extend(["", "## source anchor 表", ""])
-    lines.append(
-        render_table(
-            [
-                "Source Document",
-                "Anchor",
-                "Lines",
-                "Source Phrase",
-                "Candidate Status",
-                "Source Atom IDs",
-                "Candidate Owners",
-                "Roles",
-                "Rationale",
-            ],
-            (
-                [
-                    code(row.get("source-document")),
-                    md(row.get("anchor")),
-                    lines_from(row),
-                    md(row.get("source-phrase")),
-                    code(row.get("candidate-status")),
-                    code_list(row.get("source-atom-ids")),
-                    code_list(row.get("candidate-owners")),
-                    code_list(row.get("roles")),
-                    md(row.get("rationale")),
-                ]
-                for row in data.get("source-anchors", [])
-                if isinstance(row, dict)
-            ),
-        ).rstrip()
-    )
-    notes = [
-        ("来源剩余内容说明", data.get("source-remainder-notes")),
-        ("所有权歧义说明", data.get("ownership-ambiguity-notes")),
-        ("候选缺失 plan 边界", data.get("candidate-missing-plan-boundaries")),
-        ("阻塞项", data.get("blockers")),
-    ]
-    for heading, value in notes:
-        lines.extend(["", f"## {heading}", ""])
-        if isinstance(value, list) and value:
-            lines.extend(f"- {md(item)}" for item in value)
-        elif value:
-            lines.append(md(value))
-        else:
-            lines.append("- `None`")
+    lines.extend(["", "## 阻塞项", ""])
+    blockers = data.get("blockers")
+    if isinstance(blockers, list) and blockers:
+        lines.extend(f"- {md(item)}" for item in blockers)
+    elif blockers:
+        lines.append(md(blockers))
+    else:
+        lines.append("- `None`")
     lines.extend(["", "## 语言自检", "", md(data.get("language-self-check") or "该 Markdown mirror 由 canonical JSON sidecar 机械渲染。")])
     return "\n".join(lines).rstrip() + "\n" + trace_appendix(json_path, SOURCE_ATOMS_SCHEMA, repo_root)
 
@@ -395,9 +343,7 @@ def render_source_map(orchestrate_dir: Path, json_path: Path) -> str:
                 "Candidate Status",
                 "Candidate Artifact Projection",
                 "Candidate Owner Change",
-                "Candidate Capability Impact",
                 "Candidate Target Capability",
-                "Candidate Related Capabilities",
                 "Global Atom ID",
                 "Global Relation",
                 "Global Capability Impact",
@@ -416,9 +362,7 @@ def render_source_map(orchestrate_dir: Path, json_path: Path) -> str:
                     code(row.get("candidate-status")),
                     code(row.get("candidate-artifact-projection")),
                     code(row.get("candidate-owner-change")),
-                    code(row.get("candidate-capability-impact")),
                     capability_target(row.get("candidate-target-capability")),
-                    stable_code_list(row.get("candidate-related-capabilities")),
                     code(row.get("global-atom-id")),
                     code(row.get("global-relation")),
                     code(row.get("global-capability-impact")),

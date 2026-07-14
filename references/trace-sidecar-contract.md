@@ -8,11 +8,11 @@
 - 所有 JSON key 必须使用 kebab-case。
 - 所有 ID 字段不得包含 Markdown 反引号。
 - 多 ID 字段必须使用数组，不得使用逗号字符串。
-- Line range 必须保留原始 `lines` 字段，并提供结构化 `line-ranges: [{"start": 1, "end": 2}]`。
+- `line-ranges: [{"start": 1, "end": 2}]` 是 canonical line evidence。Phase 2 source atom v3 与 Phase 3 source-to-global map v3 不得重复保存 `lines` 字符串；renderer 从 `line-ranges[]` 生成 Markdown `Lines`。其他仍采用既有 schema 的 artifact 按各自数据模型处理。
 - 每个 trace JSON 必须包含 `trace-schema` 和 `trace-contract-version`。
 - Renderer-backed Markdown mirror 可包含中文解释，但必须由 canonical JSON 重新渲染得到，不得手工修补 canonical 字段。
-- render contract version 为 `source-aligned-render-v2`。
-- v2 是单轨契约，不提供旧 Phase 1 plan trace 或旧 Capability owner 字段的兼容读取。canonical artifact 集合中若出现 `source-aligned-phase-1-trace-v1`、`source-aligned-source-atoms-v1`、`source-aligned-global-atom-index-v1`、`source-aligned-source-to-global-map-v1`、`source-aligned-atom-plan-mapping-v1`、`source-aligned-final-packet-index-v1` 或 `source-aligned-render-v1`，必须拒绝；不得混用 v1/v2 字段或 schema。
+- render contract version 为 `source-aligned-render-v3`。
+- 当前契约不兼容旧 Phase 1 plan trace、旧 Phase 2 extraction/trace shape 或旧 Capability owner 字段。canonical artifact 集合中若出现 `source-aligned-phase-1-trace-v1`、`source-aligned-phase-2-trace-v1`、`source-aligned-source-atoms-v1`、`source-aligned-source-atoms-v2`、`source-aligned-source-to-global-map-v1`、`source-aligned-source-to-global-map-v2`、`source-aligned-global-atom-index-v1`、`source-aligned-atom-plan-mapping-v1`、`source-aligned-final-packet-index-v1`、`source-aligned-render-v1` 或 `source-aligned-render-v2`，必须拒绝。
 
 ## 必需布局
 
@@ -87,7 +87,7 @@ Manifest lifecycle 如下：
 
 ## renderer contract
 
-renderer-backed mirror 使用 `source-aligned-render-v2`，通过以下命令生成：
+renderer-backed mirror 使用 `source-aligned-render-v3`，通过以下命令生成：
 
 ```bash
 python3 .codex/skills/source-aligned-change-plan-coverage/scripts/render_source_aligned_orchestrate.py \
@@ -98,6 +98,8 @@ python3 .codex/skills/source-aligned-change-plan-coverage/scripts/render_source_
 
 支持的 mirror 包括 Phase 2 `<source>.atoms.md`，Phase 3 `obligation-atom-index.md`、`source-to-global-atom-map.md`、`source-remainder-review.md`，以及 Phase 5 `atom-plan-mapping.md`。
 
+单独执行 Phase 2 时必须使用 `--artifact phase2-source-atoms`；`all-supported` 仅用于明确需要刷新当前已存在的全部 mirror 时，不得在 Phase 2 恢复/repair 中越权重渲染 Phase 3–5 artifact。
+
 每个 rendered mirror 末尾都包含 `Trace Appendix`，列出 trace file、trace schema、trace sha256 和 render contract version。validator 会比较实际 Markdown 与 renderer output。如果报告 `rendered-markdown-drift`，repair 必须更新 canonical JSON sidecar 或重新运行 renderer；不得只手工编辑 Markdown。
 
 ## Phase schema
@@ -105,22 +107,22 @@ python3 .codex/skills/source-aligned-change-plan-coverage/scripts/render_source_
 Phase trace schema：
 
 - `source-aligned-phase-1-trace-v2`
-- `source-aligned-phase-2-trace-v1`
+- `source-aligned-phase-2-trace-v2`
 - `source-aligned-phase-3-trace-v1`
 - `source-aligned-phase-4-trace-v1`
 - `source-aligned-phase-5-trace-v1`
 
 artifact schema：
 
-- `source-aligned-source-atoms-v2`
+- `source-aligned-source-atoms-v3`
 - `source-aligned-global-atom-index-v2`
-- `source-aligned-source-to-global-map-v2`
+- `source-aligned-source-to-global-map-v3`
 - `source-aligned-source-remainder-review-v1`
 - `source-aligned-source-window-index-v1`
 - `source-aligned-atom-plan-mapping-v2`
 - `source-aligned-final-packet-index-v2`
 
-Phase 1 trace 和上面列出的五个 v2 artifact schema 都发生了字段变化，必须整体采用 v2。Phase 2–5 trace、`manifest`、source remainder review 和 source window index 的 payload 未发生字段变化，因此继续使用各自现有的 `*-v1` schema 名称，但其 `trace-contract-version` 必须是 `source-aligned-trace-v2`；这不属于禁止的 v1/v2 capability-field 混用。
+Phase 2 source atom 与 Phase 3 source map 必须整体采用 v3；Phase 2 trace、global index、atom-plan mapping 与 final packet index 采用 v2。Phase 3–5 trace、`manifest`、source remainder review 和 source window index 继续使用各自现有的 `*-v1` schema 名称，但其 `trace-contract-version` 必须是 `source-aligned-trace-v2`。
 
 ## 必需数据模型
 
@@ -136,35 +138,30 @@ Phase 2 trace：
 
 - `status`：必须为 `source-atoms-written`
 - `work-queue-path`
-- `sources[]`
+- `sources[]`：每份 source 一行，包含 `source-document`、`atom-json-path`、`atom-json-sha256`、`atom-markdown-path`、`canonical-owner`、`read-status`、`inventory-section-count`、`atom-count` 和 string array `blockers[]`
 - `phase-report-path`
 
 Phase 2 source atom sidecar：
 
-- `source-document`, `source-sha256`, `read-status`, `canonical-owner`
-- `source-atoms[]`：current ledger field 使用 kebab-case 并增加 `line-ranges[]`；Capability field 为 `candidate-capability-impact`、`candidate-target-capability` 和 array `candidate-related-capabilities[]`；不得输出 `candidate-owner-capability`
-- `source-anchors[]`：current anchor table field 使用 kebab-case 并增加 `line-ranges[]`
-- `section-inventory[]`
-- `blockers[]`
-
-Phase 2 Capability field 规则：
-
-- `candidate-capability-impact`: `new | modified | none | unresolved`。
-- `new | modified` 仅允许 `spec-requirement | spec-guard`，且 `candidate-target-capability` 必须是具体 capability（`candidate-new-capability` 仅允许与 `new` 配对）。Phase 2 没有可信 repository baseline evidence 时，direct spec candidate 必须使用带 rationale 的 `unresolved`，不得从 Phase 1 roadmap role 猜测 impact。
-- `none` 必须与 `candidate-target-capability: none` 配对；普通 `design-obligation | verification-obligation` direct row 必须使用该组合。
-- `unresolved` 可带具体 target 或 `unresolved`，但 `rationale` 必须非空。
-- `candidate-related-capabilities` 必须是去重的已声明 capability id 数组，默认 `[]`，不得包含 target，也不得替代 target；关联必须由 source window 明示。
+- 顶层字段：`source-document`、`source-sha256`、`read-status`、`canonical-owner`、`source-role`、`phase-1-candidate-changes-capabilities-considered`、`section-inventory[]`、`source-atoms[]`、`blockers[]`、`language-self-check`。
+- `phase-1-candidate-changes-capabilities-considered` 是 object array；每项为 `change`、`capabilities[]` 和中文 `note`。`blockers[]` 是中文 string array；`language-self-check` 是非空中文 string。
+- `section-inventory[]`：`source-section`、`line-ranges[]`、`production-meaning`、`atom-ids[]`、`non-atom-classification`、`reason`。`production-meaning` 只允许 `obligation-bearing | contextual | explicit-non-goal | conflict | unclear | reference-only | prototype-only | background | formatting | superseded`；其范围合集必须覆盖 source 的每一物理行，meaningful row 必须关联 atom 或 blocker。
+- `source-atoms[]` 只包含：`source-atom-id`、`line-ranges[]`、`atom-type`、`source-fact`、`normativity`、`candidate-status`、`candidate-artifact-projection`、`candidate-owner-change`、`candidate-target-capability`、`rationale`。
+- `candidate-status` 只允许 `direct-candidate | unassigned | contextual-candidate | unresolved-conflict | unclassified`。guard/non-goal 语义由 `atom-type: scope-guard`、`normativity: must-not` 和 `candidate-artifact-projection: spec-guard` 表达；Phase 2 禁止 `duplicate-candidate`、`candidate-new-change` 和 `candidate-new-capability`。
+- `non-atom-classification` 只允许 `none | reference-only | prototype-only-not-production | background-only | formatting-only | superseded | mechanical-repeat | no-product-or-system-impact`；没有 atom 的 inventory row 不得使用 `none`。
+- `candidate-target-capability` 只映射现有 Phase 1 Capability，或使用 `unresolved` / `none`；Phase 2 不记录 Capability impact、related Capability、role、propose use 或 evidence need。
+- Phase 2 不使用 `source-anchors[]`。atom 的 `line-ranges[]` 提供直接 evidence，section inventory 提供全文 disposition evidence。
 
 Phase 3：
 
 - `obligation-atom-index.json`：`global-atoms[]` 包含精确 `GA-####`、source field、status、projection、owner Change、`capability-impact`、`target-capability`、`related-capabilities[]`、relation、`origins[]` 和 `line-ranges[]`；不得输出 `owner-capability`
-- `source-to-global-atom-map.json`：每个 Phase 2 atom/context 行对应一行，保留 candidate Capability field 和规范化 `global-capability-impact`、`global-target-capability`、`global-related-capabilities[]`；mapping outcome 必须且只能是 `global-atom-id`、`global-relation`、`non-coverage-status` 或 `blocker` 之一
-- `source-remainder-review.json`：使用 `audit-documents[]` 和 `rows[]` 保存 mechanical Phase 2 atom/anchor line coverage，以及对每个 candidate uncovered source range 的 semantic review
+- `source-to-global-atom-map.json`：每个 Phase 2 atom 行对应一行，保留 Phase 2 的 candidate status/projection/owner/target，并增加规范化 `global-capability-impact`、`global-target-capability`、`global-related-capabilities[]`；mapping outcome 必须且只能是 `global-atom-id`、`global-relation`、`non-coverage-status` 或 `blocker` 之一
+- `source-remainder-review.json`：使用 `audit-documents[]` 和 `rows[]` 保存 mechanical Phase 2 atom line coverage，以及对每个 candidate uncovered source range 的 semantic review
   - 每个 `audit-documents[]` 行包含 `source-document`、`source-sha256`、`line-count`、`evidence-ranges[]` 和 `candidate-uncovered-ranges[]`
   - 每个 `rows[]` 行包含 `source-document`、`lines`、`line-ranges[]`、`how-found`、`read-scope`、`semantic-classification`、`production-obligation`、`linked-global-atom-ids[]`、`non-coverage-status`、`blocker` 和 `reason`
 - `phase-3.trace.json`：包含 source classification、review path、normalization decision、remainder review path 和 decision value
 
-Phase 3 Capability field 规则与 Phase 2 对应，但使用规范化名称：`capability-impact`、`target-capability` 和 `related-capabilities[]`。direct spec 行只有在具备可信 repository baseline evidence 时使用 `new | modified`，否则使用具有 rationale 的 `unresolved`；普通 direct design/verification 行和 non-direct 行使用 `none` / `none`。`related-capabilities[]` 不具有 ownership，也不代表 progression。
+Phase 3 在全局规范化时新增 `capability-impact`、`target-capability` 和 `related-capabilities[]`。direct spec 行只有在具备可信 repository baseline evidence 时使用 `new | modified`，否则使用具有 rationale 的 `unresolved`；普通 direct design/verification 行和 non-direct 行使用 `none` / `none`。`related-capabilities[]` 不具有 ownership，也不代表 progression。
 
 Phase 4：
 

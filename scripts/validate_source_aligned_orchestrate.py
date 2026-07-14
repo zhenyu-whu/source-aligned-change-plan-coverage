@@ -65,19 +65,81 @@ CHANGE_ONLY_PROJECTIONS = {"design-obligation", "verification-obligation"}
 NON_TERMINAL_CAPABILITY_IMPACTS = {"new", "modified", "none", "unresolved"}
 TERMINAL_CAPABILITY_IMPACTS = {"new", "modified", "none", FOUNDATION_IMPACT}
 BUSINESS_CAPABILITY_IMPACTS = {"new", "modified"}
-PHASE2_DIRECT_CANDIDATE_STATUSES = {
+PHASE2_CANDIDATE_STATUSES = {
     "direct-candidate",
-    "candidate-new-change",
-    "candidate-new-capability",
     "unassigned",
-}
-PHASE2_NON_DIRECT_STATUSES = {
     "contextual-candidate",
+    "unresolved-conflict",
+    "unclassified",
+}
+PHASE2_PROJECTIONS = {*DIRECT_PROJECTIONS, "contextual-only", "unsure"}
+PHASE2_ATOM_TYPES = {
+    "behavior",
+    "data-contract",
+    "architecture-runtime",
+    "verification",
+    "scope-guard",
+    "context",
+}
+PHASE2_NORMATIVITY = {"must", "must-not", "should", "context"}
+PHASE2_MEANINGFUL_SECTION_MEANINGS = {
+    "obligation-bearing",
+    "contextual",
+    "explicit-non-goal",
+    "conflict",
+    "unclear",
+}
+PHASE2_SECTION_MEANINGS = {
+    *PHASE2_MEANINGFUL_SECTION_MEANINGS,
+    "reference-only",
+    "prototype-only",
+    "background",
+    "formatting",
+    "superseded",
+}
+PHASE2_NON_ATOM_CLASSIFICATIONS = {
+    "none",
     "reference-only",
     "prototype-only-not-production",
+    "background-only",
+    "formatting-only",
     "superseded",
-    "duplicate-candidate",
+    "mechanical-repeat",
     "no-product-or-system-impact",
+}
+PHASE2_ATOM_FIELDS = {
+    "source-atom-id",
+    "line-ranges",
+    "atom-type",
+    "source-fact",
+    "normativity",
+    "candidate-status",
+    "candidate-artifact-projection",
+    "candidate-owner-change",
+    "candidate-target-capability",
+    "rationale",
+}
+PHASE2_SECTION_FIELDS = {
+    "source-section",
+    "line-ranges",
+    "production-meaning",
+    "atom-ids",
+    "non-atom-classification",
+    "reason",
+}
+PHASE2_TOP_LEVEL_FIELDS = {
+    "trace-schema",
+    "trace-contract-version",
+    "source-document",
+    "source-sha256",
+    "read-status",
+    "canonical-owner",
+    "source-role",
+    "phase-1-candidate-changes-capabilities-considered",
+    "section-inventory",
+    "source-atoms",
+    "blockers",
+    "language-self-check",
 }
 PHASE3_DIRECT_STATUSES = {"direct", "direct-candidate"}
 LEGACY_CAPABILITY_FIELDS = {
@@ -230,30 +292,6 @@ def validate_capability_contract(
             reporter.error("capability-target", path, f"{context} 的 unresolved target 必须是已知 kebab-case Capability 或 unresolved")
     if projection in CHANGE_ONLY_PROJECTIONS and impact != "none":
         reporter.error("capability-change-only", path, f"{context} 的 {projection} 必须使用 impact=none")
-
-
-def validate_phase2_capability_status(
-    row: Dict[str, object],
-    path: Path,
-    reporter: IssueReporter,
-    context: str,
-) -> None:
-    status = normalize_code(row.get("candidate-status"))
-    projection = normalize_code(row.get("candidate-artifact-projection"))
-    impact = normalize_code(row.get("candidate-capability-impact"))
-    target = normalize_code(row.get("candidate-target-capability"))
-    if status in PHASE2_NON_DIRECT_STATUSES and (impact != "none" or target != "none"):
-        reporter.error("phase2-non-direct-capability", path, f"{context} 的 non-direct/contextual row 必须使用 impact=none、target=none")
-    if status in PHASE2_DIRECT_CANDIDATE_STATUSES and projection in SPEC_PROJECTIONS:
-        if impact not in {*BUSINESS_CAPABILITY_IMPACTS, "unresolved"}:
-            reporter.error("phase2-direct-spec-impact", path, f"{context} 的 direct spec candidate 必须使用 new、modified 或 unresolved")
-    if status == "candidate-new-capability" and impact != "new":
-        reporter.error("phase2-new-capability-impact", path, f"{context} 的 candidate-new-capability 必须使用 impact=new")
-    if target == "candidate-new-capability":
-        if impact != "new":
-            reporter.error("phase2-new-capability-impact", path, f"{context} 的 candidate-new-capability target 必须使用 impact=new")
-        if projection not in SPEC_PROJECTIONS:
-            reporter.error("phase2-new-capability-projection", path, f"{context} 的 candidate-new-capability target 必须采用 spec projection")
 
 
 def trace_decision_status(path: Path) -> str:
@@ -750,21 +788,41 @@ def work_queue_counts(orchestrate_dir: Path) -> Dict[str, int]:
     return counts
 
 
+def phase1_framework_ids(orchestrate_dir: Path) -> tuple[Set[str], Set[str]]:
+    path = orchestrate_dir / "phase-works/phase-1/initial-change-plan.md"
+    capabilities = {
+        normalize_code(cell(row, "Candidate Capability"))
+        for row in table_rows(path, ["Candidate Capability", "Purpose", "Owns", "Excludes"])
+        if normalize_code(cell(row, "Candidate Capability"))
+    }
+    text = path.read_text(encoding="utf-8") if path.exists() else ""
+    changes = {
+        normalize_code(match.group(1) or match.group(2))
+        for match in re.finditer(
+            r"(?m)^- Change 名称[：:]\s*(?:`([^`]+)`|([^\s。]+))",
+            text,
+        )
+    }
+    return changes, capabilities
+
+
 def load_phase2_atoms(orchestrate_dir: Path, reporter: IssueReporter) -> Dict[str, Dict[str, object]]:
     atom_root = orchestrate_dir / "phase-works/phase-2/source-obligation-atoms"
     all_atoms: Dict[str, Dict[str, object]] = {}
     for sidecar in sorted(atom_root.glob("*.atoms.json")):
         data = json_obj(sidecar, reporter, SOURCE_ATOMS_SCHEMA)
+        source_document = str(data.get("source-document", ""))
         for row in data.get("source-atoms", []) if isinstance(data.get("source-atoms"), list) else []:
             if not isinstance(row, dict):
                 reporter.error("phase2-source-atom-row", sidecar, "source-atoms item 必须是 object")
                 continue
             atom_id = str(row.get("source-atom-id", ""))
-            source_document = str(row.get("source-document", ""))
             key = f"{source_document}::{atom_id}"
             if key in all_atoms:
                 reporter.error("phase2-source-atom-duplicate", sidecar, f"Phase 2 source atom row 重复：{key}")
-            all_atoms[key] = row
+            normalized = dict(row)
+            normalized["source-document"] = source_document
+            all_atoms[key] = normalized
     return all_atoms
 
 
@@ -791,17 +849,50 @@ def validate_phase_2(orchestrate_dir: Path, repo_root: Path, reporter: IssueRepo
     )
     trace_path = orchestrate_dir / "trace/phase-2.trace.json"
     trace = json_obj(trace_path, reporter, PHASE_TRACE_SCHEMAS["phase-2"])
+    trace_sources: Dict[str, Dict[str, object]] = {}
     if trace:
         validate_trace_status(trace, trace_path, reporter, "phase-2", "phase2-status")
+        for field in ("work-queue-path", "sources", "phase-report-path"):
+            if field not in trace:
+                reporter.error("phase2-trace-field", trace_path, f"Phase 2 trace 缺少字段：{field}")
+        raw_trace_sources = trace.get("sources")
+        if not isinstance(raw_trace_sources, list):
+            reporter.error("phase2-trace-sources", trace_path, "Phase 2 trace sources 必须是 array")
+        else:
+            required = {
+                "source-document",
+                "atom-json-path",
+                "atom-json-sha256",
+                "atom-markdown-path",
+                "canonical-owner",
+                "read-status",
+                "inventory-section-count",
+                "atom-count",
+                "blockers",
+            }
+            for index, row in enumerate(raw_trace_sources, start=1):
+                if not isinstance(row, dict):
+                    reporter.error("phase2-trace-source-row", trace_path, f"sources[{index}] 必须是 object")
+                    continue
+                missing = sorted(required - set(row))
+                if missing:
+                    reporter.error("phase2-trace-source-field", trace_path, f"sources[{index}] 缺少字段：{', '.join(missing)}")
+                source_document = str(row.get("source-document", ""))
+                if source_document in trace_sources:
+                    reporter.error("phase2-trace-source-duplicate", trace_path, f"Phase 2 trace source 重复：{source_document}")
+                trace_sources[source_document] = row
     require_file(orchestrate_dir / "phase-works/phase-2/source-obligation-atoms/work-queue.md", reporter, "phase2-interface-artifact", "缺少 Phase 2 work queue")
     require_file(orchestrate_dir / "phase-works/phase-2/source-obligation-atoms/index.md", reporter, "phase2-interface-artifact", "缺少 Phase 2 atom index")
     require_file(orchestrate_dir / "phase-works/phase-2/phase-2-agent-report.md", reporter, "phase2-interface-artifact", "缺少 Phase 2 agent 报告")
     sources = phase1_sources(orchestrate_dir, repo_root)
+    phase1_changes, phase1_capabilities = phase1_framework_ids(orchestrate_dir)
+    read_full_documents: Set[str] = set()
     queue_counts = work_queue_counts(orchestrate_dir)
     for source in sources:
         if not isinstance(source, dict) or source.get("read-status") != "read-full":
             continue
         source_document = str(source.get("source-document", ""))
+        read_full_documents.add(source_document)
         count = queue_counts.get(source_document, 0)
         if count != 1:
             reporter.error("phase2-work-queue-coverage", trace_path, f"{source_document} 在 Phase 2 work queue 中出现了 {count} 次")
@@ -809,8 +900,21 @@ def validate_phase_2(orchestrate_dir: Path, repo_root: Path, reporter: IssueRepo
         data = json_obj(sidecar, reporter, SOURCE_ATOMS_SCHEMA)
         if not data:
             continue
+        unexpected_top_level = sorted(set(data) - PHASE2_TOP_LEVEL_FIELDS)
+        if unexpected_top_level:
+            reporter.error(
+                "phase2-top-level-field",
+                sidecar,
+                f"Phase 2 v3 sidecar 包含不允许的顶层字段：{', '.join(unexpected_top_level)}",
+            )
         if data.get("source-document") != source_document:
             reporter.error("phase2-source-document", sidecar, "source-document 与 Phase 1 manifest 不一致")
+        if data.get("read-status") != "read-full":
+            reporter.error("phase2-read-status", sidecar, f"{source_document} 的 read-status 必须是 read-full")
+        if not squash(data.get("canonical-owner")):
+            reporter.error("phase2-canonical-owner", sidecar, f"{source_document} 缺少 canonical-owner")
+        if data.get("source-role") != source.get("source-role"):
+            reporter.error("phase2-source-role", sidecar, f"{source_document} 的 source-role 与 Phase 1 trace 不一致")
         source_path = repo_root / source_document
         if source_path.exists() and data.get("source-sha256") != sha256_file(source_path):
             reporter.error("phase2-source-sha", sidecar, f"{source_document} 的 source-sha256 发生 drift")
@@ -818,42 +922,168 @@ def validate_phase_2(orchestrate_dir: Path, repo_root: Path, reporter: IssueRepo
         if not isinstance(atoms, list):
             reporter.error("phase2-source-atoms", sidecar, "source-atoms 必须是 array")
             continue
+        blockers = data.get("blockers")
+        if not isinstance(blockers, list):
+            reporter.error("phase2-blockers", sidecar, "blockers 必须是 array")
+            blockers = []
+        elif any(not isinstance(item, str) or not item.strip() for item in blockers):
+            reporter.error("phase2-blockers", sidecar, "blockers[] 必须只包含非空 string")
+        considered = data.get("phase-1-candidate-changes-capabilities-considered")
+        if not isinstance(considered, list):
+            reporter.error("phase2-considered-context", sidecar, "phase-1-candidate-changes-capabilities-considered 必须是 array")
+        else:
+            for index, item in enumerate(considered, start=1):
+                if not isinstance(item, dict) or set(item) != {"change", "capabilities", "note"}:
+                    reporter.error("phase2-considered-context", sidecar, f"considered[{index}] 必须只包含 change、capabilities[]、note")
+                    continue
+                if not isinstance(item.get("capabilities"), list):
+                    reporter.error("phase2-considered-context", sidecar, f"considered[{index}].capabilities 必须是 array")
+                change = normalize_code(item.get("change"))
+                if change and change not in phase1_changes:
+                    reporter.error("phase2-considered-change", sidecar, f"considered[{index}] 引用了 Phase 1 未声明的 Change：{change}")
+                for capability in item.get("capabilities", []) if isinstance(item.get("capabilities"), list) else []:
+                    capability_id = normalize_code(capability)
+                    if capability_id not in phase1_capabilities:
+                        reporter.error("phase2-considered-capability", sidecar, f"considered[{index}] 引用了 Phase 1 未声明的 Capability：{capability_id}")
+        if not isinstance(data.get("language-self-check"), str) or not str(data.get("language-self-check", "")).strip():
+            reporter.error("phase2-language-self-check", sidecar, "language-self-check 必须是非空 string")
+        atom_ids: Set[str] = set()
         for row in atoms:
             if not isinstance(row, dict):
                 reporter.error("phase2-source-atom-row", sidecar, "source-atoms item 必须是 object")
                 continue
             context = str(row.get("source-atom-id", ""))
             reject_legacy_capability_fields(row, sidecar, reporter, context or "source atom")
+            unexpected_fields = sorted(set(row) - PHASE2_ATOM_FIELDS)
+            if unexpected_fields:
+                reporter.error(
+                    "phase2-atom-field",
+                    sidecar,
+                    f"{context or 'source atom'} 包含 Phase 2 v3 不允许的字段：{', '.join(unexpected_fields)}",
+                )
             if not context:
                 reporter.error("phase2-source-atom-id", sidecar, "必须提供 source-atom-id")
+            elif context in atom_ids:
+                reporter.error("phase2-source-atom-duplicate", sidecar, f"source-atom-id 重复：{context}")
+            atom_ids.add(context)
             check_ranges(sidecar, reporter, row.get("line-ranges"), source_document, repo_root, context)
-            projection = str(row.get("candidate-artifact-projection", ""))
-            status = str(row.get("candidate-status", ""))
-            if not projection:
-                reporter.error("phase2-projection", sidecar, f"{context} 的 candidate-artifact-projection 为空")
-            if status == "direct-candidate" and projection == "contextual-only":
-                reporter.error("phase2-direct-contextual-only", sidecar, f"{context} 是 direct-candidate，却使用了 contextual-only")
-            if status == "direct-candidate" and is_no_owner(row.get("candidate-owner-change")):
-                reporter.error("phase2-direct-change-owner", sidecar, f"{context} 的 direct-candidate 必须指定 candidate owner Change 或 unassigned 标记")
-            validate_capability_contract(
-                row,
-                impact_field="candidate-capability-impact",
-                target_field="candidate-target-capability",
-                related_field="candidate-related-capabilities",
-                projection_field="candidate-artifact-projection",
-                allowed_impacts=NON_TERMINAL_CAPABILITY_IMPACTS,
-                path=sidecar,
-                reporter=reporter,
-                context=context,
-                rationale_field="rationale",
-            )
-            validate_phase2_capability_status(row, sidecar, reporter, context)
-            if status == "candidate-new-capability" and projection not in SPEC_PROJECTIONS:
+            status = normalize_code(row.get("candidate-status"))
+            projection = normalize_code(row.get("candidate-artifact-projection"))
+            owner = normalize_code(row.get("candidate-owner-change"))
+            target = normalize_code(row.get("candidate-target-capability"))
+            atom_type = normalize_code(row.get("atom-type"))
+            normativity = normalize_code(row.get("normativity"))
+            rationale = squash(row.get("rationale"))
+            if not squash(row.get("source-fact")):
+                reporter.error("phase2-source-fact", sidecar, f"{context} 缺少 source-fact")
+            if status not in PHASE2_CANDIDATE_STATUSES:
+                reporter.error("phase2-candidate-status", sidecar, f"{context} 的 candidate-status 非法：{status}")
+            if projection not in PHASE2_PROJECTIONS:
+                reporter.error("phase2-projection", sidecar, f"{context} 的 candidate-artifact-projection 非法：{projection}")
+            if atom_type not in PHASE2_ATOM_TYPES:
+                reporter.error("phase2-atom-type", sidecar, f"{context} 的 atom-type 非法：{atom_type}")
+            if normativity not in PHASE2_NORMATIVITY:
+                reporter.error("phase2-normativity", sidecar, f"{context} 的 normativity 非法：{normativity}")
+            if status in {"direct-candidate", "unassigned"} and projection == "contextual-only":
+                reporter.error("phase2-direct-contextual-only", sidecar, f"{context} 是 actionable atom，却使用 contextual-only")
+            if status == "direct-candidate" and (is_no_owner(owner) or owner in {"unassigned", "contextual"}):
+                reporter.error("phase2-direct-change-owner", sidecar, f"{context} 的 direct-candidate 必须映射到现有 Change")
+            elif status == "direct-candidate" and owner not in phase1_changes:
+                reporter.error("phase2-direct-change-owner", sidecar, f"{context} 映射到了 Phase 1 未声明的 Change：{owner}")
+            if status == "unassigned" and owner != "unassigned":
+                reporter.error("phase2-unassigned-owner", sidecar, f"{context} 的 unassigned status 必须使用 owner=unassigned")
+            if status == "contextual-candidate":
+                if projection != "contextual-only":
+                    reporter.error("phase2-contextual-projection", sidecar, f"{context} 的 contextual-candidate 必须使用 contextual-only")
+                if owner not in {"contextual", "none"}:
+                    reporter.error("phase2-contextual-owner", sidecar, f"{context} 的 contextual-candidate owner 必须是 contextual 或 none")
+            if status in {"unresolved-conflict", "unclassified"}:
+                if projection != "unsure" or owner != "none" or target != "none":
+                    reporter.error("phase2-blocked-mapping", sidecar, f"{context} 的 conflict/unclassified 必须使用 unsure、owner=none、target=none")
+                if not blockers:
+                    reporter.error("phase2-blocker-required", sidecar, f"{context} 要求在 blockers[] 中记录阻塞项")
+            if projection in {"design-obligation", "verification-obligation", "contextual-only", "unsure"} and target != "none":
+                reporter.error("phase2-target", sidecar, f"{context} 的 {projection} 必须使用 target=none")
+            if projection in SPEC_PROJECTIONS and target != "unresolved" and (is_no_owner(target) or not KEBAB_CASE_RE.match(target)):
+                reporter.error("phase2-target", sidecar, f"{context} 的 spec/guard target 必须是现有 kebab-case Capability 或 unresolved")
+            elif projection in SPEC_PROJECTIONS and target != "unresolved" and target not in phase1_capabilities:
+                reporter.error("phase2-target", sidecar, f"{context} 映射到了 Phase 1 未声明的 Capability：{target}")
+            if status in {"unassigned", "contextual-candidate", "unresolved-conflict", "unclassified"} and not rationale:
+                reporter.error("phase2-rationale", sidecar, f"{context} 的 {status} 必须提供 rationale")
+
+        inventory = data.get("section-inventory")
+        if not isinstance(inventory, list) or not inventory:
+            reporter.error("phase2-section-inventory", sidecar, "section-inventory 必须是非空 array")
+            inventory = []
+        inventory_ranges: List[Dict[str, int]] = []
+        previous_start = 0
+        for index, row in enumerate(inventory, start=1):
+            if not isinstance(row, dict):
+                reporter.error("phase2-section-inventory-row", sidecar, f"section-inventory[{index}] 必须是 object")
+                continue
+            context = squash(row.get("source-section")) or f"section-inventory[{index}]"
+            unexpected_fields = sorted(set(row) - PHASE2_SECTION_FIELDS)
+            if unexpected_fields:
                 reporter.error(
-                    "phase2-new-capability-projection",
+                    "phase2-inventory-field",
                     sidecar,
-                    f"{context} 的 candidate-new-capability 必须采用 spec projection",
+                    f"{context} 包含 Phase 2 v3 不允许的字段：{', '.join(unexpected_fields)}",
                 )
+            check_ranges(sidecar, reporter, row.get("line-ranges"), source_document, repo_root, context)
+            ranges = valid_range_items(row.get("line-ranges"))
+            if ranges and ranges[0]["start"] < previous_start:
+                reporter.error("phase2-inventory-order", sidecar, f"{context} 的 line-ranges 未按 source 顺序排列")
+            if ranges:
+                previous_start = ranges[0]["start"]
+                inventory_ranges.extend(ranges)
+            meaning = normalize_code(row.get("production-meaning"))
+            if meaning not in PHASE2_SECTION_MEANINGS:
+                reporter.error("phase2-production-meaning", sidecar, f"{context} 的 production-meaning 非法：{meaning}")
+            linked = row.get("atom-ids")
+            if not isinstance(linked, list):
+                reporter.error("phase2-inventory-atom-ids", sidecar, f"{context} 的 atom-ids 必须是 array")
+                linked = []
+            for atom_id in linked:
+                if normalize_code(atom_id) not in atom_ids:
+                    reporter.error("phase2-inventory-unknown-atom", sidecar, f"{context} 引用了未知 atom：{atom_id}")
+            reason = squash(row.get("reason"))
+            non_atom = normalize_code(row.get("non-atom-classification"))
+            if non_atom not in PHASE2_NON_ATOM_CLASSIFICATIONS:
+                reporter.error("phase2-inventory-non-atom", sidecar, f"{context} 的 non-atom-classification 非法：{non_atom}")
+            if meaning in PHASE2_MEANINGFUL_SECTION_MEANINGS and not linked and not blockers:
+                reporter.error("phase2-inventory-meaningful-without-atom", sidecar, f"{context} 含有产品/系统语义，但未关联 atom 或 blocker")
+            if not linked and (not non_atom or not reason):
+                reporter.error("phase2-inventory-non-atom", sidecar, f"{context} 没有 atom 时必须填写 non-atom-classification 和 reason")
+            if not linked and non_atom == "none":
+                reporter.error("phase2-inventory-non-atom", sidecar, f"{context} 没有 atom 时不得使用 non-atom-classification=none")
+        line_count = source_line_count(repo_root, source_document)
+        if line_count is not None:
+            uncovered = uncovered_line_ranges(inventory_ranges, line_count)
+            if uncovered:
+                reporter.error(
+                    "phase2-inventory-gap",
+                    sidecar,
+                    f"section-inventory 未覆盖全文：{line_ranges_label(uncovered)}",
+                )
+        trace_row = trace_sources.get(source_document)
+        if trace_row is None:
+            reporter.error("phase2-trace-source-coverage", trace_path, f"Phase 2 trace sources 缺少：{source_document}")
+        else:
+            expected = {
+                "atom-json-path": rel(sidecar, repo_root),
+                "atom-json-sha256": sha256_file(sidecar),
+                "atom-markdown-path": rel(sidecar.with_suffix(".md"), repo_root),
+                "canonical-owner": data.get("canonical-owner"),
+                "read-status": data.get("read-status"),
+                "inventory-section-count": len(inventory),
+                "atom-count": len(atoms),
+                "blockers": blockers,
+            }
+            for field, expected_value in expected.items():
+                if trace_row.get(field) != expected_value:
+                    reporter.error("phase2-trace-source-drift", trace_path, f"{source_document} 的 {field} 与 canonical source atom sidecar 不一致")
+    for extra_source in sorted(set(trace_sources) - read_full_documents):
+        reporter.error("phase2-trace-source-coverage", trace_path, f"Phase 2 trace sources 包含非 read-full 或未知 source：{extra_source}")
     validate_phase2_mirror(orchestrate_dir, reporter)
 
 
@@ -957,7 +1187,7 @@ def phase2_evidence_ranges(orchestrate_dir: Path, source_document: str) -> tuple
 
     ranges: List[Dict[str, int]] = []
     origins: List[str] = []
-    for collection, id_key in (("source-atoms", "source-atom-id"), ("source-anchors", "anchor")):
+    for collection, id_key in (("source-atoms", "source-atom-id"),):
         rows = data.get(collection)
         if not isinstance(rows, list):
             continue
@@ -1237,6 +1467,15 @@ def validate_phase_3(orchestrate_dir: Path, repo_root: Path, reporter: IssueRepo
         source_document = str(row.get("source-document", ""))
         atom_id = str(row.get("source-atom-id", ""))
         reject_legacy_capability_fields(row, map_path, reporter, f"{source_document}::{atom_id}")
+        forbidden_phase2_fields = sorted(
+            {"lines", "candidate-capability-impact", "candidate-related-capabilities"}.intersection(row)
+        )
+        if forbidden_phase2_fields:
+            reporter.error(
+                "phase3-map-v3-field",
+                map_path,
+                f"{source_document}::{atom_id} 包含 source-map v3 已移除的字段：{', '.join(forbidden_phase2_fields)}",
+            )
         source_key = f"{source_document}::{atom_id}"
         mapped_keys.add(source_key)
         phase2_row = phase2_atoms.get(source_key)
@@ -1245,9 +1484,7 @@ def validate_phase_3(orchestrate_dir: Path, repo_root: Path, reporter: IssueRepo
                 "candidate-status",
                 "candidate-artifact-projection",
                 "candidate-owner-change",
-                "candidate-capability-impact",
                 "candidate-target-capability",
-                "candidate-related-capabilities",
             ):
                 if row.get(field) != phase2_row.get(field):
                     reporter.error(
@@ -1264,24 +1501,6 @@ def validate_phase_3(orchestrate_dir: Path, repo_root: Path, reporter: IssueRepo
             reporter.error("phase3-map-exclusive", map_path, f"{source_document}::{atom_id} 必须且只能设置一个 mapping outcome")
         if row.get("global-atom-id") and row.get("global-atom-id") not in global_atoms:
             reporter.error("phase3-map-unknown-ga", map_path, f"{atom_id} 映射到了未知的 {row.get('global-atom-id')}")
-        validate_capability_contract(
-            row,
-            impact_field="candidate-capability-impact",
-            target_field="candidate-target-capability",
-            related_field="candidate-related-capabilities",
-            projection_field="candidate-artifact-projection",
-            allowed_impacts=NON_TERMINAL_CAPABILITY_IMPACTS,
-            path=map_path,
-            reporter=reporter,
-            context=f"{source_document}::{atom_id}",
-            rationale_field="reason",
-        )
-        validate_phase2_capability_status(
-            row,
-            map_path,
-            reporter,
-            f"{source_document}::{atom_id}",
-        )
         global_atom_id = str(row.get("global-atom-id", ""))
         if global_atom_id in global_atoms:
             global_row = global_atoms[global_atom_id]

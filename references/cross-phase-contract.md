@@ -18,7 +18,7 @@
 
 ## Evidence 与 identity
 
-- 原始 source document 是 production obligation 的语义来源。source anchor 和行范围是 trace evidence，不是 coverage 目标本身。
+- 原始 source document 是 production obligation 的语义来源。section inventory 证明全文已被处置，atom 行范围提供语义 trace evidence；二者都不是 coverage 目标本身。
 - canonical JSON sidecar 是 machine-readable authority；renderer-backed Markdown 是 reviewer/proposal surface。修复 drift 时更新 JSON 或重新渲染，不得只手工修改 mirror。
 - Phase 2 canonical source atom JSON 通过 reviewer loop 后冻结。后续 missing、split、duplicate、grounding 或 ownership finding 进入 Phase 3–5，不回写 frozen evidence。
 - Phase 3 分配的 global atom ID 必须使用 `GA-####`。Phase 4、Phase 5 和后续 OpenSpec 工作必须原样保留，不得改写为其他 global 前缀或 source-local ID。
@@ -29,7 +29,7 @@
 - artifact projection 与 Change ownership 正交。direct atom 使用 `spec-requirement`、`spec-guard`、`design-obligation` 或 `verification-obligation`；`contextual-only` 只用于 non-direct context。
 - Capability advancement 只来自具有具体 target Capability 的 direct `spec-requirement` / `spec-guard` atom。普通 direct design/verification atom 和所有 non-direct atom 不得产生 business Capability progression。
 - `related-capabilities[]` 只保留 source-explicit、已声明、去重且不同于 target 的 non-owning evidence；不得替代 target，也不得产生 ownership、progression、Capability view 或 complexity count。
-- Phase 2 只记录 candidate metadata，Phase 3 负责规范化，Phase 5 负责 final determination。不得把较早 Phase 的 candidate owner、projection 或 Capability impact 当作 final authority。
+- Phase 2 只记录 source-local status/projection 和对现有 Change/Capability 的候选映射；Phase 3 负责跨文档规范化与 duplicate/coverage closure；Phase 5 负责 new/refit Change、new Capability 和其他 final determination。不得把较早 Phase 的 candidate owner、projection 或 target 当作 final authority。
 - Phase 5 返回 `accepted` 或 `adjusted` 前必须解决所有 direct atom 的 final owner、final projection 和 unresolved Capability impact/target。
 
 ## Capability、Change 与 Phase 1 边界
@@ -38,7 +38,7 @@
 - Phase 1 必须先建立 coarse candidate Capability topology，再独立按 outcome、cohesion、indivisibility、acceptance 和 hard dependency 形成 Change roadmap；Capability 列数、名称或矩阵外观不得决定 Change boundary。
 - Phase 1 不执行 obligation extraction、atom ID、line-level coverage、unique obligation ownership、requirement operation 或 completeness claim。coarse semantic landscape、Purpose、Owns/Excludes、intent、outcome 和 source hint 不得被解释为 obligation ledger。
 - Phase 1 的 Change–Capability edge 只使用 `first-advancement` / `later-advancement` 表达 roadmap progression hypothesis。OpenSpec Capability relation `New` / `Modified` 取决于 repository spec baseline，不得从 roadmap 首次出现位置推断。
-- Phase 2/3 的 capability impact 是 candidate/normalized planning metadata；在没有 repository baseline evidence 时，direct spec atom 应保持 `unresolved`，由 Phase 5 reconciliation。较早 Phase 的 `new` / `modified` 不能替代 Phase 5 baseline check。
+- Phase 2 不记录 capability impact；Phase 3 的 capability impact 只是 normalized planning metadata。在没有 repository baseline evidence 时，direct spec atom 应保持 `unresolved`，由 Phase 5 reconciliation。较早 Phase 的 `new` / `modified` 不能替代 Phase 5 baseline check。
 - Phase 5 必须将 source-backed final target 与只读 `openspec/specs/<capability>/spec.md` baseline 对齐：existing target 的所有 planned delta 为 `modified`；absent target 的首次 planned delta 为 `new`，其后按明确 roadmap/archive 顺序为 `modified`。现有 spec 只提供 identity/existence/comparison evidence，不成为 production obligation authority。
 - Capability-level `New` / `Modified` 与 requirement-level `ADDED` / `MODIFIED` / `REMOVED` / `RENAMED` 是两层语义。向 existing Capability 新增 requirement 仍是 Capability-level `Modified` + requirement-level `ADDED`；任何 Phase 都不得把 requirement operation 反推为 Capability existence。
 

@@ -1,317 +1,252 @@
 # Phase 2：source-first obligation atom 提取
 
-Phase 2 直接从 source document 提取 source-backed obligation atom candidate。analysis unit 是 source document，不是 planned Change。Phase 1 framework 提供 candidate Change context 和 candidate stable-Capability map；它不得妨碍发现 unassigned、cross-cutting，或为 new/refit Change 或 spec Capability 提供 evidence 的 atom。
+Phase 2 逐份完整阅读 source document，先建立覆盖全文的 section inventory，再提取所有具有产品或系统语义的 source atom candidate。analysis unit 是 source document，不是 planned Change；Phase 1 framework 只提供现有 Change/Capability 的候选映射目标。
 
-执行本 Phase 前，每个 extraction writer 和 index/report writer 都必须直接完整读取 `references/cross-phase-contract.md`；prompt 摘要、转述或继承上下文不能替代直接读取。
+本 Phase 只负责 raw extraction 和 existing-framework mapping。不执行跨文档去重、global coverage closure、new/refit Change 判断、new Capability 判断或 repository baseline reconciliation；无法映射到现有 framework 的 atom 统一标记为 `unassigned`。
 
-Phase 2 生成不可变 raw extraction evidence 和独立的 Phase 2 aggregate inventory。Phase 3 负责 normalization、missing-atom gap closure、duplicate resolution、candidate Change ownership 和规范化 capability-impact metadata。Phase 4 负责 input Change/Capability 的 source-window grounding。Phase 5 负责 final Change ownership、spec-Capability impact、plan refit 和 per-Change packet generation。
+## 目录
 
-## 输入
+- [输入与产出](#输入与产出)
+- [角色与执行顺序](#角色与执行顺序)
+- [Work queue](#work-queue)
+- [Section inventory 与 atom 的关系](#section-inventory-与-atom-的关系)
+- [Atom 提取方法](#atom-提取方法)
+- [Canonical source atom file](#canonical-source-atom-file)
+- [索引与报告](#索引与报告)
+- [完成门禁](#完成门禁)
+
+## 输入与产出
+
+输入：
 
 - `openspec/orchestrate/phase-works/phase-1/initial-change-plan.md`
 - `openspec/orchestrate/phase-works/phase-1/source-doc-manifest.md`
-- 用户指定的 source document 根目录或精确 source path，仅用于解析 manifest path 和行引用。
-
-## 输出
+- 用户指定的 source root 或精确 source path，用于读取正文和生成行引用。
 
 只写入以下 Phase 2 artifact：
 
-- `openspec/orchestrate/phase-works/phase-2/source-obligation-atoms/work-queue.md`
-- `openspec/orchestrate/phase-works/phase-2/source-obligation-atoms/index.md`
-- 为 manifest 中每份 `Read Status: read-full` source document 写入 `openspec/orchestrate/phase-works/phase-2/source-obligation-atoms/<source-relative-path-without-extension>.atoms.json`
-- 为 manifest 中每份 `Read Status: read-full` source document，从匹配 JSON 渲染 `openspec/orchestrate/phase-works/phase-2/source-obligation-atoms/<source-relative-path-without-extension>.atoms.md`
-- `openspec/orchestrate/trace/phase-2.trace.json`
-- `openspec/orchestrate/phase-works/phase-2/phase-2-agent-report.md`
+- `phase-works/phase-2/source-obligation-atoms/work-queue.md`
+- 每份 `Read Status: read-full` source 对应的 `<source>.atoms.json`
+- 从每个 JSON 渲染的 `<source>.atoms.md`
+- `phase-works/phase-2/source-obligation-atoms/index.md`
+- `phase-works/phase-2/phase-2-agent-report.md`
+- `trace/phase-2.trace.json`
 
-在 `phase-works/phase-2/source-obligation-atoms/` 下使用单层 filename：根据 manifest 中列出的 source document path 生成名称，移除 extension，将 path separator 替换为 `--`，再添加 `.atoms.md` 和 `.atoms.json`。
+路径均相对于 `openspec/orchestrate/`。source atom file 使用单层确定性名称：移除 source extension，将 path separator 替换为 `--`，再添加 `.atoms.json` 或 `.atoms.md`。
 
-Phase 2 完成后，`.atoms.json` file 不可修改。其 `.atoms.md` file 是 renderer mirror，只能从 JSON 刷新。如果后续 Phase 发现 missing atom、duplicate fact、source-window grounding issue 或 ownership change，应将其记录在 Phase 3 global atom index、Phase 4 grounding artifact 和 Phase 5 refit artifact 中；不得改写原始 Phase 2 source atom JSON。
+canonical JSON、renderer 和 validator 以 `references/trace-sidecar-contract.md` 为准；跨阶段语义以 `references/cross-phase-contract.md` 为准。每个 extraction writer 和 index/report writer 必须直接完整读取本文件、cross-phase contract 和 trace-sidecar contract。
 
-所有 extraction writer 和 index/report writer 完成后返回 main agent，由 main agent 完整执行 `references/reviewer-repair-loop.md`。通过后冻结 raw `.atoms.json` evidence 及其 rendered `.atoms.md` mirror；`rendered-markdown-drift` 只能通过修复 JSON 或重新渲染解决。
+validator 与 independent reviewer 通过后冻结 `.atoms.json`；`.atoms.md` 只能由 renderer 刷新。
 
-## 输出所有权
+## 角色与执行顺序
 
-Phase 2 output responsibility 分为 orchestration、source extraction 和 aggregation：
+| 角色 | 允许读取 | Phase 2 content 写入 | 禁止事项 |
+| --- | --- | --- | --- |
+| main agent | Phase 1 plan、manifest 和 source metadata | `work-queue.md` | 提取或修复 atom、作 coverage 判断 |
+| extraction writer | 分配的 source 正文、Phase 1 plan/manifest、work queue、必需 contract | 分配 source 的 canonical `.atoms.json` | 写其他 source、跨文档比较、聚合、判断 new Change/Capability、读取 Phase 3–5 output |
+| renderer | canonical Phase 2 JSON | 匹配的 `.atoms.md` mirror | 解释或补充 atom |
+| index/report writer | Phase 1 plan/manifest、work queue、全部 `.atoms.json` | `index.md`、`phase-2-agent-report.md`、`phase-2.trace.json` | 重读 source 创建 evidence、编辑 atom、repair、去重、闭合 coverage 或作 final decision |
 
-- main orchestrating agent 可以在 Phase 2A 编写 `phase-works/phase-2/source-obligation-atoms/work-queue.md`，因为这是轻量 scheduling，而不是 source obligation extraction。
-- source-extraction subagent 只能写入分配给自己的 canonical `phase-works/phase-2/source-obligation-atoms/<source>.atoms.json` sidecar。随后 main orchestrating agent 或 writer 运行 `scripts/render_source_aligned_orchestrate.py --artifact phase2-source-atoms --write`，生成匹配的 `.atoms.md` mirror。
-- 所有 extraction subagent 完成后，启动 fresh independent Phase 2 index/report subagent。该 subagent 只能写入 `phase-works/phase-2/source-obligation-atoms/index.md`、`phase-works/phase-2/phase-2-agent-report.md` 和 `trace/phase-2.trace.json`。
-- Phase 2 index/report subagent 可以读取 `phase-works/phase-1/initial-change-plan.md`、`phase-works/phase-1/source-doc-manifest.md`、`phase-works/phase-2/source-obligation-atoms/work-queue.md` 和所有生成的 `phase-works/phase-2/source-obligation-atoms/*.atoms.json` file。它可以检查 rendered `.atoms.md` mirror 是否便于 reviewer 阅读，但 count、status distribution、required section、line-range format 和 missing output 必须从 JSON 推导。
-- Phase 2 index/report subagent 不得提取新 atom、编辑 source atom file、重新读取 source 正文以创建新 evidence、执行 global duplicate resolution、决定 final atom ownership、闭合 semantic coverage，也不得读取 Phase 3/Phase 4/Phase 5 output。
-- 如果 aggregation pass 发现缺失、格式错误或不完整的 extraction output，必须在 `phase-works/phase-2/phase-2-agent-report.md` 中记录 blocker，并继续把 aggregate 严格限制在 Phase 2 scope。
-`phase-works/phase-2/source-obligation-atoms/index.md` 和 `phase-works/phase-2/phase-2-agent-report.md` 仅作为 Phase 2 summary/review aid，不得成为规范化 global atom index 或 final plan ownership map。
+reviewer 与 repair-writer 的权限由 `references/reviewer-repair-loop.md` 定义。
 
-## Artifact 语言门禁
+表中的写入限制只约束 Phase 2 content artifact。main agent 仍按 trace contract 负责共享 `trace/manifest.json` 的初始化、validator 前刷新和 reviewer 通过后刷新；这不构成 extraction content 写入。
 
-继承 `references/cross-phase-contract.md` 的 Artifact Language Gate。Phase 2 的 `Source Fact`、`Rationale`、`Propose Use`、`Reason`、ownership ambiguity、candidate missing boundary、blocker、report summary 和解释性 table cell 必须使用简体中文；`Source Phrase` 可以保留原文。
+执行顺序：
 
-## Obligation Atom 模型
+1. main agent 建立 work queue。
+2. 每个 batch 启动一个 fresh extraction writer；每份 source 只分配一个 canonical owner。
+3. extraction writer 对每份 source 依次完成：全文阅读 → section inventory → atom extraction → existing-framework mapping → canonical JSON。
+4. 在 repository root 运行 Phase 2 scoped renderer：
 
-obligation atom 是应延续到后续 `openspec-propose` artifact 中、由 source 支撑的最小 production obligation。后续 proposal/spec/design/task file 应能直接消费一个 atom，而无需重新解释宽泛的 source 段落。
+   ```bash
+   python3 .codex/skills/source-aligned-change-plan-coverage/scripts/render_source_aligned_orchestrate.py \
+     --orchestrate-dir openspec/orchestrate \
+     --artifact phase2-source-atoms \
+     --write
+   ```
+5. 所有 extraction 完成后，启动 fresh index/report writer，只读聚合 JSON，并写入 index、report 和 status 为 `source-atoms-written` 的 Phase trace。该 status 只表示 writer output 已形成。
+6. 聚合发现缺失或格式错误时只记录 blocker，不得修复 extraction。
+7. main agent 运行 validator、reviewer 和必要的 repair loop；通过后刷新 manifest 并冻结 Phase 2。
 
-candidate artifact projection 记录 atom 预期进入的下游位置。它只是一项 candidate；Phase 3 将其规范化，Phase 5 完成最终定案。不得推断每个 `direct-candidate` 都是 spec requirement。architecture、runtime、package、provider、deployment、schema 和 verification atom 往往投影到 design 或 task/proof，而不是 normative spec。
+## Work queue
 
-将提取出的 source fact 分类到以下 bucket：
+`work-queue.md` 只做 scheduling，不得包含 atom、coverage judgment 或“该文档无 obligation”的结论。
 
-- direct candidate atom：可能由某个 Change 实现、preserve、验证或显式排除的 source-backed production behavior。
-- contextual candidate atom：可能约束 design 的 source-backed fact 或未来 obligation；除非 Phase 3 将其重新分类并规范化为 direct，否则不计入 direct Capability advancement。Phase 4 可以增加 grounding evidence，但不分配 impact 或 target。
-- unassigned atom：Phase 1 framework 无法明确 candidate owner Change 的 source-backed production obligation。
-- candidate new Change atom：提示 Phase 1 framework 可能缺少 executable loop 或切分错误的 source-backed obligation。
-- candidate new Capability atom：提示缺少持久 spec behavior boundary 的 `spec-requirement` 或 `spec-guard` obligation。不得对 `design-obligation` 或 `verification-obligation` atom 使用此分类。
-- non-coverage classification：reference-only、prototype-only、non-production、superseded、no-impact 或 blocked/conflicting 的 source-backed material。
+- 每份 `read-full` source 必须恰好出现在一个 batch，并有一个 canonical owner。
+- 按 source family、document role、doc type、line count、semantic density 和 context pressure 形成少量 coherent batch。
+- 同一 source 不得拆给多个 writer；超大文档仍只有一个 owner。
+- 默认 batch 不超过五个；超过时记录无法安全合并的原因。
+- `small`、`medium`、`large` 只是调度标签，不是内容价值判断。
 
-direct candidate atom 只有在具备 source 支撑、与实现相关、足够小而能独立验证或排除，且不只是宽泛 summary 时才有效。一个 atom 应表示一个 condition、state、action、display rule、data fact、transition、failure path、preserve boundary、verification requirement 或显式 non-goal。如果 source 段落包含多个此类 obligation，将其拆成多个 atom。
-
-atom type：
-
-- `page-role`
-- `route`
-- `entry`
-- `exit`
-- `state`
-- `trigger`
-- `display`
-- `primary-action`
-- `disabled-action`
-- `recovery`
-- `interaction-rule`
-- `data-fact`
-- `auth-privacy-rule`
-- `failure-path`
-- `responsive`
-- `architecture-runtime`
-- `verification`
-- `acceptance`
-- `preserve-boundary`
-- `explicit-non-goal`
-- `dependency`
-- `reference`
-
-使用稳定、可读的 source-local ID，例如：
-
-- `intake-form.state.valid.submit-enabled`
-- `approval-flow.interaction.edit-overwrites-pending-state`
-- `async-job.failure-no-result`
-
-Phase 3 建立规范化 global obligation atom index 时，可以重命名 ID 或添加 global qualifier。不得假设 Phase 2 ID 在全局唯一。
-
-candidate artifact projection value：
-
-- `spec-requirement`：应成为 requirement/scenario content 的 normative user/system behavior。
-- `spec-guard`：spec 必须保护、但不得转化成新 positive behavior 的 preserve boundary、显式 non-goal、forbidden drift 或 must-not scope。
-- `design-obligation`：design 必须消费的 architecture/runtime/data/API/module/provider/deployment shape。
-- `verification-obligation`：task/proof 必须消费的 proof、fixture、visual、smoke 或 evidence strategy。
-- `contextual-only`：应约束解释但不应成为下游 implementation scope 的 non-direct context。
-- `unsure`：仅在 source semantics 不足时使用；Phase 3 必须解决或阻塞。
-
-`contextual-only` 必须与 contextual、reference、non-production、non-goal 或其他 non-direct candidate status 配对。如果某行为 `direct-candidate`，不得分配 `contextual-only`；应选择 `spec-requirement`、`spec-guard`、`design-obligation` 或 `verification-obligation`。如果 source fact 更像 contextual 而非 direct，将 candidate status 改为 `contextual-candidate`；如果无法安全决定 projection，使用 `unsure` 并说明 Phase 3 为何必须解决它。
-
-candidate Capability field 使用以下 v2 contract：
-
-- `candidate-capability-impact`：`new`、`modified`、`none` 或 `unresolved`。
-- `candidate-target-capability`：由 impact 允许的 Phase 1 Capability ID、`candidate-new-capability`、`none` 或 `unresolved`。
-- `candidate-related-capabilities[]`：引用 source window 明确表达关联的唯一 Phase 1 Capability ID array。默认为 `[]`，排除 target Capability，只作为 non-owning supporting evidence。
-
-规则：
-
-- direct `spec-requirement` 或 `spec-guard` 行必须尽量识别具体 target。由于 Phase 2 不读取 repository spec baseline，impact 默认使用具有非空 rationale 的 `unresolved`；只有用户纳入 source authority 的材料明确提供可信 baseline identity/existence evidence 时，才可暂记 `new` / `modified`，且仍只是 candidate metadata。`candidate-new-capability` 只允许与 impact `new` 及上述 spec projection 之一配对。
-- direct `design-obligation` 或 `verification-obligation` 行始终使用 impact `none` 和 target `none`。它仍是 direct 且由 Change candidate-own；不得仅因没有 target Capability 而将其降级为 contextual。
-- non-direct/contextual 行使用 impact `none` 和 target `none`。
-- impact `none` 要求 target `none`。impact `unresolved` 允许已知 target 或 `unresolved`，要求 rationale，并且必须在 Phase 3 规范化或阻塞。
-- related Capability 绝不替代必需 target，也绝不代表 `new` / `modified`、progression、ownership 或未来 Capability view。
-
-## Phase 2A：work queue 规划
-
-启动 extraction subagent 前，创建 `phase-works/phase-2/source-obligation-atoms/work-queue.md`。
-
-这是轻量 scheduling step。可以读取 `phase-works/phase-1/initial-change-plan.md`、`phase-works/phase-1/source-doc-manifest.md`、source path、document name、source role、directory grouping、file size 和 line count。不得提取 obligation atom、决定 coverage、分类 source obligation，也不得使用 filename/path heuristic 证明某 document 不含 production obligation。
-
-使用此 step 保持 context quality 并提高 parallelism：
-
-- 先按 source family、document role、line count 和预期 extraction difficulty 建立初始 semantic split。
-- 启动 subagent 前执行 merge review。small/medium candidate batch 共享 source family 或 extraction discipline，且合并后的 context 仍便于 review 时，将其合并。
-- 默认目标：Phase 2 extraction batch 总数不超过五个。只有 source set 确实很大、包含多份超大 document，或合并 batch 会产生不安全 context pressure 或降低 extraction quality 时，才能超过五个；在 work queue 中记录例外 rationale。
-- 如果最大化 parallelism 会产生许多小 extraction batch，则不要这样优化。优先使用数量更少、coherent 的 canonical owner，而不是松散地为每个小 cluster 分配一个 subagent。
-- small document 可以按 directory、source role 或 doc type 分批。
-- medium document 的合计 line count 合理时，可以用小 batch 分配。
-- large document 通常应分配 dedicated extraction subagent。
-- very large document 仍只允许一个 canonical extraction owner；该 owner 可以按 section 组织 output，但 Phase 2 不得将同一 source document 的 canonical extraction 拆给多个 subagent。
-- prototype page、prototype object、system contract、architecture/product doc 和 verification matrix 应按 coherent source domain 分批，而不是按任意 filename 顺序。
-- batch 只是 scheduling unit；batch 中每份 source document 仍需要独立 `<source>.atoms.md` file。
-
-`phase-works/phase-2/source-obligation-atoms/work-queue.md` 必须包含：
+必须包含：
 
 | Batch | Source Documents | Line Counts | Source Roles / Doc Types | Assignment Rationale | Extraction Mode | Canonical Owner |
 | --- | --- | --- | --- | --- | --- | --- |
 
+`Extraction Mode` 使用 `single-doc`、`small-doc-batch`、`medium-doc-batch` 或 `large-doc-dedicated`。table 后添加 `Batch Merge Review`，记录 initial/final batch count、合并情况和例外理由。
+
+## Section inventory 与 atom 的关系
+
+section inventory 是全文 disposition layer，atom 是在其基础上提取的 semantic fact layer，二者职责不同：
+
+1. 先按 heading 或语义连续 block，把 source 划分为有序、尽量不重叠的 section range。
+2. section inventory 的 `line-ranges[]` 合集必须覆盖 source 的每一物理行。空行、heading、table separator 和格式行也要被相邻 section 包含或单独分类，但不要求产生 atom。
+3. 每个 section 判断为：包含产品/系统语义，或仅属于 background、formatting、reference-only、prototype-only、superseded 等 non-atom content。
+4. 对每项有产品/系统语义的事实提取 atom，并把 atom ID 回填到对应 inventory row。一个 section 可以产生零到多个 atom；一个 atom 也可以引用多个 section range。
+5. `obligation-bearing`、`contextual`、`explicit-non-goal`、`conflict` 或 `unclear` section 必须关联至少一个 atom，或记录 blocker。
+6. 没有 atom 的 section 必须填写 `Non-Atom Classification` 和中文 `Reason`。
+
+因此，“全文已被考虑”由 section inventory 保证；“所有有意义的产品/系统内容已被提取”由 atom ledger 保证。atom 不需要覆盖纯格式或无产品/系统语义的行。
+
+## Atom 提取方法
+
+### 1. 提取所有有产品/系统语义的事实
+
+以下内容必须成为 atom candidate：
+
+- 用户或系统的 condition、state、action、transition、display、failure、recovery 或 observable result。
+- 数据、权限、隐私、API、schema、runtime、provider、deployment、integration 或 persistence boundary。
+- preserve rule、must-not、explicit non-goal 或 scope guard。
+- acceptance、fixture、proof 或 verification requirement。
+- 会改变当前实现、验证或兼容性判断的 contextual fact。
+- 无法安全解释的 source conflict 或 meaningful unclear content。
+
+纯格式、目录导航、重复的 heading/TOC 等机械性内容、discarded explanation、无 production effect 的 prototype detail 或已明确 superseded content 保留在 inventory，不创建 atom。Phase 2 不判断两个有语义的事实是否 duplicate。
+
+### 2. 控制 atom 粒度
+
+一个 atom 应能被独立接受、拒绝、实现、保护或验证。
+
+- 保留同一规则的 condition + trigger/action + expected effect，不机械拆分。
+- 多个 behavior、不同 normativity、不同 projection、不同 failure/recovery path 或不同 acceptance obligation 可以独立变化时才拆分。
+- 不得用 “page detail”“flow behavior” 或宽泛 summary 覆盖整个页面、对象或流程。
+- 多个 source 片段分别提供同一规则的互补组成部分时，用一个 atom 的多个 `line-ranges[]` 表示；两个各自完整的有语义事实是否等价，留给 Phase 3 判断。
+
+对 UI/flow source，至少检查 page role、route/entry/exit、具名 state、trigger、可见行为、允许/禁用 action、failure/recovery、persistence/navigation/access/privacy、影响任务完成的 responsive behavior、acceptance 和 scope guard。
+
+### 3. 写入 source-local identity 与 evidence
+
+- 使用稳定、可读、仅在当前 source 内唯一的 `source-atom-id`，例如 `intake-form.valid-submit`。
+- canonical JSON 只写结构化 `line-ranges: [{"start": 1, "end": 2}]`，不得写冗余的 `lines` 字符串。
+- renderer 从 `line-ranges[]` 机械生成 Markdown 的 `Lines` 列，例如 `L1-L2`。Markdown `Lines` 是 review surface，不是第二份 canonical evidence。
+- `source-fact` 使用简体中文准确转述 source 语义，不用长段 quote 代替事实陈述。
+
+### 4. 选择 Candidate Status
+
+Phase 2 只使用以下五种 status；status 只表达 extraction disposition，不承载 guard、non-goal 或 duplicate 语义：
+
+| 情形 | Candidate Status |
+| --- | --- |
+| actionable obligation 可映射到现有 Phase 1 Change | `direct-candidate` |
+| actionable obligation 无法映射到现有 Change | `unassigned` |
+| meaningful fact 只约束解释、设计或未来兼容，不创建当前 implementation scope | `contextual-candidate` |
+| source 自身冲突，无法安全解释 | `unresolved-conflict` |
+| meaningful content 暂时无法分类 | `unclassified` |
+
 规则：
 
-- manifest 中每份 `Read Status: read-full` source document 必须恰好出现在一个 batch 中。
-- `Extraction Mode` 应为 `single-doc`、`small-doc-batch`、`medium-doc-batch` 或 `large-doc-dedicated`。
-- `Assignment Rationale` 可以引用 line count、source role、path domain、doc type 和预期 context pressure。
-- work queue 必须在 table 后包含简短 `Batch Merge Review` section，说明 initial candidate batch count、final batch count、合并了哪些 candidate batch，以及为何 final queue 超过五个 batch。
-- work queue 不是 source coverage evidence，不得包含 atom count、coverage judgment 或 no-obligation conclusion。
+- 不使用 `duplicate-candidate`；Phase 2 不做同文档或跨文档 duplicate judgment。
+- 不使用 `candidate-new-change` 或 `candidate-new-capability`；潜在 missing/refit boundary 一律使用 `unassigned`，由后续全局阶段决定。
+- preserve rule、must-not 和 scope exclusion 可映射现有 Change 时使用 `direct-candidate`，无法映射时使用 `unassigned`；其语义由 `scope-guard`、`must-not` 和 `spec-guard` 表达。
+- `unresolved-conflict` 和 `unclassified` 必须记录 blocker，不得用来绕过提取。
 
-## Phase 2B：source-first subagent 约束
+### 5. 选择 Artifact Projection
 
-Phase 2 必须能够作为一组 source document extraction 接受 review。
+| Source 语义 | Candidate Artifact Projection |
+| --- | --- |
+| 用户/系统可观察的 normative behavior | `spec-requirement` |
+| 保护已承诺行为的 preserve boundary、must-not 或 scope exclusion | `spec-guard` |
+| architecture、runtime、data/API/schema、module/provider/deployment shape | `design-obligation` |
+| test、fixture、visual、smoke、acceptance proof 或 evidence strategy | `verification-obligation` |
+| 不创建当前 implementation scope 的 contextual fact | `contextual-only` |
+| conflict/unclear 导致无法判断 | `unsure` |
 
-1. 阅读 `phase-works/phase-1/initial-change-plan.md`，了解 candidate Change、Capability、sequencing assumption 和当前 planned boundary。
-2. 阅读 `phase-works/phase-1/source-doc-manifest.md`，列出每份 `Read Status: read-full` source document。
-3. 使用 Phase 2A scheduling rule 建立 `phase-works/phase-2/source-obligation-atoms/work-queue.md`。
-4. 每个 work queue batch 启动一个 fresh source-extraction subagent。
-5. 每个 source-extraction subagent 必须完整阅读分配给自己的 source document 正文。
-6. 每个 subagent 先从 source 提取 atom candidate；只有 source-backed atom list 明确后，才分配 candidate owner Change 和 capability-impact metadata。
-7. `Candidate Owner Change` 可以是 planned Change、`unassigned`、`candidate-new-change`、`contextual` 或 `non-direct`。Capability field 遵循上述 v2 contract；Capability 绝不作为 co-owner。
-8. 不得要求 subagent 跨所有 source document 模拟一个 planned Change。Phase 2 不得生成 per-Change canonical atom ledger。
-9. 所有 source-extraction subagent 完成后，运行 Output Ownership 中说明的 fresh Phase 2 index/report subagent。
-10. index/report subagent 可以针对缺失或格式错误的 file 报告 blocker，但不得 repair、重新解释或扩展 atom content。
-11. 确认每个 source-extraction owner 已写入 source atom JSON sidecar，再让 Phase 2 index/report subagent 按 `references/trace-sidecar-contract.md` 写入 `trace/phase-2.trace.json`。
-12. 返回 main agent，由其按 trace contract 和 reviewer/repair loop 验证 Phase 2；通过后再冻结 Phase 2。
-13. 执行 Phase 2 extraction 或 aggregation 时，不得读取 Phase 3、Phase 4 或 Phase 5 output。
+projection 按 source 语义选择，不由 atom type 或 status 自动推断。
 
-使用确定性的 source filename：
+failure/recovery 内容若定义新的可观察结果，使用 `spec-requirement`；只有保护既有承诺或禁止 drift 的部分才使用 `spec-guard`。
 
-- 来源 `docs/product/pages/settings.md` -> `docs--product--pages--settings.atoms.md`
-- 来源 `docs/architecture/runtime-design.md` -> `docs--architecture--runtime-design.atoms.md`
+### 6. 映射到现有 Change/Capability framework
 
-## UI 与 flow atom 提取规则
+只填写现有 framework mapping，不推断 `new` / `modified`：
 
-对于 page doc、object/component doc、flow contract、interaction map、state vocabulary、fixture contract、scenario registry、verification matrix 和 design-system document，不得将页面或对象细节压缩为一个 broad atom。
+| Atom | Candidate Owner Change | Candidate Target Capability |
+| --- | --- | --- |
+| direct spec / guard，可映射 | 现有 Phase 1 Change | 现有 Phase 1 Capability；无法判断时为 `unresolved` |
+| direct design / verification，可映射 | 现有 Phase 1 Change | `none` |
+| actionable 但无法映射现有 Change | `unassigned` | 已知现有 Capability，或 `unresolved` / `none` |
+| contextual | `contextual` | `none` |
+| conflict / unclassified | `none` | `none` |
 
-强制 extraction 规则：
+Capability 不是 co-owner，target 也不表示 Capability advancement。
 
-- 每个具有 production effect 的 page/object route、duty、entry 或 exit 都必须有 atom。
-- 每个具名 state 至少有一个 `state` atom。
-- 每个 state trigger、display content、primary action、disabled action 和 recovery rule 都必须由 atom 表示，或显式分类为 non-production/no-impact。
-- 每个会改变 persistence、navigation、action submission、blocking、recovery、language、access/quota behavior、privacy 或 state derivation 的 interaction rule 都必须有 atom。
-- responsive requirement 影响用户完成 workflow 或检查必需 state 的能力时，必须有 `responsive` atom。
-- 每个 acceptance criterion 必须有 `acceptance` 或 `verification` atom，或引用其 duplicate atom ID。
-- 当 `do not`、`non-goal` 或 `out of scope` item 可防止后续 Change scope creep 时，必须将其保留为 `explicit-non-goal` atom。
-- 纯 cosmetic text label 可以是 contextual；定义 action、state name、error copy 或 required affordance 的 label 必须成为 atom。
+### 7. 最小辅助字段
 
-不得把 UI content 以通用 "duplicate page detail" 结束处理。如果确实 duplicate，在已知时列出被重复的 source-local atom ID，并说明 semantic equivalence。
+每个 atom 只保留后续 normalization 必需的辅助字段：
 
-## 每份来源的 atom 文件
+- `atom-type`：`behavior`、`data-contract`、`architecture-runtime`、`verification`、`scope-guard` 或 `context`。
+- `normativity`：`must`、`must-not`、`should` 或 `context`。source 中“用户可/系统允许”若定义必须提供的可用能力，记录为 `must`。
+- `rationale`：简短说明 status/projection/mapping；`unassigned`、`contextual-candidate`、`unresolved-conflict` 和 `unclassified` 必须非空。
 
-每个 rendered `phase-works/phase-2/source-obligation-atoms/<source>.atoms.md` mirror 必须包含：
+Phase 2 不再记录 `candidate-capability-impact`、`candidate-related-capabilities`、`roles`、`propose-use` 或 `evidence-need`；这些字段需要全局 normalization、source-window grounding 或 final plan context，提前填写只会制造噪声和伪精度。
 
-- 来源文档路径
-- Phase 1 manifest 中的 source document role
-- source document 是否已完整阅读
-- 纳入考虑的 Phase 1 candidate Change/Capability
-- 来源章节清单
-- obligation atom 候选台账
-- 来源剩余内容说明
-- 所有权歧义说明
-- candidate missing plan boundary（如有）
-- blocker，或 `None`
-- `Trace Appendix`，其中包含 trace file、trace schema、trace sha256 和 render contract `source-aligned-render-v2`
+## Canonical source atom file
 
-### 来源章节清单
+每份 `.atoms.json` 使用 `source-aligned-source-atoms-v3`，包含：
 
-每个 source atom file 必须包含 section inventory：
+- `trace-schema`、`trace-contract-version`
+- `source-document`、`source-sha256`、`read-status: read-full`、`canonical-owner`
+- `source-role`、`phase-1-candidate-changes-capabilities-considered`
+- `section-inventory[]`
+- `source-atoms[]`
+- `blockers[]`
+- `language-self-check`
 
-| Source Section or Range | Read Status | Production Meaning | Atom IDs | Non-Atom Classification | Reason |
+`section-inventory[]` 的 Markdown mirror：
+
+| Source Section | Lines | Production Meaning | Atom IDs | Non-Atom Classification | Reason |
 | --- | --- | --- | --- | --- | --- |
 
-规则：
+`source-atoms[]` 的 Markdown mirror：
 
-- source document 必须完整阅读。
-- section/range 行应足够小，使 Phase 3 无需盲目重读整个 document 就能验证 coverage。
-- `Production Meaning` 可以为 `obligation-bearing`、`contextual`、`reference-only`、`prototype-only`、`background`、`formatting`、`conflict` 或 `unclear`。
-- 如果某 section 没有 atom，reason 必须说明其为何没有 production obligation 或为何 blocked。
+| Source Atom ID | Lines | Atom Type | Source Fact | Normativity | Candidate Status | Candidate Artifact Projection | Candidate Owner Change | Candidate Target Capability | Rationale |
+| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
 
-### obligation atom 候选台账
+两个 `Lines` 列均由 canonical `line-ranges[]` 生成。`.atoms.md` 还包含 source identity、Phase 1 context、blocker、language self-check 和 `Trace Appendix`；render contract 为 `source-aligned-render-v3`。
 
-每个 source atom file 必须包含：
+字段 shape：
 
-| Source Atom ID | Source Document | Lines | Atom Type | Source Fact | Normativity | Candidate Status | Candidate Artifact Projection | Candidate Owner Change | Candidate Capability Impact | Candidate Target Capability | Candidate Related Capabilities | Roles | Rationale | Propose Use | Evidence Need |
-| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
+- `phase-1-candidate-changes-capabilities-considered` 是 array；每项包含 `change`、`capabilities[]` 和简短中文 `note`。
+- `blockers[]` 是简体中文 string array；没有 blocker 时为 `[]`。
+- `language-self-check` 是非空简体中文 string。
+- `non-atom-classification` 只使用 `reference-only`、`prototype-only-not-production`、`background-only`、`formatting-only`、`superseded`、`mechanical-repeat` 或 `no-product-or-system-impact`；有 atom 的 row 使用 `none`。
 
-规则：
+`phase-2.trace.json.sources[]` 每份 source 一行，包含 `source-document`、`atom-json-path`、`atom-json-sha256`、`atom-markdown-path`、`canonical-owner`、`read-status`、`inventory-section-count`、`atom-count` 和 `blockers[]`。
 
-- `Lines` 必须使用 `L<start>-L<end>` 格式；多个范围使用 `; ` 连接。
-- `Normativity` 必须是 `must`、`must-not`、`should`、`context` 之一。
-- `Candidate Status` 必须是 `direct-candidate`、`contextual-candidate`、`unassigned`、`candidate-new-change`、`candidate-new-capability`、`explicit-non-goal`、`reference-only`、`prototype-only-not-production`、`superseded`、`duplicate-candidate`、`no-product-or-system-impact`、`unresolved-conflict` 或 `unclassified` 之一。
-- `Candidate Artifact Projection` 必须是 `spec-requirement`、`spec-guard`、`design-obligation`、`verification-obligation`、`contextual-only` 或 `unsure` 之一。
-- `Candidate Owner Change` 可以是 Phase 1 Change、`unassigned`、`candidate-new-change`、`contextual` 或 `none`；不得包含 Capability ID。
-- `Candidate Capability Impact`、`Candidate Target Capability` 和 `Candidate Related Capabilities` 必须遵循上述 v2 contract。在 Markdown 中将空 related array 渲染为 `None`，同时在 JSON 中保留 `[]`。
-- `Propose Use` 必须说明 atom 通过 Phase 3/4 后，应如何进入 proposal、spec、design、task、evidence、non-goal 或 preserve constraint；内容必须与 candidate artifact projection 一致。
-- `Evidence Need` 必须列出后续预期 proof type，例如 `unit`、`contract`、`integration`、`worker`、`browser-e2e`、`visual`、`fixture`、`manual` 或 `none`。
+## 索引与报告
 
-### source anchor 表
+`source-obligation-atoms/index.md`：
 
-每个 source atom file 还必须包含 supporting source anchor：
-
-| Source Document | Anchor | Lines | Source Phrase | Candidate Status | Source Atom IDs | Candidate Owner Changes | Roles | Rationale |
-| --- | --- | --- | --- | --- | --- | --- | --- | --- |
-
-source anchor 可以支撑一个或多个 source atom ID。anchor title 主要用于人工导航，应使用简洁的 semantic title；不得使用 `A01` 等 local numbering prefix。
-
-## Mapping 角色
-
-每个 atom mapping 记录一个或多个 role：
-
-- `primary`
-- `modified`
-- `preserve`
-- `verification`
-- `acceptance`
-- `non-goal`
-- `dependency`
-- `later-expansion`
-- `future-compatibility`
-- `reference`
-- `superseded-by`
-- `conflict`
-
-在 Phase 1 framework 中，不得将 `preserve`、`dependency`、`future-compatibility` 或 `reference` 视为 direct Capability advancement。Phase 5 根据规范化 atom index 和 Phase 4 source-window semantic profile 决定 final advancement。
-
-## Phase 2 索引与报告
-
-所有 source-extraction subagent 返回后，本节由 fresh Phase 2 index/report subagent 负责。main agent 应对这些 output 执行 interface check，不得自行合成。
-
-`phase-works/phase-2/source-obligation-atoms/index.md` 必须包含：
-
-| Source Document | Work Queue Batch | Canonical Owner | Source Atom File | Read Status | Atom Candidates | Candidate Artifact Projection Summary | Candidate Capability Impact Summary | Contextual Candidates | Unassigned Atoms | Candidate New Boundaries | Remainder Notes | Blockers |
+| Source Document | Work Queue Batch | Canonical Owner | Source Atom File | Read Status | Inventory Sections | Atom Candidates | Candidate Status Summary | Projection Summary | Mapped Changes | Mapped Capabilities | Unassigned Atoms | Blockers |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
 
-`phase-works/phase-2/phase-2-agent-report.md` 必须包含：
+`phase-2-agent-report.md` 先记录 index/report writer identity、只读 input、output 和 blocker，再包含：
 
-简短的 `Index/Report Generation` section，列出 fresh aggregation subagent、它读取的 input、执行的 read-only check、写入的 output 和所有 blocker。
+| Batch | Source Documents | Source Atom Files | Docs Read Full | Inventory Sections | Atom Candidates | Status Summary | Projection Summary | Mapped Changes / Capabilities | Unassigned Atoms | Conflicts / Unclassified | Blockers |
+| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
 
-| Batch | Source Documents | Line Counts | Extraction Mode | Canonical Owner | Work Queue Rationale | Extraction Status |
-| --- | --- | --- | --- | --- | --- | --- |
+aggregate 不发布 duplicate statistic、candidate new boundary、global coverage statistic、global atom 或 final plan map。
 
-| Batch | Source Documents | Source Atom Files | Subagent Status | Docs Read Full | Atom Candidates | Candidate Artifact Projection Summary | Candidate Capability Impact Summary | Contextual Candidates | Unassigned Atoms | Duplicate Risks | Candidate New Boundaries | Blockers |
-| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
+若 repair 修改 canonical `.atoms.json`，repair-writer 必须重跑 Phase 2 scoped renderer，并同步刷新受影响的 index、report 和 Phase trace count/digest；不得借此补做新的 extraction 或全局判断。随后 main agent 再刷新 manifest、运行 validator，并启动 fresh reviewer。
 
-此处不得包含 global coverage statistic。Phase 3 负责 semantic coverage closure、duplicate resolution、global uniqueness 和 final ownership。
+## 完成门禁
 
-## 质量门禁
+1. **Source gate**：每份 `read-full` source 在 work queue 中恰好一次，并有一个 canonical JSON 与 mirror。
+2. **Inventory gate**：section inventory 的有序 `line-ranges[]` 无 gap 地覆盖 source 全部物理行；重叠有明确理由。
+3. **Semantic gate**：每项有产品/系统语义的 source fact 都有 atom；每个 non-atom section 都有 classification 和 reason。
+4. **Atom gate**：atom 不 broad、不机械过拆；status 仅使用五种允许值；guard/non-goal 语义没有塞入 status；不存在 duplicate/new Change/new Capability 的 Phase 2 判断。
+5. **Mapping gate**：owner/target 只引用现有 framework 或使用 `unassigned` / `unresolved` / `none`；不存在 Capability impact 判断。
+6. **Artifact gate**：canonical JSON 使用 v3 schema 且只含 `line-ranges[]`；mirror 与 renderer output 一致。
+7. **Role gate**：extraction writer 只写分配 JSON；index/report writer 未编辑 extraction 或执行全局判断。
+8. **Review gate**：validator 和 fresh reviewer 通过；repair 后已重新验证；manifest 已刷新并冻结 evidence。
 
-Phase 2 结束前：
-
-- 确认 `phase-works/phase-2/source-obligation-atoms/work-queue.md` 存在，且每份 `Read Status: read-full` manifest source document 恰好列出一次。
-- 确认 work queue 只包含 batching rationale，不包含 atom extraction、coverage judgment 或 no-obligation conclusion。
-- 确认每份 `Read Status: read-full` manifest source document 都恰好有一个 canonical `phase-works/phase-2/source-obligation-atoms/<source>.atoms.json` file 和一个 rendered `.atoms.md` mirror。
-- 确认 rendered mirror 与 `scripts/render_source_aligned_orchestrate.py` output 相等；任何 drift 都必须通过 JSON repair 或重新渲染解决。
-- 确认每份 source document 恰好有一个 canonical extraction owner，并在 work queue 和 Phase 2 report 中列出。
-- 确认 extraction subagent 完成后，`phase-works/phase-2/source-obligation-atoms/index.md` 和 `phase-works/phase-2/phase-2-agent-report.md` 由 fresh Phase 2 index/report subagent 生成。
-- 确认 Phase 2 index/report subagent 未编辑 source atom file、提取新 atom、执行 global duplicate resolution、决定 final ownership、闭合 semantic coverage 或读取 Phase 3/Phase 4/Phase 5 output。
-- 确认每个 source atom file 都声明 source document 已完整阅读。
-- 确认每个 source atom file 都包含 source section inventory、obligation atom candidate ledger、source anchor table、ownership ambiguity note、candidate missing plan boundary 和 blocker。
-- 确认每个 source atom ledger 行都有非空 `Candidate Artifact Projection`，且没有 direct candidate 仅因 direct 就被假定为 `spec-requirement`。
-- 确认每行都有 v2 candidate Capability field；`new` / `modified` 只出现在具有 target 且具备可信 baseline evidence 的 `spec-requirement` / `spec-guard` 行，`none` 只与 target `none` 配对，缺少 baseline evidence 的 direct spec 行使用具有 rationale 的 `unresolved`。
-- 确认每个 direct `design-obligation` / `verification-obligation` 行保持 direct，并使用 `Candidate Capability Impact: none` 和 `Candidate Target Capability: none`。
-- 确认 `Candidate Related Capabilities` 是唯一的 source-explicit array，排除 target，默认为空，并且绝不替代 target 或计入 candidate advancement。
-- 确认 `candidate-new-capability` 只出现在 impact 为 `new` 的 `spec-requirement` / `spec-guard` 行。
-- 确认 UI 和 flow document 使用上述 mandatory extraction rule 完成分解；不允许 broad "page detail" compression。
-- 确认每个 atom 和 anchor 都具有 `L<start>-L<end>` 格式的规范化 `Lines` 值。
-- 确认 candidate Change mapping 和 capability-impact metadata 明确标为 candidate 而非 final，且没有 Capability field 被视为 co-ownership。
-- 确认 Phase 2 report 列出 unassigned、candidate-new-change、candidate-new-capability、duplicate-candidate、unresolved-conflict 和 unclassified 行。
-- 确认 Phase 2 只生成或重写当前 Phase 2 output。
-- 确认每项 Phase 2 artifact 都通过 Artifact Language Gate。
-
-final reply 应为简短中文 report，包含 work queue batch、已提取的 source document、已写入的 source atom file、Phase 2 index/report subagent status、找到的 atom candidate、unassigned atom、candidate new boundary、duplicate risk、unresolved conflict、language-gate result 和 blocker。
+final reply 使用简短中文，报告 batch、已处理 source、inventory/atom count、mapped/unassigned atom、conflict/unclassified、language gate 和 blocker。

@@ -20,14 +20,14 @@ TRACE_CONTRACT_VERSION = "source-aligned-trace-v2"
 MANIFEST_SCHEMA = "source-aligned-orchestrate-manifest-v1"
 PHASE_TRACE_SCHEMAS = {
     "phase-1": "source-aligned-phase-1-trace-v2",
-    "phase-2": "source-aligned-phase-2-trace-v1",
+    "phase-2": "source-aligned-phase-2-trace-v2",
     "phase-3": "source-aligned-phase-3-trace-v1",
     "phase-4": "source-aligned-phase-4-trace-v1",
     "phase-5": "source-aligned-phase-5-trace-v1",
 }
-SOURCE_ATOMS_SCHEMA = "source-aligned-source-atoms-v2"
+SOURCE_ATOMS_SCHEMA = "source-aligned-source-atoms-v3"
 GLOBAL_ATOM_INDEX_SCHEMA = "source-aligned-global-atom-index-v2"
-SOURCE_TO_GLOBAL_MAP_SCHEMA = "source-aligned-source-to-global-map-v2"
+SOURCE_TO_GLOBAL_MAP_SCHEMA = "source-aligned-source-to-global-map-v3"
 SOURCE_REMAINDER_REVIEW_SCHEMA = "source-aligned-source-remainder-review-v1"
 SOURCE_WINDOW_INDEX_SCHEMA = "source-aligned-source-window-index-v1"
 ATOM_PLAN_MAPPING_SCHEMA = "source-aligned-atom-plan-mapping-v2"

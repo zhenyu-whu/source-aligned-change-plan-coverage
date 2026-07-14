@@ -72,7 +72,8 @@ Phase 1 reviewer 检查项：
 
 Phase 2 reviewer 检查项：
 
-- 检查漏抽、broad atom、projection/status、owner 候选是否仅作为候选。
+- 检查 section inventory 是否无 gap 覆盖全文、所有有产品/系统语义的内容是否已提取、atom 是否 broad，以及 projection/status/现有 framework mapping 是否仅作为候选。
+- 检查 Phase 2 未执行 duplicate 判断、new/refit Change 判断、new Capability 判断或 Capability impact 判断。
 - 检查每个 `read-full` source 是否正好一个 canonical owner 和一个 `.atoms.md/.json`。
 
 Phase 3 reviewer 检查项：
