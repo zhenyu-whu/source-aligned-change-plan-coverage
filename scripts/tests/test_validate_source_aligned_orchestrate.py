@@ -307,24 +307,6 @@ class SourceAlignedValidatorTest(unittest.TestCase):
                     {"change": "change-a", "capabilities": ["cap-a"], "note": "现有 framework mapping。"}
                 ],
                 "source-atoms": source_atoms,
-                "section-inventory": [
-                    {
-                        "source-section": "产品与系统事实",
-                        "line-ranges": [{"start": 1, "end": 8}],
-                        "production-meaning": "obligation-bearing",
-                        "atom-ids": ["atom.spec", "atom.design", "atom.verify", "atom.non-goal"],
-                        "non-atom-classification": "none",
-                        "reason": "包含可执行、验证和范围约束。",
-                    },
-                    {
-                        "source-section": "背景内容",
-                        "line-ranges": [{"start": 9, "end": 20}],
-                        "production-meaning": "background",
-                        "atom-ids": [],
-                        "non-atom-classification": "no-product-or-system-impact",
-                        "reason": "不包含产品或系统语义。",
-                    },
-                ],
                 "blockers": [],
                 "language-self-check": "解释字段已使用简体中文。",
             },
@@ -346,7 +328,6 @@ class SourceAlignedValidatorTest(unittest.TestCase):
                         "atom-markdown-path": "openspec/orchestrate/phase-works/phase-2/source-obligation-atoms/docs--source.atoms.md",
                         "canonical-owner": "owner-a",
                         "read-status": "read-full",
-                        "inventory-section-count": 2,
                         "atom-count": 4,
                         "blockers": [],
                     }
@@ -821,7 +802,6 @@ class SourceAlignedValidatorTest(unittest.TestCase):
         trace = json.loads(trace_path.read_text(encoding="utf-8"))
         row = trace["sources"][0]
         row["atom-json-sha256"] = sha256_file(atom_path)
-        row["inventory-section-count"] = len(atom_data["section-inventory"])
         row["atom-count"] = len(atom_data["source-atoms"])
         row["blockers"] = atom_data["blockers"]
         write_json(trace_path, trace)
@@ -1223,23 +1203,22 @@ class SourceAlignedValidatorTest(unittest.TestCase):
         self._write_manifest()
         self.assert_error("phase2-atom-field")
 
-    def test_phase2_inventory_gap_fails(self) -> None:
+    def test_phase2_unexpected_top_level_field_is_rejected(self) -> None:
         path = self.orchestrate / "phase-works/phase-2/source-obligation-atoms/docs--source.atoms.json"
         data = json.loads(path.read_text(encoding="utf-8"))
-        data["section-inventory"][1]["line-ranges"] = [{"start": 10, "end": 20}]
+        data["legacy-extra-field"] = []
         write_json(path, data)
         render_orchestrate(self.orchestrate, "phase2-source-atoms", write=True)
         self._write_manifest()
-        self.assert_error("phase2-inventory-gap")
+        self.assert_error("phase2-top-level-field")
 
-    def test_phase2_meaningful_inventory_requires_atom_or_blocker(self) -> None:
-        path = self.orchestrate / "phase-works/phase-2/source-obligation-atoms/docs--source.atoms.json"
+    def test_phase2_unexpected_trace_source_field_is_rejected(self) -> None:
+        path = self.orchestrate / "trace/phase-2.trace.json"
         data = json.loads(path.read_text(encoding="utf-8"))
-        data["section-inventory"][0]["atom-ids"] = []
+        data["sources"][0]["legacy-extra-count"] = 0
         write_json(path, data)
-        render_orchestrate(self.orchestrate, "phase2-source-atoms", write=True)
         self._write_manifest()
-        self.assert_error("phase2-inventory-meaningful-without-atom")
+        self.assert_error("phase2-trace-source-field")
 
     def test_phase2_v1_schema_is_rejected(self) -> None:
         path = self.orchestrate / "phase-works/phase-2/source-obligation-atoms/docs--source.atoms.json"
@@ -1278,7 +1257,7 @@ class SourceAlignedValidatorTest(unittest.TestCase):
         render_orchestrate(self.orchestrate, "phase2-source-atoms", write=True)
         markdown = (self.orchestrate / "phase-works/phase-2/source-obligation-atoms/docs--source.atoms.md").read_text(encoding="utf-8")
         self.assertIn("中文事实包含 \\| 管道符和 换行。", markdown)
-        self.assertIn("Render contract: `source-aligned-render-v3`", markdown)
+        self.assertIn("Render contract: `source-aligned-render-v4`", markdown)
         self._sync_phase2_trace_source()
         self._write_manifest()
         result = self._validate_phase("phase-2")
@@ -2152,6 +2131,31 @@ class SourceAlignedValidatorTest(unittest.TestCase):
         write_json(path, data)
         self._write_manifest()
         self.assert_error("rendered-markdown-drift")
+
+    def test_phase3_line_range_audit_treats_zero_atom_source_as_full_remainder(self) -> None:
+        path = self.orchestrate / "phase-works/phase-2/source-obligation-atoms/docs--source.atoms.json"
+        data = json.loads(path.read_text(encoding="utf-8"))
+        data["source-atoms"] = []
+        write_json(path, data)
+        proc = subprocess.run(
+            [
+                sys.executable,
+                str(SCRIPT_DIR / "phase3_line_range_audit.py"),
+                "--orchestrate-dir",
+                str(self.orchestrate),
+                "--workspace-root",
+                str(self.root),
+                "--pretty",
+            ],
+            text=True,
+            capture_output=True,
+            check=False,
+        )
+        self.assertEqual(proc.returncode, 0, proc.stderr)
+        payload = json.loads(proc.stdout)
+        document = payload["documents"]["docs/source.md"]
+        self.assertEqual(document["merged_covered_ranges"], [])
+        self.assertEqual(document["candidate_uncovered_ranges"], [[1, 20]])
 
     def test_phase3_source_map_candidate_fields_must_match_phase2_evidence(self) -> None:
         path = self.orchestrate / "phase-works/phase-3/phase-3-trace/source-to-global-atom-map.json"

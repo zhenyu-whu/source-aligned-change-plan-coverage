@@ -8,11 +8,11 @@
 - 所有 JSON key 必须使用 kebab-case。
 - 所有 ID 字段不得包含 Markdown 反引号。
 - 多 ID 字段必须使用数组，不得使用逗号字符串。
-- `line-ranges: [{"start": 1, "end": 2}]` 是 canonical line evidence。Phase 2 source atom v3 与 Phase 3 source-to-global map v3 不得重复保存 `lines` 字符串；renderer 从 `line-ranges[]` 生成 Markdown `Lines`。其他仍采用既有 schema 的 artifact 按各自数据模型处理。
+- `line-ranges: [{"start": 1, "end": 2}]` 是 canonical line evidence。Phase 2 source atom v4 与 Phase 3 source-to-global map v3 不得重复保存 `lines` 字符串；renderer 从 `line-ranges[]` 生成 Markdown `Lines`。其他仍采用既有 schema 的 artifact 按各自数据模型处理。
 - 每个 trace JSON 必须包含 `trace-schema` 和 `trace-contract-version`。
 - Renderer-backed Markdown mirror 可包含中文解释，但必须由 canonical JSON 重新渲染得到，不得手工修补 canonical 字段。
-- render contract version 为 `source-aligned-render-v3`。
-- 当前契约不兼容旧 Phase 1 plan trace、旧 Phase 2 extraction/trace shape 或旧 Capability owner 字段。canonical artifact 集合中若出现 `source-aligned-phase-1-trace-v1`、`source-aligned-phase-2-trace-v1`、`source-aligned-source-atoms-v1`、`source-aligned-source-atoms-v2`、`source-aligned-source-to-global-map-v1`、`source-aligned-source-to-global-map-v2`、`source-aligned-global-atom-index-v1`、`source-aligned-atom-plan-mapping-v1`、`source-aligned-final-packet-index-v1`、`source-aligned-render-v1` 或 `source-aligned-render-v2`，必须拒绝。
+- render contract version 为 `source-aligned-render-v4`。
+- 当前契约不兼容旧 Phase 1 plan trace、旧 Phase 2 extraction/trace shape 或旧 Capability owner 字段。canonical artifact 集合中若出现 `source-aligned-phase-1-trace-v1`、`source-aligned-phase-2-trace-v1`、`source-aligned-phase-2-trace-v2`、`source-aligned-source-atoms-v1`、`source-aligned-source-atoms-v2`、`source-aligned-source-atoms-v3`、`source-aligned-source-to-global-map-v1`、`source-aligned-source-to-global-map-v2`、`source-aligned-global-atom-index-v1`、`source-aligned-atom-plan-mapping-v1`、`source-aligned-final-packet-index-v1`、`source-aligned-render-v1`、`source-aligned-render-v2` 或 `source-aligned-render-v3`，必须拒绝。
 
 ## 必需布局
 
@@ -87,7 +87,7 @@ Manifest lifecycle 如下：
 
 ## renderer contract
 
-renderer-backed mirror 使用 `source-aligned-render-v3`，通过以下命令生成：
+renderer-backed mirror 使用 `source-aligned-render-v4`，通过以下命令生成：
 
 ```bash
 python3 .codex/skills/source-aligned-change-plan-coverage/scripts/render_source_aligned_orchestrate.py \
@@ -107,14 +107,14 @@ python3 .codex/skills/source-aligned-change-plan-coverage/scripts/render_source_
 Phase trace schema：
 
 - `source-aligned-phase-1-trace-v2`
-- `source-aligned-phase-2-trace-v2`
+- `source-aligned-phase-2-trace-v3`
 - `source-aligned-phase-3-trace-v1`
 - `source-aligned-phase-4-trace-v1`
 - `source-aligned-phase-5-trace-v1`
 
 artifact schema：
 
-- `source-aligned-source-atoms-v3`
+- `source-aligned-source-atoms-v4`
 - `source-aligned-global-atom-index-v2`
 - `source-aligned-source-to-global-map-v3`
 - `source-aligned-source-remainder-review-v1`
@@ -122,7 +122,7 @@ artifact schema：
 - `source-aligned-atom-plan-mapping-v2`
 - `source-aligned-final-packet-index-v2`
 
-Phase 2 source atom 与 Phase 3 source map 必须整体采用 v3；Phase 2 trace、global index、atom-plan mapping 与 final packet index 采用 v2。Phase 3–5 trace、`manifest`、source remainder review 和 source window index 继续使用各自现有的 `*-v1` schema 名称，但其 `trace-contract-version` 必须是 `source-aligned-trace-v2`。
+Phase 2 source atom 采用 v4，Phase 3 source map 采用 v3；Phase 2 trace 采用 v3，global index、atom-plan mapping 与 final packet index 采用 v2。Phase 3–5 trace、`manifest`、source remainder review 和 source window index 继续使用各自现有的 `*-v1` schema 名称，但其 `trace-contract-version` 必须是 `source-aligned-trace-v2`。
 
 ## 必需数据模型
 
@@ -138,19 +138,17 @@ Phase 2 trace：
 
 - `status`：必须为 `source-atoms-written`
 - `work-queue-path`
-- `sources[]`：每份 source 一行，包含 `source-document`、`atom-json-path`、`atom-json-sha256`、`atom-markdown-path`、`canonical-owner`、`read-status`、`inventory-section-count`、`atom-count` 和 string array `blockers[]`
+- `sources[]`：每份 source 一行，包含 `source-document`、`atom-json-path`、`atom-json-sha256`、`atom-markdown-path`、`canonical-owner`、`read-status`、`atom-count` 和 string array `blockers[]`
 - `phase-report-path`
 
 Phase 2 source atom sidecar：
 
-- 顶层字段：`source-document`、`source-sha256`、`read-status`、`canonical-owner`、`source-role`、`phase-1-candidate-changes-capabilities-considered`、`section-inventory[]`、`source-atoms[]`、`blockers[]`、`language-self-check`。
+- 顶层字段：`source-document`、`source-sha256`、`read-status`、`canonical-owner`、`source-role`、`phase-1-candidate-changes-capabilities-considered`、`source-atoms[]`、`blockers[]`、`language-self-check`。
 - `phase-1-candidate-changes-capabilities-considered` 是 object array；每项为 `change`、`capabilities[]` 和中文 `note`。`blockers[]` 是中文 string array；`language-self-check` 是非空中文 string。
-- `section-inventory[]`：`source-section`、`line-ranges[]`、`production-meaning`、`atom-ids[]`、`non-atom-classification`、`reason`。`production-meaning` 只允许 `obligation-bearing | contextual | explicit-non-goal | conflict | unclear | reference-only | prototype-only | background | formatting | superseded`；其范围合集必须覆盖 source 的每一物理行，meaningful row 必须关联 atom 或 blocker。
 - `source-atoms[]` 只包含：`source-atom-id`、`line-ranges[]`、`atom-type`、`source-fact`、`normativity`、`candidate-status`、`candidate-artifact-projection`、`candidate-owner-change`、`candidate-target-capability`、`rationale`。
 - `candidate-status` 只允许 `direct-candidate | unassigned | contextual-candidate | unresolved-conflict | unclassified`。guard/non-goal 语义由 `atom-type: scope-guard`、`normativity: must-not` 和 `candidate-artifact-projection: spec-guard` 表达；Phase 2 禁止 `duplicate-candidate`、`candidate-new-change` 和 `candidate-new-capability`。
-- `non-atom-classification` 只允许 `none | reference-only | prototype-only-not-production | background-only | formatting-only | superseded | mechanical-repeat | no-product-or-system-impact`；没有 atom 的 inventory row 不得使用 `none`。
 - `candidate-target-capability` 只映射现有 Phase 1 Capability，或使用 `unresolved` / `none`；Phase 2 不记录 Capability impact、related Capability、role、propose use 或 evidence need。
-- Phase 2 不使用 `source-anchors[]`。atom 的 `line-ranges[]` 提供直接 evidence，section inventory 提供全文 disposition evidence。
+- Phase 2 atom 的 `line-ranges[]` 提供直接 evidence；Phase 3 根据 atom range complement 在 `source-remainder-review.json` 中提供全文 disposition evidence。
 
 Phase 3：
 

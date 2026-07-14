@@ -14,7 +14,7 @@ Phase 3 不是新的 propose-writing pass，不得在没有 source evidence 时�
 6. 所有无 atom 的 source range 是否确实属于 non-production、reference-only、formatting、background 或其他可安全忽略内容？
 7. 每个 atom 是否根据 source semantics 获得正确 artifact projection（`spec-requirement`、`spec-guard`、`design-obligation`、`verification-obligation` 或 `contextual-only`）？
 
-Phase 2 atom 行范围和 section inventory 可用于导航与 mechanical check，但 semantic obligation coverage 才是 quality gate。
+Phase 2 atom 行范围用于导航与 mechanical check，但 semantic obligation coverage 才是 quality gate。
 
 ## 输入
 
@@ -25,7 +25,7 @@ Phase 2 atom 行范围和 section inventory 可用于导航与 mechanical check�
 - `openspec/orchestrate/phase-works/phase-2/source-obligation-atoms/<source>.atoms.json`，作为 canonical extraction evidence
 - `openspec/orchestrate/phase-works/phase-2/source-obligation-atoms/<source>.atoms.md`，作为 reviewer mirror
 - 用户指定的 source document 根目录或精确 source path，用于 manifest verification 和 targeted semantic read。
-- 必需 mechanical helper/input shape：`.codex/skills/source-aligned-change-plan-coverage/scripts/phase3_line_range_audit.py` 或等效 Phase 3 code 必须为每份 `read-full` source document 计算 Phase 2 atom line coverage，并将结果保存在 `source-remainder-review.json` 中。section inventory 的全文覆盖由 Phase 2 validator 单独校验。
+- 必需 mechanical helper/input shape：`.codex/skills/source-aligned-change-plan-coverage/scripts/phase3_line_range_audit.py` 或等效 Phase 3 code 必须为每份 `read-full` source document 计算 Phase 2 atom line coverage，并将结果保存在 `source-remainder-review.json` 中。atom range complement 是 remainder review 的 mechanical input，不是 semantic decision。
 
 ## 输出
 
@@ -121,7 +121,7 @@ coverage status：
 - `non-source-artifact`
 - `blocked`
 
-使用 Phase 2 source atom file、section inventory、Phase 1 source hint、file path/name、source-root scope 和 targeted source read 分类 document。出现以下任一情形时，阅读 source file content：
+使用 Phase 2 source atom file、Phase 1 source hint、file path/name、source-root scope 和 targeted source read 分类 document。出现以下任一情形时，阅读 source file content：
 
 - source section 可能是 obligation-bearing，需要 atom completeness review
 - candidate uncovered 行范围必须接受 semantic review
@@ -152,7 +152,7 @@ coverage status：
     - page/object：page role、route、entry、exit、具有 behavior impact 的 layout constraint、每个具名 state、state trigger、display、primary action、disabled action、recovery、interaction rule、object dependency、定义行为的 action label、acceptance criterion、responsive behavior 和 non-goal。
     - flow/state/system doc：lifecycle stage、allowed transition、overlay/blocking rule、fixture field、scenario ID、verification matrix row、interaction outcome 和 preserve boundary。
     - architecture/product doc：data fact、access/privacy rule、runtime/deployment requirement、background execution rule、external integration boundary、failure/recovery rule、observability/audit rule 和 verification requirement。
-14. 识别位于所有 Phase 2 atom 范围之外的 source range，并利用 section inventory 定位 Phase 2 的 non-atom disposition。阅读这些 candidate range 及必要 local context 并分类：
+14. 识别位于所有 Phase 2 atom 范围之外的 source range。阅读这些 candidate range 及必要 local context 并分类；Phase 3 的 `source-remainder-review.json` 是 non-atom disposition 的唯一 canonical authority：
     - 忽略 blank line、table separator、decorative separator、生成的 table-of-contents 行和纯 formatting
     - 忽略 background prose、重复 summary、discarded option 和纯 explanatory text；但如果定义了 production behavior、boundary、data fact、verification obligation、deployment requirement、auth/privacy rule、failure path 或 preserve constraint，则不得忽略
     - 将剩余每项有意义的 uncovered source obligation 记录为 missing atom；足够精确时加入 global index

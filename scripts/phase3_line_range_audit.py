@@ -141,6 +141,22 @@ def parse_source_rows(markdown_path: Path) -> List[EvidenceRow]:
     return rows
 
 
+def source_document_from_markdown(markdown_path: Path) -> str:
+    for raw in markdown_path.read_text(encoding="utf-8").splitlines():
+        if raw.startswith("- 来源路径："):
+            return normalize_cell(raw.split("：", 1)[1])
+    return ""
+
+
+def source_document_from_trace(json_path: Path) -> str:
+    data = json.loads(json_path.read_text(encoding="utf-8"))
+    if data.get("trace-schema") != SOURCE_ATOMS_SCHEMA or data.get("trace-contract-version") != TRACE_CONTRACT_VERSION:
+        raise ValueError(
+            f"{json_path} 必须使用 {SOURCE_ATOMS_SCHEMA} / {TRACE_CONTRACT_VERSION}"
+        )
+    return normalize_cell(str(data.get("source-document", "")))
+
+
 def parse_source_rows_from_trace(json_path: Path) -> List[EvidenceRow]:
     data = json.loads(json_path.read_text(encoding="utf-8"))
     if data.get("trace-schema") != SOURCE_ATOMS_SCHEMA or data.get("trace-contract-version") != TRACE_CONTRACT_VERSION:
@@ -299,7 +315,7 @@ def main() -> int:
     parser.add_argument("--workspace-root", default=".", help="工作区根目录路径")
     parser.add_argument("--pretty", action="store_true", help="格式化 JSON 输出")
     parser.add_argument("--from-trace", dest="from_trace", action="store_true", default=True, help="读取 Phase 2 .atoms.json sidecar；这是默认行为。")
-    parser.add_argument("--from-markdown", dest="from_trace", action="store_false", help="读取 rendered v3 Phase 2 .atoms.md file，而不是 JSON trace。")
+    parser.add_argument("--from-markdown", dest="from_trace", action="store_false", help="读取 rendered v4 Phase 2 .atoms.md file，而不是 JSON trace。")
     args = parser.parse_args()
 
     orchestrate_dir = Path(args.orchestrate_dir)
@@ -314,6 +330,9 @@ def main() -> int:
     for atom_file in atom_files:
         files_read += 1
         source_rows = parse_source_rows_from_trace(atom_file) if args.from_trace else parse_source_rows(atom_file)
+        source_document = source_document_from_trace(atom_file) if args.from_trace else source_document_from_markdown(atom_file)
+        if source_document:
+            by_doc.setdefault(source_document, [])
         for row in source_rows:
             rows_read += 1
             if ";" in row.source_document:
@@ -358,7 +377,7 @@ def main() -> int:
         "summary": {
             "source_atom_files_read": files_read,
             "evidence_rows_read": rows_read,
-            "source_documents_with_ranges": len(documents),
+            "source_documents_audited": len(documents),
             "malformed_rows": len(malformed),
             "range_format_warnings": len(range_format_warnings),
             "note": "这里只提供 mechanical candidate；作出任何 decision 前都必须执行 semantic review。",

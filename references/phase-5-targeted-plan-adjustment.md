@@ -587,7 +587,7 @@ canonical `phase-works/phase-5/atom-plan-mapping.json` 必须包含每个 global
 | Global Atom ID | Source Document | Lines | Phase 3 Owner / Status | Phase 3 Artifact Projection | Final Owner Type | Final Owner Change | Final Capability Impact | Final Target Capability | Related Capabilities | Final Artifact Projection | Final Relation | Plan Decision | Reason |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
 
-rendered mirror 还必须包含 `Trace Appendix`，其中列出 trace file、trace schema、trace sha256 和 render contract `source-aligned-render-v3`。
+rendered mirror 还必须包含 `Trace Appendix`，其中列出 trace file、trace schema、trace sha256 和 render contract `source-aligned-render-v4`。
 
 `phase-works/phase-5/plan-refit-decision-log.md` 必须包含：
 

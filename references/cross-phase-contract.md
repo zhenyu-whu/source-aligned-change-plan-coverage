@@ -18,7 +18,7 @@
 
 ## Evidence 与 identity
 
-- 原始 source document 是 production obligation 的语义来源。section inventory 证明全文已被处置，atom 行范围提供语义 trace evidence；二者都不是 coverage 目标本身。
+- 原始 source document 是 production obligation 的语义来源。Phase 2 atom 行范围提供直接 trace evidence；Phase 3 根据 atom 范围的 complement 完成 remainder disposition 与全文 coverage closure。行范围本身不是 coverage 目标。
 - canonical JSON sidecar 是 machine-readable authority；renderer-backed Markdown 是 reviewer/proposal surface。修复 drift 时更新 JSON 或重新渲染，不得只手工修改 mirror。
 - Phase 2 canonical source atom JSON 通过 reviewer loop 后冻结。后续 missing、split、duplicate、grounding 或 ownership finding 进入 Phase 3–5，不回写 frozen evidence。
 - Phase 3 分配的 global atom ID 必须使用 `GA-####`。Phase 4、Phase 5 和后续 OpenSpec 工作必须原样保留，不得改写为其他 global 前缀或 source-local ID。

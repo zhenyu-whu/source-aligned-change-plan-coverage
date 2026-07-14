@@ -23,7 +23,7 @@ from source_aligned_trace_lib import (
 )
 
 
-RENDER_CONTRACT_VERSION = "source-aligned-render-v3"
+RENDER_CONTRACT_VERSION = "source-aligned-render-v4"
 SUPPORTED_ARTIFACTS = {
     "phase2-source-atoms",
     "phase3-global-index",
@@ -210,24 +210,6 @@ def render_phase2_source_atoms(orchestrate_dir: Path, json_path: Path) -> str:
         lines.append(md(considered))
     else:
         lines.append("- `None`")
-    lines.extend(["", "## Section inventory", ""])
-    lines.append(
-        render_table(
-            ["Source Section", "Lines", "Production Meaning", "Atom IDs", "Non-Atom Classification", "Reason"],
-            (
-                [
-                    md(row.get("source-section")),
-                    lines_from(row),
-                    code(row.get("production-meaning")),
-                    code_list(row.get("atom-ids")),
-                    code(row.get("non-atom-classification")),
-                    md(row.get("reason")),
-                ]
-                for row in data.get("section-inventory", [])
-                if isinstance(row, dict)
-            ),
-        ).rstrip()
-    )
     lines.extend(["", "## obligation atom 候选台账", ""])
     lines.append(
         render_table(

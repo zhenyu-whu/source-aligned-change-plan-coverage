@@ -1,6 +1,6 @@
 # Phase 2：source-first obligation atom 提取
 
-Phase 2 逐份完整阅读 source document，先建立覆盖全文的 section inventory，再提取所有具有产品或系统语义的 source atom candidate。analysis unit 是 source document，不是 planned Change；Phase 1 framework 只提供现有 Change/Capability 的候选映射目标。
+Phase 2 逐份完整阅读 source document，提取所有具有产品或系统语义的 source atom candidate。analysis unit 是 source document，不是 planned Change；Phase 1 framework 只提供现有 Change/Capability 的候选映射目标。
 
 本 Phase 只负责 raw extraction 和 existing-framework mapping。不执行跨文档去重、global coverage closure、new/refit Change 判断、new Capability 判断或 repository baseline reconciliation；无法映射到现有 framework 的 atom 统一标记为 `unassigned`。
 
@@ -9,7 +9,6 @@ Phase 2 逐份完整阅读 source document，先建立覆盖全文的 section in
 - [输入与产出](#输入与产出)
 - [角色与执行顺序](#角色与执行顺序)
 - [Work queue](#work-queue)
-- [Section inventory 与 atom 的关系](#section-inventory-与-atom-的关系)
 - [Atom 提取方法](#atom-提取方法)
 - [Canonical source atom file](#canonical-source-atom-file)
 - [索引与报告](#索引与报告)
@@ -55,7 +54,7 @@ reviewer 与 repair-writer 的权限由 `references/reviewer-repair-loop.md` 定
 
 1. main agent 建立 work queue。
 2. 每个 batch 启动一个 fresh extraction writer；每份 source 只分配一个 canonical owner。
-3. extraction writer 对每份 source 依次完成：全文阅读 → section inventory → atom extraction → existing-framework mapping → canonical JSON。
+3. extraction writer 对每份 source 依次完成：全文阅读 → atom extraction → existing-framework mapping → canonical JSON。
 4. 在 repository root 运行 Phase 2 scoped renderer：
 
    ```bash
@@ -85,19 +84,6 @@ reviewer 与 repair-writer 的权限由 `references/reviewer-repair-loop.md` 定
 
 `Extraction Mode` 使用 `single-doc`、`small-doc-batch`、`medium-doc-batch` 或 `large-doc-dedicated`。table 后添加 `Batch Merge Review`，记录 initial/final batch count、合并情况和例外理由。
 
-## Section inventory 与 atom 的关系
-
-section inventory 是全文 disposition layer，atom 是在其基础上提取的 semantic fact layer，二者职责不同：
-
-1. 先按 heading 或语义连续 block，把 source 划分为有序、尽量不重叠的 section range。
-2. section inventory 的 `line-ranges[]` 合集必须覆盖 source 的每一物理行。空行、heading、table separator 和格式行也要被相邻 section 包含或单独分类，但不要求产生 atom。
-3. 每个 section 判断为：包含产品/系统语义，或仅属于 background、formatting、reference-only、prototype-only、superseded 等 non-atom content。
-4. 对每项有产品/系统语义的事实提取 atom，并把 atom ID 回填到对应 inventory row。一个 section 可以产生零到多个 atom；一个 atom 也可以引用多个 section range。
-5. `obligation-bearing`、`contextual`、`explicit-non-goal`、`conflict` 或 `unclear` section 必须关联至少一个 atom，或记录 blocker。
-6. 没有 atom 的 section 必须填写 `Non-Atom Classification` 和中文 `Reason`。
-
-因此，“全文已被考虑”由 section inventory 保证；“所有有意义的产品/系统内容已被提取”由 atom ledger 保证。atom 不需要覆盖纯格式或无产品/系统语义的行。
-
 ## Atom 提取方法
 
 ### 1. 提取所有有产品/系统语义的事实
@@ -111,7 +97,7 @@ section inventory 是全文 disposition layer，atom 是在其基础上提取的
 - 会改变当前实现、验证或兼容性判断的 contextual fact。
 - 无法安全解释的 source conflict 或 meaningful unclear content。
 
-纯格式、目录导航、重复的 heading/TOC 等机械性内容、discarded explanation、无 production effect 的 prototype detail 或已明确 superseded content 保留在 inventory，不创建 atom。Phase 2 不判断两个有语义的事实是否 duplicate。
+纯格式、目录导航、重复的 heading/TOC 等机械性内容、discarded explanation、无 production effect 的 prototype detail 或已明确 superseded content 不创建 atom。Phase 3 根据 atom 范围的 complement 统一审阅并分类这些 remainder range；Phase 2 不判断两个有语义的事实是否 duplicate。
 
 ### 2. 控制 atom 粒度
 
@@ -191,48 +177,40 @@ Phase 2 不再记录 `candidate-capability-impact`、`candidate-related-capabili
 
 ## Canonical source atom file
 
-每份 `.atoms.json` 使用 `source-aligned-source-atoms-v3`，包含：
+每份 `.atoms.json` 使用 `source-aligned-source-atoms-v4`，包含：
 
 - `trace-schema`、`trace-contract-version`
 - `source-document`、`source-sha256`、`read-status: read-full`、`canonical-owner`
 - `source-role`、`phase-1-candidate-changes-capabilities-considered`
-- `section-inventory[]`
 - `source-atoms[]`
 - `blockers[]`
 - `language-self-check`
-
-`section-inventory[]` 的 Markdown mirror：
-
-| Source Section | Lines | Production Meaning | Atom IDs | Non-Atom Classification | Reason |
-| --- | --- | --- | --- | --- | --- |
 
 `source-atoms[]` 的 Markdown mirror：
 
 | Source Atom ID | Lines | Atom Type | Source Fact | Normativity | Candidate Status | Candidate Artifact Projection | Candidate Owner Change | Candidate Target Capability | Rationale |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
 
-两个 `Lines` 列均由 canonical `line-ranges[]` 生成。`.atoms.md` 还包含 source identity、Phase 1 context、blocker、language self-check 和 `Trace Appendix`；render contract 为 `source-aligned-render-v3`。
+`Lines` 列由 canonical `line-ranges[]` 生成。`.atoms.md` 还包含 source identity、Phase 1 context、blocker、language self-check 和 `Trace Appendix`；render contract 为 `source-aligned-render-v4`。
 
 字段 shape：
 
 - `phase-1-candidate-changes-capabilities-considered` 是 array；每项包含 `change`、`capabilities[]` 和简短中文 `note`。
 - `blockers[]` 是简体中文 string array；没有 blocker 时为 `[]`。
 - `language-self-check` 是非空简体中文 string。
-- `non-atom-classification` 只使用 `reference-only`、`prototype-only-not-production`、`background-only`、`formatting-only`、`superseded`、`mechanical-repeat` 或 `no-product-or-system-impact`；有 atom 的 row 使用 `none`。
-
-`phase-2.trace.json.sources[]` 每份 source 一行，包含 `source-document`、`atom-json-path`、`atom-json-sha256`、`atom-markdown-path`、`canonical-owner`、`read-status`、`inventory-section-count`、`atom-count` 和 `blockers[]`。
+`phase-2.trace.json.sources[]` 每份 source 一行，包含 `source-document`、`atom-json-path`、`atom-json-sha256`、`atom-markdown-path`、`canonical-owner`、`read-status`、`atom-count` 和 `blockers[]`。
 
 ## 索引与报告
 
 `source-obligation-atoms/index.md`：
 
-| Source Document | Work Queue Batch | Canonical Owner | Source Atom File | Read Status | Inventory Sections | Atom Candidates | Candidate Status Summary | Projection Summary | Mapped Changes | Mapped Capabilities | Unassigned Atoms | Blockers |
-| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| Source Document | Work Queue Batch | Canonical Owner | Source Atom File | Read Status | Atom Candidates | Candidate Status Summary | Projection Summary | Mapped Changes | Mapped Capabilities | Unassigned Atoms | Blockers |
+| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
 
 `phase-2-agent-report.md` 先记录 index/report writer identity、只读 input、output 和 blocker，再包含：
 
-| Batch | Source Documents | Source Atom Files | Docs Read Full | Inventory Sections | Atom Candidates | Status Summary | Projection Summary | Mapped Changes / Capabilities | Unassigned Atoms | Conflicts / Unclassified | Blockers |
-| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| Batch | Source Documents | Source Atom Files | Docs Read Full | Atom Candidates | Status Summary | Projection Summary | Mapped Changes / Capabilities | Unassigned Atoms | Conflicts / Unclassified | Blockers |
+| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
 
 aggregate 不发布 duplicate statistic、candidate new boundary、global coverage statistic、global atom 或 final plan map。
 
@@ -241,12 +219,11 @@ aggregate 不发布 duplicate statistic、candidate new boundary、global covera
 ## 完成门禁
 
 1. **Source gate**：每份 `read-full` source 在 work queue 中恰好一次，并有一个 canonical JSON 与 mirror。
-2. **Inventory gate**：section inventory 的有序 `line-ranges[]` 无 gap 地覆盖 source 全部物理行；重叠有明确理由。
-3. **Semantic gate**：每项有产品/系统语义的 source fact 都有 atom；每个 non-atom section 都有 classification 和 reason。
-4. **Atom gate**：atom 不 broad、不机械过拆；status 仅使用五种允许值；guard/non-goal 语义没有塞入 status；不存在 duplicate/new Change/new Capability 的 Phase 2 判断。
-5. **Mapping gate**：owner/target 只引用现有 framework 或使用 `unassigned` / `unresolved` / `none`；不存在 Capability impact 判断。
-6. **Artifact gate**：canonical JSON 使用 v3 schema 且只含 `line-ranges[]`；mirror 与 renderer output 一致。
-7. **Role gate**：extraction writer 只写分配 JSON；index/report writer 未编辑 extraction 或执行全局判断。
-8. **Review gate**：validator 和 fresh reviewer 通过；repair 后已重新验证；manifest 已刷新并冻结 evidence。
+2. **Semantic gate**：每项有产品/系统语义的 source fact 都有 atom；atom evidence range 尽量紧凑，不使用整章或整页范围掩盖未提取语义。全文 remainder disposition 留给 Phase 3。
+3. **Atom gate**：atom 不 broad、不机械过拆；status 仅使用五种允许值；guard/non-goal 语义没有塞入 status；不存在 duplicate/new Change/new Capability 的 Phase 2 判断。
+4. **Mapping gate**：owner/target 只引用现有 framework 或使用 `unassigned` / `unresolved` / `none`；不存在 Capability impact 判断。
+5. **Artifact gate**：canonical JSON 使用 v4 schema 且只含 `line-ranges[]`；mirror 与 renderer output 一致。
+6. **Role gate**：extraction writer 只写分配 JSON；index/report writer 未编辑 extraction 或执行全局判断。
+7. **Review gate**：validator 和 fresh reviewer 通过；repair 后已重新验证；manifest 已刷新并冻结 evidence。
 
-final reply 使用简短中文，报告 batch、已处理 source、inventory/atom count、mapped/unassigned atom、conflict/unclassified、language gate 和 blocker。
+final reply 使用简短中文，报告 batch、已处理 source、atom count、mapped/unassigned atom、conflict/unclassified、language gate 和 blocker。

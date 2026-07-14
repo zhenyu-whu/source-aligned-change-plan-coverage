@@ -82,31 +82,6 @@ PHASE2_ATOM_TYPES = {
     "context",
 }
 PHASE2_NORMATIVITY = {"must", "must-not", "should", "context"}
-PHASE2_MEANINGFUL_SECTION_MEANINGS = {
-    "obligation-bearing",
-    "contextual",
-    "explicit-non-goal",
-    "conflict",
-    "unclear",
-}
-PHASE2_SECTION_MEANINGS = {
-    *PHASE2_MEANINGFUL_SECTION_MEANINGS,
-    "reference-only",
-    "prototype-only",
-    "background",
-    "formatting",
-    "superseded",
-}
-PHASE2_NON_ATOM_CLASSIFICATIONS = {
-    "none",
-    "reference-only",
-    "prototype-only-not-production",
-    "background-only",
-    "formatting-only",
-    "superseded",
-    "mechanical-repeat",
-    "no-product-or-system-impact",
-}
 PHASE2_ATOM_FIELDS = {
     "source-atom-id",
     "line-ranges",
@@ -119,14 +94,6 @@ PHASE2_ATOM_FIELDS = {
     "candidate-target-capability",
     "rationale",
 }
-PHASE2_SECTION_FIELDS = {
-    "source-section",
-    "line-ranges",
-    "production-meaning",
-    "atom-ids",
-    "non-atom-classification",
-    "reason",
-}
 PHASE2_TOP_LEVEL_FIELDS = {
     "trace-schema",
     "trace-contract-version",
@@ -136,7 +103,6 @@ PHASE2_TOP_LEVEL_FIELDS = {
     "canonical-owner",
     "source-role",
     "phase-1-candidate-changes-capabilities-considered",
-    "section-inventory",
     "source-atoms",
     "blockers",
     "language-self-check",
@@ -866,7 +832,6 @@ def validate_phase_2(orchestrate_dir: Path, repo_root: Path, reporter: IssueRepo
                 "atom-markdown-path",
                 "canonical-owner",
                 "read-status",
-                "inventory-section-count",
                 "atom-count",
                 "blockers",
             }
@@ -877,6 +842,9 @@ def validate_phase_2(orchestrate_dir: Path, repo_root: Path, reporter: IssueRepo
                 missing = sorted(required - set(row))
                 if missing:
                     reporter.error("phase2-trace-source-field", trace_path, f"sources[{index}] 缺少字段：{', '.join(missing)}")
+                unexpected = sorted(set(row) - required)
+                if unexpected:
+                    reporter.error("phase2-trace-source-field", trace_path, f"sources[{index}] 包含不允许的字段：{', '.join(unexpected)}")
                 source_document = str(row.get("source-document", ""))
                 if source_document in trace_sources:
                     reporter.error("phase2-trace-source-duplicate", trace_path, f"Phase 2 trace source 重复：{source_document}")
@@ -905,7 +873,7 @@ def validate_phase_2(orchestrate_dir: Path, repo_root: Path, reporter: IssueRepo
             reporter.error(
                 "phase2-top-level-field",
                 sidecar,
-                f"Phase 2 v3 sidecar 包含不允许的顶层字段：{', '.join(unexpected_top_level)}",
+                f"Phase 2 v4 sidecar 包含不允许的顶层字段：{', '.join(unexpected_top_level)}",
             )
         if data.get("source-document") != source_document:
             reporter.error("phase2-source-document", sidecar, "source-document 与 Phase 1 manifest 不一致")
@@ -959,7 +927,7 @@ def validate_phase_2(orchestrate_dir: Path, repo_root: Path, reporter: IssueRepo
                 reporter.error(
                     "phase2-atom-field",
                     sidecar,
-                    f"{context or 'source atom'} 包含 Phase 2 v3 不允许的字段：{', '.join(unexpected_fields)}",
+                    f"{context or 'source atom'} 包含 Phase 2 v4 不允许的字段：{', '.join(unexpected_fields)}",
                 )
             if not context:
                 reporter.error("phase2-source-atom-id", sidecar, "必须提供 source-atom-id")
@@ -1011,60 +979,6 @@ def validate_phase_2(orchestrate_dir: Path, repo_root: Path, reporter: IssueRepo
             if status in {"unassigned", "contextual-candidate", "unresolved-conflict", "unclassified"} and not rationale:
                 reporter.error("phase2-rationale", sidecar, f"{context} 的 {status} 必须提供 rationale")
 
-        inventory = data.get("section-inventory")
-        if not isinstance(inventory, list) or not inventory:
-            reporter.error("phase2-section-inventory", sidecar, "section-inventory 必须是非空 array")
-            inventory = []
-        inventory_ranges: List[Dict[str, int]] = []
-        previous_start = 0
-        for index, row in enumerate(inventory, start=1):
-            if not isinstance(row, dict):
-                reporter.error("phase2-section-inventory-row", sidecar, f"section-inventory[{index}] 必须是 object")
-                continue
-            context = squash(row.get("source-section")) or f"section-inventory[{index}]"
-            unexpected_fields = sorted(set(row) - PHASE2_SECTION_FIELDS)
-            if unexpected_fields:
-                reporter.error(
-                    "phase2-inventory-field",
-                    sidecar,
-                    f"{context} 包含 Phase 2 v3 不允许的字段：{', '.join(unexpected_fields)}",
-                )
-            check_ranges(sidecar, reporter, row.get("line-ranges"), source_document, repo_root, context)
-            ranges = valid_range_items(row.get("line-ranges"))
-            if ranges and ranges[0]["start"] < previous_start:
-                reporter.error("phase2-inventory-order", sidecar, f"{context} 的 line-ranges 未按 source 顺序排列")
-            if ranges:
-                previous_start = ranges[0]["start"]
-                inventory_ranges.extend(ranges)
-            meaning = normalize_code(row.get("production-meaning"))
-            if meaning not in PHASE2_SECTION_MEANINGS:
-                reporter.error("phase2-production-meaning", sidecar, f"{context} 的 production-meaning 非法：{meaning}")
-            linked = row.get("atom-ids")
-            if not isinstance(linked, list):
-                reporter.error("phase2-inventory-atom-ids", sidecar, f"{context} 的 atom-ids 必须是 array")
-                linked = []
-            for atom_id in linked:
-                if normalize_code(atom_id) not in atom_ids:
-                    reporter.error("phase2-inventory-unknown-atom", sidecar, f"{context} 引用了未知 atom：{atom_id}")
-            reason = squash(row.get("reason"))
-            non_atom = normalize_code(row.get("non-atom-classification"))
-            if non_atom not in PHASE2_NON_ATOM_CLASSIFICATIONS:
-                reporter.error("phase2-inventory-non-atom", sidecar, f"{context} 的 non-atom-classification 非法：{non_atom}")
-            if meaning in PHASE2_MEANINGFUL_SECTION_MEANINGS and not linked and not blockers:
-                reporter.error("phase2-inventory-meaningful-without-atom", sidecar, f"{context} 含有产品/系统语义，但未关联 atom 或 blocker")
-            if not linked and (not non_atom or not reason):
-                reporter.error("phase2-inventory-non-atom", sidecar, f"{context} 没有 atom 时必须填写 non-atom-classification 和 reason")
-            if not linked and non_atom == "none":
-                reporter.error("phase2-inventory-non-atom", sidecar, f"{context} 没有 atom 时不得使用 non-atom-classification=none")
-        line_count = source_line_count(repo_root, source_document)
-        if line_count is not None:
-            uncovered = uncovered_line_ranges(inventory_ranges, line_count)
-            if uncovered:
-                reporter.error(
-                    "phase2-inventory-gap",
-                    sidecar,
-                    f"section-inventory 未覆盖全文：{line_ranges_label(uncovered)}",
-                )
         trace_row = trace_sources.get(source_document)
         if trace_row is None:
             reporter.error("phase2-trace-source-coverage", trace_path, f"Phase 2 trace sources 缺少：{source_document}")
@@ -1075,7 +989,6 @@ def validate_phase_2(orchestrate_dir: Path, repo_root: Path, reporter: IssueRepo
                 "atom-markdown-path": rel(sidecar.with_suffix(".md"), repo_root),
                 "canonical-owner": data.get("canonical-owner"),
                 "read-status": data.get("read-status"),
-                "inventory-section-count": len(inventory),
                 "atom-count": len(atoms),
                 "blockers": blockers,
             }
