@@ -36,14 +36,13 @@ description: 当用户明确要求从指定 source document 出发，在 openspe
 | Phase 4 | `references/phase-4-frozen-evidence-collections.md` |
 | Phase 5 | `references/phase-5-targeted-plan-adjustment.md` |
 
-## Agent 拓扑与运行时
+## Agent 拓扑
 
 - main agent 只负责编排和 interface gate，包括初始化、调度、Phase 2 work queue、manifest/validator 和状态转换。不得代写、重做或修复 Phase 内容。
 - Phase 1、Phase 3、Phase 4、Phase 5 各由 fresh independent writer subagent 完成。
 - Phase 2 按 source document 或 coherent batch 启动一个或多个 fresh extraction writer；每份 source document 恰好一个 canonical extraction owner。全部完成后，再启动 fresh independent index/report writer。不得按 planned Change 分配 extraction。
 - writer、reviewer 和 repair-writer 都是单层 leaf worker，不得启动 nested subagent、`codex exec`、multi-agent worker 或其他 agentic child process，也不得自行进入另一 Phase。
 - reviewer 必须不同于 writer；repair-writer 必须不同于 writer 和所有 reviewer。validator 或 writer self-check 不能替代 independent reviewer。
-- 所有 Phase writer、index/report writer、reviewer 和 repair-writer 必须使用 `model=GPT-5.5`、`reasoningEffort=xhigh`。runtime 无法保证时立即返回 blocker，不得降级或由 main agent 代做。
 - main agent必须在每个worker prompt中要求直接完整读取`references/cross-phase-contract.md`和对应Phase reference；Phase 1/5 worker还必须读取共享framework原则。final integration reviewer必须读取共享原则及Phase 3–5 reference。prompt摘要不能替代原文件。
 
 ## Phase 状态机
@@ -66,7 +65,7 @@ recheck 必须 targeted 到受影响的 Phase 2 source/atom；不得无依据重
 
 ## 工作流
 
-1. 验证 source path 和必需 runtime，完整读取三份共享 contract，并按 trace contract 初始化目录及 `trace/manifest.json` skeleton。
+1. 验证 source path，完整读取三份共享 contract，并按 trace contract 初始化目录及 `trace/manifest.json` skeleton。
 2. 按“恢复规则”检查现有 evidence，确定第一个必须执行的 Phase。
 3. 完整读取当前 Phase reference，并要求 Phase worker 直接读取 `references/cross-phase-contract.md` 和该 Phase reference。进入 Phase 2 时，main agent 先按其 reference 创建 work queue，再按 queue 调度 extraction。
 4. 使用 Agent 拓扑约束构造 prompt，启动对应 writer 并等待完成；Phase 2 依次完成全部 extraction writer 和独立 index/report writer。不得因耗时或 partial output 重复启动、替换或中断 worker。

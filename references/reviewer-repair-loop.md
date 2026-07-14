@@ -32,9 +32,8 @@ complete validator 或 final integration reviewer 未通过时不得 handoff；�
 
 ## 独立性规则
 
-- Reviewer 和 repair-writer 都必须由主 agent 单独 spawn fresh subagent，且必须使用 `model=GPT-5.5` 和 `reasoningEffort=xhigh`。
 - Reviewer subagent 必须与 phase writer subagent 不同；repair-writer subagent 必须与 phase writer subagent、所有 reviewer subagent 都不同。
-- Final integration reviewer 必须是 fresh leaf subagent，使用相同 runtime，且不同于 Phase 5 writer、Phase 5 reviewer 和 Phase 5 repair-writer。
+- Final integration reviewer 必须是 fresh leaf subagent，且不同于 Phase 5 writer、Phase 5 reviewer 和 Phase 5 repair-writer。
 - Writer subagent 的自检、最终回复、agent report、trace 字段或 “reviewer passed” 文案不满足 reviewer 步骤。
 - Validator 通过不满足 reviewer 步骤；validator 只提供 reviewer 输入之一。
 - Reviewer subagent 对被审 artifact 只读，只能写入或追加本 Phase 的 reviewer report，不得修改被审 artifact，不得执行 repair，不得推进下一 Phase。Phase 3 reviewer保持完全只读，只在最终回复返回结构化 review evidence；由 main agent机械记录到 `phase-3.trace.json.reviewer-loop`，reviewer本身不得写 trace。
