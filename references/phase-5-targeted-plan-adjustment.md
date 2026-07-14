@@ -1,140 +1,168 @@
-# Phase 5：逐 GA 最终框架映射与 plan refit
+# Phase 5：共享标准复审与最小 plan refit
 
-Phase 5 在 Phase 3 `coverage-complete` 且 Phase 4 `grounded` 后运行。它消费完整 evidence occurrence registry和 source-window semantics，为每个 GA 独立建立 final mapping，再据此调整最终 Change/Capability framework。
+Phase 5 在 Phase 3 `coverage-complete` 且 Phase 4 `assembled` 后运行。它使用 Phase 4 原文集合和 `references/change-capability-framework-principles.md` 中与 Phase 1 完全相同的标准，复审 initial framework并只做 source-backed最小调整。
 
-Phase 5 不执行 semantic dedup。final packet是完整 evidence mapping，不是去重后的 requirement inventory。
+writer 必须完整读取 `references/cross-phase-contract.md`、`references/change-capability-framework-principles.md`、本文件和 `references/trace-sidecar-contract.md`。
 
-writer 必须完整读取 `references/cross-phase-contract.md`、本文件和 `references/trace-sidecar-contract.md`。
+Phase 5不执行 semantic dedup，不重新读取原始 source，不创建 replacement source window。frozen `source-fact` 过窄时返回 targeted coverage/extraction recheck。
 
 ## 输入
 
 - Phase 1 `initial-change-plan.md`
-- Phase 2 source atom JSON
-- Phase 3 `obligation-atom-index.json` 与 `coverage-review.json`
-- Phase 4 `source-window-index.json`、dossier、semantic profile和 grounding issues
+- Phase 2/3 canonical evidence和global atom index
+- Phase 4 `evidence-collection-index.json`及全部 rendered collection
 - 只读 `openspec/specs/<capability>/spec.md` repository baseline
-
-Phase 5 通过 evidence resolver取得每个 GA 的 source fact/range/type/normativity；不得假设 global index重复保存 extraction字段。
 
 ## 输出
 
-所有 terminal status都写入：
+所有状态都写入：
 
-- `phase-works/phase-5/source-window-refit-trace.md`
+- `phase-works/phase-5/plan-refit-review.md`
 - `phase-works/phase-5/phase-5-agent-report.md`
 - `trace/phase-5.trace.json`
 
 `accepted` / `adjusted` 还必须写入：
 
-- `phase-works/phase-5/input-change-plan.md`
 - `phase-works/phase-5/change-plan.md`
-- 根 `change-plan.md`
-- `phase-works/phase-5/atom-plan-mapping.json`
-- `phase-works/phase-5/atom-plan-mapping.md`
-- `phase-works/phase-5/final-packet-index.json`
-- `phase-works/phase-5/capability-progression-review.md`
+- 根 `change-plan.md`，且与前者逐字节一致
+- `phase-works/phase-5/atom-plan-mapping.json|md`
 - `phase-works/phase-5/capability-baseline-reconciliation.json|md`
-- `phase-works/phase-5/change-complexity-review.md`
-- `phase-works/phase-5/plan-refit-decision-log.md`
-- `phase-works/phase-5/alignment-final-report.md`
+- `phase-works/phase-5/final-packet-index.json`
 - `change-capability-anchors/<change>/<change>.md`
 - `change-capability-anchors/<change>/capability-anchors/<capability>.md`
-- `phase-works/phase-5/change-capability-human-plan.md`
 - `change-capability-anchors/index.md`
 
-accepted/adjusted 时，Phase 5 input snapshot必须与 Phase 1 snapshot逐字节一致，两个 final `change-plan.md` 必须逐字节一致。
+禁止创建或保留：`phase5-refit.config.json`、`input-change-plan.md`、`source-window-refit-trace.md`、`change-plan-adjustments.md`、`capability-progression-review.md`、`change-complexity-review.md`、`plan-refit-decision-log.md`、`alignment-final-report.md`、`change-capability-human-plan.md`。
 
-## 每个 GA 的独立映射
+## 固定复审顺序
 
-`atom-plan-mapping.json` 必须对 global index中的每个 GA恰好一行，并保留相同 `evidence-ref`。每行独立决定：
+1. 对每个 initial Capability逐项应用共享 Capability gate。
+2. 对每个 initial Change逐项应用共享 Change gate。
+3. 审阅 `unassigned-and-gap.md` 中每个 GA。
+4. 重建 Change-Capability overlay。
+5. 按 hard dependency和outcome maturity复审 roadmap顺序。
+6. 冻结 final Change/Capability framework。
+7. 只读核对 final target Capability repository baseline。
+8. 为每个 GA写入 final mapping。
+9. 运行 mechanical helper生成 baseline、packet、Capability view和根 plan。
 
-- final owner Change与 owner type；
-- final artifact projection；
-- final relation；
-- Capability impact/target/related Capability；
-- plan decision与中文 reason。
+Phase 1 framework默认保留。只有 evidence collection证明共享 gate失败时才允许 split、merge、add、remove、rename、reorder或scope adjustment；不得从零重新规划。
 
-多个语义相同的 GA可以映射到完全相同的 Change、projection、relation和 Capability，不产生 warning、ownership conflict或 recheck。不得添加 equivalence key、canonical GA、duplicate status、earliest duplicate owner、delivery-unit group或其他语义归组字段。
+## 最小 refit
 
-technical duplicate GA ID、缺失 mapping、dangling evidence ref或一个 GA多行仍是错误。
+Capability：
 
-## Final mapping 规则
+- 全部 gate通过：`keep`。
+- 混合多个不相关稳定 behavior boundary：`split`。
+- 多个 Capability重叠且不能独立成立：`merge`。
+- unassigned/gap暴露新的稳定 behavior boundary：新增。
+- 只是 implementation component、临时阶段或 Change alias：`remove`、`merge`或`rename`。
 
-- `direct` mapping 必须有一个 final Change owner以及 `spec-requirement`、`spec-guard`、`design-obligation` 或 `verification-obligation` projection。
-- non-direct evidence仍必须 owner-scoped 地保留在 final packet，可使用 preserve/dependency/context/reference relation，不得静默丢失。
-- `spec-requirement` / `spec-guard` 必须给出具体 target Capability和 `new|modified` impact。
-- direct design/verification以及 non-direct evidence使用 `none` / `none`，除非 source语义明确要求 spec delta。
-- `related-capabilities[]` 只保存 source-explicit、non-owning relation；不推进 Capability。
-- final packet保留每个 GA evidence row，不在本技能内合并 requirement。
+Change：
 
-## Framework refit
+- 全部 gate通过：`keep`。
+- 包含多个可独立 acceptance/archive的 outcome：`split`。
+- 多个 Change共同构成不可分 outcome：`merge`。
+- evidence属于另一 Change：`scope-adjusted`。
+- unassigned/gap形成独立 outcome：新增。
+- 只有辅助实现内容且无独立 outcome：`remove`或并入consumer。
+- roadmap违反hard dependency：`reorder`。
+- boundary正确但名称不准确：`rename`。
 
-先从 Phase 4 source-window profile推导 semantic planning graph，再调整 framework：
+不得引入 planning graph、atom clustering、complexity budget、固定 evidence count threshold或基于矩阵形状的调整。
 
-1. 按 intent、trigger、normative behavior、observable outcome/invariant、exception、acceptance和 dependency判断 Change cohesion。
-2. 按 Purpose/Owns/Excludes和 implementation-substitution判断 Capability boundary。
-3. 依据 repository baseline决定 Capability-level `New` / `Modified`。
-4. 只有 source-backed outcome可独立验收/归档且 dependency允许时拆分 Change；只有多个 slice实际构成同一不可分 outcome时合并。
-5. 生成 final mapping、packet、Capability view、roadmap和 progression matrix并交叉校验。
+## plan-refit-review.md
 
-GA count只作为 trace volume展示。不得用 direct atom `>80`、exception atom `>12`、总数 `>120` 或任何固定 evidence count阈值决定 split、merge、block或 complexity warning。重复 evidence增加 mapping row数量，但不能单独改变 roadmap、Capability Map、progression或 Change顺序。
+固定包含以下 heading和表格。
 
-complexity review检查的是语义复杂度：
+### `## Capability Review`
 
-- 是否混合多个独立 intent/outcome；
-- acceptance是否可以独立成立；
-- dependency、transaction、invariant、protocol、安全或兼容性是否要求整体交付；
-- 是否具备独立 archive/deploy/risk/rollback/review boundary；
-- Capability boundary是否稳定。
+| Input Capability | Evidence Collection | Decision | Final Capability(s) | Failed or Passed Gates | Reason |
+| --- | --- | --- | --- | --- | --- |
 
-## Capability baseline 与 progression
+每个 Phase 1 Capability恰好一行。
 
-- existing spec target的所有 planned delta为 Capability-level `Modified`。
-- absent target的首次 source-backed roadmap advancement为 `New`，之后为 `Modified`。
-- requirement-level `ADDED|MODIFIED|REMOVED|RENAMED` 不能反推 Capability existence。
-- progression matrix、Capability Map、roadmap、anchor index和 packet必须一致。
-- Capability advancement只由适用的 direct spec mapping产生；design/verification、contextual和 related-only evidence不推进 Capability。
-- progression不得从 GA数量或重复 occurrence数量推断。
+### `## Change Review`
 
-## Final Change packet
+| Input Change | Evidence Collection | Decision | Final Change(s) | Failed or Passed Gates | Reason |
+| --- | --- | --- | --- | --- | --- |
 
-每个 final Change packet至少包含：
+每个 Phase 1 Change恰好一行。
 
-- Change identity、intent、outcome、acceptance和 independent archive条件；
-- dependency/upstream realized baseline/downstream constraints/non-goals；
-- direct evidence mapping表；
-- owner-scoped non-direct evidence表；
-- Capability delta与 baseline relation；
-- design/verification obligations和 evidence burden；
-- 所有相关 GA与 evidence ref。
+### `## Unassigned and Gap Review`
 
-packet 必须显式写明：
+| GA | Provenance | Source Fact Reference | Disposition | Final Change | Final Capability | Reason |
+| --- | --- | --- | --- | --- | --- | --- |
 
-> 本 packet 是完整、未做语义去重的 evidence mapping，不是 requirement inventory。下游规格生成可以综合多个 GA，但必须保留多对一 GA trace。
+每个 `unassigned-and-gap` GA恰好一行。
 
-语义相同的多个 GA仍各占一行，不合并、不选 canonical。
+### `## Final Decision`
 
-## Human plan 与 handoff
+- `Status: accepted|adjusted|needs-coverage-recheck|blocked`
+- framework变化摘要或 `无`
+- recheck/blocker及最小下一步或 `无`
 
-`change-capability-human-plan.md` 必须以 reviewer可读方式呈现 final Capability Map、Change roadmap、progression、每个 Change的 intent/outcome/acceptance/dependency和 ledger link，并声明：
+`accepted` 表示 final Capability/Change集合、boundary、overlay和roadmap顺序与 Phase 1实质一致；candidate atom hint的最终消解不构成 framework调整。发生 split、merge、add、remove、rename、reorder或实质boundary/overlay变化时必须使用 `adjusted`。
 
-- evidence occurrence数量仅为 trace volume；
-- final framework没有按 evidence数量切分；
-- packet未做 semantic dedup；
-- semantic dedup由后续 specification generation负责，并保留多对一 GA trace。
+## Final change plan
 
-## Recheck 与 blocker
+`change-plan.md` 继续使用 Phase 1固定heading和Change字段，包括 `Source Semantic Landscape`，但把 candidate/hypothesis改为 final结论。为消除机械解析歧义，final `Capability Map` 的表头固定为：
 
-- source-window暴露 uncovered missing obligation：返回 `needs-coverage-recheck`，先回 Phase 3补提取。
-- evidence显示某 Phase 2 atom broad：返回 `needs-coverage-recheck`，targeted回 Phase 2重提取该 source/atom，再重跑 Phase 3/4/5。
-- product boundary需要用户决定、source conflict无法解决或 repository baseline不可访问：返回 `blocked`。
-- 不得因 semantic duplicate或 GA数量返回 recheck/blocker。
+| Capability | Purpose | Owns | Excludes | Boundary Rationale |
+| --- | --- | --- | --- | --- |
+
+final `Change-Capability Overlay` 的表头固定为：
+
+| Change | Capability | Capability Impact | Direct Behavior Delta |
+| --- | --- | --- | --- |
+
+`Capability Impact` 只允许 `new|modified`。
+
+每个 final Change必须保留共享标准要求的 intent、outcome、范围、behavior completeness profile、acceptance evidence、hard dependency、排序理由、独立完成与归档、拆分/合并判断。mechanical helper不得补写缺失内容。
+
+## Atom plan mapping v4
+
+`atom-plan-mapping.json` 使用 `source-aligned-atom-plan-mapping-v4`。顶层包含 `trace-schema`、`trace-contract-version`、`artifact-path`、`rows[]`。
+
+每个 GA恰好一行，且只能包含：
+
+- `global-atom-id`
+- `evidence-ref`
+- `final-owner-change`
+- `final-relation`
+- `final-artifact-projection`
+- `final-capability-impact`
+- `final-target-capability`
+- `related-capabilities[]`
+- 简体中文 `reason`
+
+规则：
+
+- `evidence-ref` 与global index完全一致；source path/range/fact通过resolver取得，不在mapping复制。
+- direct和non-direct都必须归属一个final Change。
+- relation只允许 `direct`、`context`、`dependency`、`preserve`、`reference`、`non-goal`。
+- direct projection只允许 `spec-requirement`、`spec-guard`、`design-obligation`、`verification-obligation`。
+- direct spec/guard必须指定具体Capability和`new|modified`。
+- direct design/verification以及所有non-direct使用`none` / `none`；non-direct projection使用`contextual-only`。
+- `related-capabilities[]` 只表达source-explicit、non-owning relation，不推进Capability。
+
+## Mechanical helper
+
+`phase5_plan_refit.py` 只执行确定性工作：
+
+- 读取 final `change-plan.md`、`plan-refit-review.md`、mapping v4、Phase 2/3 resolver和repository specs；
+- 拒绝缺少必需Change字段的final plan；
+- 生成mapping Markdown、baseline、final packet、Capability view、packet index和根plan；
+- packet中的原文直接来自Phase 2/3 frozen `source-fact`；
+- 不接受config，不推断semantic decision，不补写acceptance/dependency/non-goal/archive文案。
 
 ## Status
 
-- `accepted`：Phase 1 framework无需语义调整，但已完成每个 GA mapping、baseline reconciliation和 final packet。
-- `adjusted`：根据 source-window semantics调整了 Change/Capability boundary、sequence、ownership或 projection，并完成全部 terminal artifact。
-- `needs-coverage-recheck`：extraction/coverage不闭合。
-- `blocked`：需要用户决定或无法安全完成。
+- `accepted`：framework实质不变，全部GA完成final mapping和baseline reconciliation。
+- `adjusted`：framework按共享标准发生source-backed最小调整，并完成全部terminal artifact。
+- `needs-coverage-recheck`：frozen evidence缺失、broad或不足以安全判断。
+- `blocked`：source evidence存在需要用户决定的产品冲突，或repository baseline不可访问。
 
-`accepted` / `adjusted` 只有在 validator、independent Phase 5 reviewer、all-phase validator和 final integration reviewer全部通过后才允许 handoff 给后续 OpenSpec流程。
+`accepted` / `adjusted` 只有在Phase validator、independent reviewer、all-phase validator和final integration reviewer全部通过后才能handoff。
+
+terminal trace使用`source-aligned-phase-5-trace-v2`，只保存final plan、review、mapping JSON、baseline JSON和packet index JSON的path及SHA。非终态trace只保存review path/SHA和非空`issues[]`。

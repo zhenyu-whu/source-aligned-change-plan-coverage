@@ -7,7 +7,6 @@ from __future__ import annotations
 import argparse
 import json
 import re
-import sys
 from pathlib import Path
 from typing import Dict, Iterable, List, Set, Tuple
 
@@ -15,6 +14,7 @@ from source_aligned_trace_lib import (
     ATOM_PLAN_MAPPING_SCHEMA,
     CAPABILITY_BASELINE_SCHEMA,
     DIRECT_PROJECTIONS,
+    EVIDENCE_COLLECTION_INDEX_SCHEMA,
     FINAL_PACKET_INDEX_SCHEMA,
     GLOBAL_ATOM_ID_RE,
     GLOBAL_ATOM_INDEX_SCHEMA,
@@ -23,22 +23,16 @@ from source_aligned_trace_lib import (
     PHASE3_COVERAGE_REVIEW_SCHEMA,
     PHASE_TRACE_SCHEMAS,
     SOURCE_ATOMS_SCHEMA,
-    SOURCE_WINDOW_INDEX_SCHEMA,
     TRACE_CONTRACT_VERSION,
     IssueReporter,
     cell,
-    extract_ga_ids,
     line_range_label,
-    line_ranges_label,
     merge_line_ranges,
-    parse_line_ranges,
     range_covered_by,
     read_json,
     sha256_file,
-    sha256_text,
     source_atom_file_name,
     source_line_count,
-    source_text_for_ranges,
     table_rows,
     uncovered_line_ranges,
     validate_kebab_keys,
@@ -46,24 +40,27 @@ from source_aligned_trace_lib import (
     squash,
 )
 from render_source_aligned_orchestrate import (
+    RENDER_CONTRACT_VERSION,
     render_atom_plan_mapping,
     render_capability_baseline,
     render_global_index,
     render_phase2_source_atoms,
     render_coverage_review,
+    render_evidence_collections,
+)
+from phase5_plan_refit import (
+    build_baseline as build_phase5_baseline,
+    load_evidence as load_phase5_evidence,
+    load_mapping as load_phase5_mapping,
+    parse_final_plan,
+    render_capability_view,
+    render_packet,
+    validate_mapping as validate_phase5_mapping,
 )
 
 NO_OWNER_VALUES = {"", "None", "none", "null", "NULL"}
-FOUNDATION_CHANGE_KIND = "foundation"
-BUSINESS_CHANGE_KIND = "business"
-EXECUTABLE_OWNER_TYPE = "executable-change"
-FOUNDATION_CAPABILITY = "runtime-substrate-foundation"
-FOUNDATION_IMPACT = "foundation-substrate"
 SPEC_PROJECTIONS = {"spec-requirement", "spec-guard"}
 CHANGE_ONLY_PROJECTIONS = {"design-obligation", "verification-obligation"}
-NON_TERMINAL_CAPABILITY_IMPACTS = {"new", "modified", "none", "unresolved"}
-TERMINAL_CAPABILITY_IMPACTS = {"new", "modified", "none", FOUNDATION_IMPACT}
-BUSINESS_CAPABILITY_IMPACTS = {"new", "modified"}
 PHASE2_CANDIDATE_STATUSES = {
     "direct-candidate",
     "unassigned",
@@ -115,15 +112,6 @@ LEGACY_CAPABILITY_FIELDS = {
     "final-owner-capability",
     "capability-advancement",
 }
-RESERVED_CAPABILITY_MARKERS = {
-    "none",
-    "unresolved",
-    "candidate-new-capability",
-    "unassigned",
-    "candidate-new-change",
-    "contextual",
-    "non-direct",
-}
 PHASE_NAMES = ("phase-1", "phase-2", "phase-3", "phase-4", "phase-5")
 FINAL_PHASE5_STATUSES = {"accepted", "adjusted"}
 NON_FINAL_PHASE4_STATUSES = {"needs-coverage-recheck", "blocked"}
@@ -132,7 +120,7 @@ PHASE_ALLOWED_TRACE_STATUSES = {
     "phase-1": {"initial-plan-written"},
     "phase-2": {"source-atoms-written"},
     "phase-3": {"coverage-complete", "needs-extraction-recheck", "blocked"},
-    "phase-4": {"grounded", *NON_FINAL_PHASE4_STATUSES},
+    "phase-4": {"assembled", *NON_FINAL_PHASE4_STATUSES},
     "phase-5": {*FINAL_PHASE5_STATUSES, *NON_FINAL_PHASE5_STATUSES},
 }
 WORKFLOW_PHASE_STATUS_VALUES = {
@@ -160,17 +148,6 @@ def is_no_owner(value: object) -> bool:
     return normalize_code(value) in NO_OWNER_VALUES
 
 
-def is_executable_direct_row(row: Dict[str, object]) -> bool:
-    return row.get("final-relation") == "direct"
-
-
-def is_capability_view_row(row: Dict[str, object]) -> bool:
-    return is_executable_direct_row(row) and row.get("final-capability-impact") in {
-        *BUSINESS_CAPABILITY_IMPACTS,
-        FOUNDATION_IMPACT,
-    }
-
-
 def reject_legacy_capability_fields(
     row: Dict[str, object],
     path: Path,
@@ -186,79 +163,9 @@ def reject_legacy_capability_fields(
         )
 
 
-def markdown_capability_list(value: object) -> List[str]:
-    text = str(value or "").strip()
-    code_values = [normalize_code(item) for item in re.findall(r"`([^`]+)`", text)]
-    raw_values = code_values or [normalize_code(item) for item in re.split(r"\s*[,;]\s*", text)]
-    return [value for value in raw_values if value and value.lower() not in {"none", "none/change-only"}]
-
-
 def markdown_target(value: object) -> str:
     target = normalize_code(value)
     return "none" if target.lower() in {"none", "none/change-only"} else target
-
-
-def validate_related_capabilities(
-    row: Dict[str, object],
-    field: str,
-    target: str,
-    path: Path,
-    reporter: IssueReporter,
-    context: str,
-) -> List[str]:
-    raw = row.get(field)
-    if not isinstance(raw, list):
-        reporter.error("capability-related-array", path, f"{context} 的 {field} 必须是 array")
-        return []
-    values = [normalize_code(item) for item in raw]
-    if len(values) != len(set(values)):
-        reporter.error("capability-related-duplicate", path, f"{context} 的 {field} 包含重复项")
-    for value in values:
-        if not KEBAB_CASE_RE.match(value):
-            reporter.error("capability-related-format", path, f"{context} 的 related capability 不是 kebab-case：{value}")
-        elif value in RESERVED_CAPABILITY_MARKERS:
-            reporter.error("capability-related-reserved", path, f"{context} 的 related capability 使用了保留标记：{value}")
-        if value == target:
-            reporter.error("capability-related-target", path, f"{context} 的 related capability 不得等于 target：{value}")
-    return values
-
-
-def validate_capability_contract(
-    row: Dict[str, object],
-    *,
-    impact_field: str,
-    target_field: str,
-    related_field: str,
-    projection_field: str,
-    allowed_impacts: Set[str],
-    path: Path,
-    reporter: IssueReporter,
-    context: str,
-    rationale_field: str = "",
-) -> None:
-    impact = normalize_code(row.get(impact_field))
-    target = normalize_code(row.get(target_field))
-    projection = normalize_code(row.get(projection_field))
-    related = validate_related_capabilities(row, related_field, target, path, reporter, context)
-    if impact not in allowed_impacts:
-        reporter.error("capability-impact", path, f"{context} 的 {impact_field} 非法：{impact}")
-        return
-    if impact in BUSINESS_CAPABILITY_IMPACTS:
-        if projection not in SPEC_PROJECTIONS:
-            reporter.error("capability-impact-projection", path, f"{context} 使用 new/modified 时必须采用 spec projection")
-        if is_no_owner(target) or target == "unresolved" or not KEBAB_CASE_RE.match(target):
-            reporter.error("capability-target", path, f"{context} 使用 new/modified 时必须指定具体 target capability")
-    elif impact == "none":
-        if target != "none":
-            reporter.error("capability-target", path, f"{context} 使用 impact=none 时必须使用 target=none")
-    elif impact == "unresolved":
-        rationale = squash(row.get(rationale_field)) if rationale_field else ""
-        if not rationale:
-            reporter.error("capability-unresolved-rationale", path, f"{context} 的 unresolved impact 必须提供理由")
-        if target != "unresolved" and (is_no_owner(target) or not KEBAB_CASE_RE.match(target)):
-            reporter.error("capability-target", path, f"{context} 的 unresolved target 必须是已知 kebab-case Capability 或 unresolved")
-    if projection in CHANGE_ONLY_PROJECTIONS and impact != "none":
-        reporter.error("capability-change-only", path, f"{context} 的 {projection} 必须使用 impact=none")
 
 
 def trace_decision_status(path: Path) -> str:
@@ -531,8 +438,8 @@ def expected_manifest_artifacts(orchestrate_dir: Path, repo_root: Path) -> Dict[
         ),
         (orchestrate_dir / "trace/phase-3.trace.json", PHASE_TRACE_SCHEMAS["phase-3"], "phase-3"),
         (
-            orchestrate_dir / "phase-works/phase-4/source-window-dossiers/source-window-index.json",
-            SOURCE_WINDOW_INDEX_SCHEMA,
+            orchestrate_dir / "phase-works/phase-4/source-evidence-collections/evidence-collection-index.json",
+            EVIDENCE_COLLECTION_INDEX_SCHEMA,
             "phase-4",
         ),
         (orchestrate_dir / "trace/phase-4.trace.json", PHASE_TRACE_SCHEMAS["phase-4"], "phase-4"),
@@ -618,7 +525,7 @@ def validate_manifest(orchestrate_dir: Path, repo_root: Path, reporter: IssueRep
             "phase-1": {"initial-plan-written"},
             "phase-2": {"source-atoms-written"},
             "phase-3": {"coverage-complete"},
-            "phase-4": {"grounded"},
+            "phase-4": {"assembled"},
             "phase-5": FINAL_PHASE5_STATUSES,
         }
         for phase_name, allowed in terminal_statuses.items():
@@ -1612,151 +1519,125 @@ def validate_phase_4(orchestrate_dir: Path, repo_root: Path, reporter: IssueRepo
     if phase4_trace:
         status = validate_trace_status(phase4_trace, phase4_trace_path, reporter, "phase-4", "phase4-status")
     phase1_plan_path = orchestrate_dir / "phase-works/phase-1/initial-change-plan.md"
-    phase4_input_plan_path = orchestrate_dir / "phase-works/phase-4/input-change-plan.md"
     require_file(phase1_plan_path, reporter, "phase4-interface-input", "缺少 Phase 4 输入：Phase 1 initial-change-plan.md")
-    require_file(phase4_input_plan_path, reporter, "phase4-interface-artifact", "缺少 Phase 4 input change plan")
-    require_same_file(
-        phase1_plan_path,
-        phase4_input_plan_path,
-        reporter,
-        "phase4-input-plan-drift",
-        "Phase 4 input-change-plan.md 必须与 Phase 1 initial-change-plan.md 完全一致",
-    )
-    require_file(orchestrate_dir / "phase-works/phase-4/source-window-dossiers/index.md", reporter, "phase4-interface-artifact", "缺少 Phase 4 source-window dossier index")
-    require_file(orchestrate_dir / "phase-works/phase-4/source-window-semantic-profile-review.md", reporter, "phase4-interface-artifact", "缺少 Phase 4 semantic profile review")
-    require_file(orchestrate_dir / "phase-works/phase-4/source-window-grounding-issues.md", reporter, "phase4-interface-artifact", "缺少 Phase 4 grounding issues 报告")
     require_file(orchestrate_dir / "phase-works/phase-4/phase-4-agent-report.md", reporter, "phase4-interface-artifact", "缺少 Phase 4 agent 报告")
+    legacy_paths = [
+        orchestrate_dir / "phase-works/phase-4/input-change-plan.md",
+        orchestrate_dir / "phase-works/phase-4/source-window-dossiers",
+        orchestrate_dir / "phase-works/phase-4/source-window-semantic-profile-review.md",
+        orchestrate_dir / "phase-works/phase-4/source-window-grounding-issues.md",
+    ]
+    for legacy in legacy_paths:
+        if legacy.exists():
+            reporter.error("phase4-legacy-artifact", legacy, "旧 Phase 4 source-window artifact 已废弃，必须清理并重跑 Phase 4")
     global_atoms = load_global_atoms(orchestrate_dir, reporter)
     resolved_evidence = resolve_global_evidence(orchestrate_dir, global_atoms, reporter)
-    index_path = orchestrate_dir / "phase-works/phase-4/source-window-dossiers/source-window-index.json"
-    data = json_obj(index_path, reporter, SOURCE_WINDOW_INDEX_SCHEMA)
+    changes, capabilities = phase1_framework_ids(orchestrate_dir)
+    index_path = orchestrate_dir / "phase-works/phase-4/source-evidence-collections/evidence-collection-index.json"
+    data = json_obj(index_path, reporter, EVIDENCE_COLLECTION_INDEX_SCHEMA)
     if data:
         exact_fields(
             data,
-            {"trace-schema", "trace-contract-version", "status", "windows", "semantic-profiles", "grounding-issues"},
+            {"trace-schema", "trace-contract-version", "status", "rows", "issues", "language-self-check"},
             index_path,
             reporter,
             "phase4-index-fields",
-            "source-window-index",
+            "evidence-collection-index",
         )
-        forbidden_tokens = ("duplicate", "equivalence", "canonical-ga", "canonical-atom", "delivery-unit")
-        forbidden_keys = sorted({key for key in iter_nested_keys(data) if any(token in key.lower() for token in forbidden_tokens)})
-        if forbidden_keys:
-            reporter.error(
-                "phase4-semantic-dedup-field",
-                index_path,
-                f"Phase 4 不得包含 semantic dedup metadata：{', '.join(forbidden_keys)}",
-            )
     index_status = phase_status_value(data.get("status"))
+    if index_status not in PHASE_ALLOWED_TRACE_STATUSES["phase-4"]:
+        reporter.error("phase4-index-status", index_path, f"collection index status非法：{index_status}")
     if status and index_status and status != index_status:
-        reporter.error("phase4-status-drift", index_path, f"source-window-index status {index_status} 与 phase trace status {status} 不一致")
-    windows = data.get("windows")
-    if not isinstance(windows, list):
-        reporter.error("phase4-windows", index_path, "windows 必须是 array")
-        return
-    if not windows:
-        issues = data.get("grounding-issues")
-        if status == "grounded" or not status:
-            reporter.error("phase4-windows", index_path, "Phase 4 为 grounded 时，windows 必须是非空 array")
-        if status in NON_FINAL_PHASE4_STATUSES and not (isinstance(issues, list) and issues):
-            reporter.error("phase4-grounding-issues", index_path, f"{status} 要求提供非空 grounding-issues")
-        return
-    grounded_ids: Set[str] = set()
-    window_fields = {
-        "window-id",
-        "input-unit",
-        "unit-type",
-        "source-document",
-        "line-ranges",
-        "context-line-ranges",
-        "linked-global-atom-ids",
-        "dossier-path",
-        "source-sha256",
-        "window-text-sha256",
-    }
-    for row in windows:
-        if not isinstance(row, dict):
-            reporter.error("phase4-window-row", index_path, "windows item 必须是 object")
-            continue
-        window_id = str(row.get("window-id", ""))
-        exact_fields(row, window_fields, index_path, reporter, "phase4-window-fields", window_id or "window")
-        source_document = str(row.get("source-document", ""))
-        dossier_path = row.get("dossier-path")
-        if not isinstance(dossier_path, str) or not (repo_root / dossier_path).exists():
-            reporter.error("phase4-dossier-path", index_path, f"{window_id} 缺少 dossier 路径：{dossier_path}")
-        source_path = repo_root / source_document
-        if not source_path.exists():
-            reporter.error("phase4-source-path", index_path, f"{window_id} 缺少来源：{source_document}")
-        elif row.get("source-sha256") != sha256_file(source_path):
-            reporter.error("phase4-source-sha", index_path, f"{window_id} 的来源 hash 相对 {source_document} 发生 drift")
-        check_ranges(index_path, reporter, row.get("line-ranges"), source_document, repo_root, window_id)
-        context_ranges = row.get("context-line-ranges")
-        if not isinstance(context_ranges, list):
-            reporter.error("phase4-context-line-ranges", index_path, f"{window_id} 的 context-line-ranges 必须是 array")
-        elif context_ranges:
-            check_ranges(index_path, reporter, context_ranges, source_document, repo_root, f"{window_id} context")
-        window_ranges = valid_range_items(row.get("line-ranges"))
-        expected_window_sha = sha256_text(source_text_for_ranges(repo_root, source_document, window_ranges))
-        if row.get("window-text-sha256") != expected_window_sha:
-            reporter.error("phase4-window-text-sha", index_path, f"{window_id} 的 window-text-sha256 与 source/range不一致")
-        ids = row.get("linked-global-atom-ids")
-        if not isinstance(ids, list) or not ids or len(ids) != len(set(ids)):
-            reporter.error("phase4-linked-ga", index_path, f"{window_id} 的 linked-global-atom-ids 必须非空")
-        else:
-            evidence_signatures: Set[Tuple[str, str]] = set()
-            for atom_id in ids:
-                if atom_id not in global_atoms:
-                    reporter.error("phase4-linked-ga", index_path, f"{window_id} 引用了未知的 {atom_id}")
-                    continue
-                grounded_ids.add(str(atom_id))
-                evidence = resolved_evidence.get(str(atom_id))
-                if not evidence:
-                    continue
-                evidence_signatures.add(
-                    (
-                        str(evidence.get("source-document", "")),
-                        json.dumps(evidence.get("line-ranges"), ensure_ascii=False, sort_keys=True),
-                    )
-                )
-                if source_document != evidence.get("source-document"):
-                    reporter.error("phase4-window-evidence-source", index_path, f"{window_id}/{atom_id} 与 resolved source不一致")
-                evidence_ranges = valid_range_items(evidence.get("line-ranges"))
-                if evidence_ranges and not range_covered_by(evidence_ranges[0], window_ranges):
-                    reporter.error("phase4-window-evidence-range", index_path, f"{window_id} 未覆盖 {atom_id} 的 resolved evidence range")
-            if len(ids) > 1 and len(evidence_signatures) > 1:
-                reporter.error(
-                    "phase4-window-reuse-nonidentical",
-                    index_path,
-                    f"{window_id} 只能机械复用 source/range完全相同的 GA evidence",
-                )
-    if status == "grounded" and grounded_ids != set(global_atoms):
-        reporter.error(
-            "phase4-ga-grounding-coverage",
-            index_path,
-            f"grounded要求每个 GA至少一个 window；缺少={sorted(set(global_atoms)-grounded_ids)}",
-        )
-
-
-def load_mapping(orchestrate_dir: Path, reporter: IssueReporter) -> Dict[str, Dict[str, object]]:
-    path = orchestrate_dir / "phase-works/phase-5/atom-plan-mapping.json"
-    data = json_obj(path, reporter, ATOM_PLAN_MAPPING_SCHEMA)
-    mapping: Dict[str, Dict[str, object]] = {}
+        reporter.error("phase4-status-drift", index_path, f"collection index status {index_status} 与 phase trace status {status} 不一致")
+    language_self_check = squash(data.get("language-self-check"))
+    if not language_self_check:
+        reporter.error("phase4-language-self-check", index_path, "language-self-check必须是非空string")
+    elif not re.search(r"[\u4e00-\u9fff]", language_self_check):
+        reporter.error("phase4-language-self-check", index_path, "language-self-check必须使用简体中文解释")
     rows = data.get("rows")
     if not isinstance(rows, list):
-        reporter.error("phase5-mapping-rows", path, "rows 必须是 array")
-        return mapping
+        reporter.error("phase4-rows", index_path, "rows 必须是 array")
+        return
+    issues = data.get("issues")
+    if not isinstance(issues, list):
+        reporter.error("phase4-issues", index_path, "issues 必须是 array")
+    elif status == "assembled" and issues:
+        reporter.error("phase4-issues", index_path, "assembled 状态要求 issues 为空")
+    elif status in NON_FINAL_PHASE4_STATUSES and not issues:
+        reporter.error("phase4-issues", index_path, f"{status} 状态要求非空 issues")
+    seen: Set[str] = set()
+    row_fields = {"global-atom-id", "evidence-ref", "change-bucket", "capability-bucket"}
     for row in rows:
         if not isinstance(row, dict):
-            reporter.error("phase5-mapping-row", path, "rows item 必须是 object")
+            reporter.error("phase4-row", index_path, "rows item 必须是 object")
             continue
-        atom_id = str(row.get("global-atom-id", ""))
-        if not GLOBAL_ATOM_ID_RE.match(atom_id):
-            reporter.error("phase5-ga-format", path, f"Global Atom ID 非法：{atom_id}")
+        ga = normalize_code(row.get("global-atom-id"))
+        exact_fields(row, row_fields, index_path, reporter, "phase4-row-fields", ga or "row")
+        if ga in seen:
+            reporter.error("phase4-ga-duplicate", index_path, f"collection row重复：{ga}")
+        seen.add(ga)
+        global_row = global_atoms.get(ga)
+        evidence = resolved_evidence.get(ga)
+        if global_row is None or evidence is None:
+            reporter.error("phase4-ga-dangling", index_path, f"collection引用未知GA：{ga}")
             continue
-        if atom_id in mapping:
-            reporter.error("phase5-ga-duplicate", path, f"mapping row 重复：{atom_id}")
-        mapping[atom_id] = row
-    return mapping
+        if row.get("evidence-ref") != global_row.get("evidence-ref"):
+            reporter.error("phase4-evidence-ref-drift", index_path, f"{ga} evidence-ref与global index不一致")
+        kind = normalize_code(global_row.get("evidence-ref", {}).get("kind")) if isinstance(global_row.get("evidence-ref"), dict) else ""
+        owner_hint = normalize_code(evidence.get("candidate-owner-change"))
+        target_hint = normalize_code(evidence.get("candidate-target-capability"))
+        expected_change = owner_hint if kind == "phase-2-source-atom" and owner_hint in changes else "unassigned-and-gap"
+        expected_capability = target_hint if kind == "phase-2-source-atom" and target_hint in capabilities else "none"
+        if normalize_code(row.get("change-bucket")) != expected_change:
+            reporter.error("phase4-change-bucket", index_path, f"{ga} change-bucket应为{expected_change}")
+        if normalize_code(row.get("capability-bucket")) != expected_capability:
+            reporter.error("phase4-capability-bucket", index_path, f"{ga} capability-bucket应为{expected_capability}")
+    if status == "assembled" and seen != set(global_atoms):
+        reporter.error("phase4-ga-coverage", index_path, f"assembled要求每个GA恰好一行；缺少={sorted(set(global_atoms)-seen)}，多余={sorted(seen-set(global_atoms))}")
+    if phase4_trace:
+        exact_fields(
+            phase4_trace,
+            {
+                "trace-schema", "trace-contract-version", "status",
+                "evidence-collection-index-path", "evidence-collection-index-sha256",
+                "renderer-result-summary",
+            },
+            phase4_trace_path,
+            reporter,
+            "phase4-trace-fields",
+            "phase-4 trace",
+        )
+        expected_path = rel(index_path, repo_root)
+        if phase4_trace.get("evidence-collection-index-path") != expected_path:
+            reporter.error("phase4-trace-index-path", phase4_trace_path, f"collection index path应为{expected_path}")
+        if index_path.exists() and phase4_trace.get("evidence-collection-index-sha256") != sha256_file(index_path):
+            reporter.error("phase4-trace-index-sha", phase4_trace_path, "collection index digest不一致")
+    if status == "assembled" and index_path.exists():
+        try:
+            expected_outputs = render_evidence_collections(orchestrate_dir, index_path)
+        except Exception as exc:
+            reporter.error("phase4-render", index_path, f"无法渲染evidence collections：{exc}")
+        else:
+            expected_summary = {
+                "render-contract-version": RENDER_CONTRACT_VERSION,
+                "rendered-files": len(expected_outputs),
+                "global-atoms": len(global_atoms),
+            }
+            if phase4_trace.get("renderer-result-summary") != expected_summary:
+                reporter.error("phase4-renderer-summary", phase4_trace_path, f"renderer-result-summary应为{expected_summary}")
+            for output_path, expected_text in expected_outputs.items():
+                if not output_path.exists():
+                    reporter.error("phase4-rendered-collection", output_path, "缺少rendered evidence collection")
+                elif output_path.read_text(encoding="utf-8") != expected_text:
+                    reporter.error("phase4-rendered-collection-drift", output_path, "evidence collection与canonical index/resolved evidence不一致")
+            expected_paths = {path.resolve() for path in expected_outputs}
+            actual_paths = {
+                path.resolve()
+                for pattern in ("index.md", "unassigned-and-gap.md", "by-input-change/*.md", "by-input-capability/*.md")
+                for path in index_path.parent.glob(pattern)
+            }
+            for extra in sorted(actual_paths - expected_paths):
+                reporter.error("phase4-rendered-collection-extra", extra, "存在不属于当前initial framework的stale evidence collection")
 
 
 def validate_mapping_mirror(orchestrate_dir: Path, reporter: IssueReporter) -> None:
@@ -1774,610 +1655,471 @@ def validate_mapping_mirror(orchestrate_dir: Path, reporter: IssueReporter) -> N
     )
 
 
-def load_capability_baselines(
+def _phase5_review_status(path: Path) -> str:
+    if not path.exists():
+        return ""
+    match = re.search(
+        r"(?mi)^-?\s*Status[：:]\s*`?(accepted|adjusted|needs-coverage-recheck|blocked)`?\s*$",
+        path.read_text(encoding="utf-8"),
+    )
+    return match.group(1) if match else ""
+
+
+def _review_final_ids(value: object) -> List[str]:
+    text = str(value or "").strip()
+    values = re.findall(r"`([^`]+)`", text) or re.split(r"\s*[,，、;]\s*", text)
+    return [normalize_code(item) for item in values if normalize_code(item).lower() not in {"", "none", "无"}]
+
+
+def _phase1_change_order(orchestrate_dir: Path) -> List[str]:
+    path = orchestrate_dir / "phase-works/phase-1/initial-change-plan.md"
+    text = path.read_text(encoding="utf-8") if path.exists() else ""
+    return [
+        normalize_code(match.group(1))
+        for match in re.finditer(r"(?m)^- Change 名称[：:]\s*(.+?)\s*$", text)
+    ]
+
+
+def _phase1_overlay(orchestrate_dir: Path) -> Set[tuple[str, str]]:
+    path = orchestrate_dir / "phase-works/phase-1/initial-change-plan.md"
+    return {
+        (normalize_code(cell(row, "Change")), normalize_code(cell(row, "Candidate Capability")))
+        for row in table_rows(path, ["Change", "Candidate Capability", "Roadmap Role", "Direct Behavior Delta Hypothesis"])
+        if normalize_code(cell(row, "Change")) and normalize_code(cell(row, "Candidate Capability"))
+    }
+
+
+def _semantic_text(value: object) -> str:
+    return squash(normalize_code(value)).strip("。.;；")
+
+
+def _phase1_capability_semantics(orchestrate_dir: Path) -> Dict[str, tuple[str, str, str, str]]:
+    path = orchestrate_dir / "phase-works/phase-1/initial-change-plan.md"
+    return {
+        normalize_code(cell(row, "Candidate Capability")): tuple(
+            _semantic_text(cell(row, field)) for field in ("Purpose", "Owns", "Excludes", "Boundary Rationale")
+        )
+        for row in table_rows(path, ["Candidate Capability", "Purpose", "Owns", "Excludes", "Boundary Rationale"])
+        if normalize_code(cell(row, "Candidate Capability"))
+    }
+
+
+def _phase1_change_semantics(orchestrate_dir: Path) -> Dict[str, tuple[str, ...]]:
+    path = orchestrate_dir / "phase-works/phase-1/initial-change-plan.md"
+    patterns = (
+        r"^- 单一 intent[：:]\s*(.*)$",
+        r"^- source-backed outcome[：:]\s*(.*)$",
+        r"^- 范围内[：:]\s*(.*)$",
+        r"^- 范围外[：:]\s*(.*)$",
+        r"^\s+- trigger/context[：:]\s*(.*)$",
+        r"^\s+- normative behavior[：:]\s*(.*)$",
+        r"^\s+- observable outcome / invariant[：:]\s*(.*)$",
+        r"^\s+- important exception / error semantics[：:]\s*(.*)$",
+        r"^\s+- acceptance evidence[：:]\s*(.*)$",
+        r"^- 硬依赖[：:]\s*(.*)$",
+        r"^- 独立完成与归档[：:]\s*(.*)$",
+        r"^- 拆分/合并判断[：:]\s*(.*)$",
+    )
+    result: Dict[str, tuple[str, ...]] = {}
+    current = ""
+    values: Dict[int, str] = {}
+    for raw in path.read_text(encoding="utf-8").splitlines() if path.exists() else []:
+        start = re.match(r"^- Change 名称[：:]\s*(.+?)\s*$", raw)
+        if start:
+            if current:
+                result[current] = tuple(values.get(index, "") for index in range(len(patterns)))
+            current = normalize_code(start.group(1))
+            values = {}
+            continue
+        if not current:
+            continue
+        for index, pattern in enumerate(patterns):
+            match = re.match(pattern, raw)
+            if match:
+                values[index] = _semantic_text(match.group(1))
+                break
+    if current:
+        result[current] = tuple(values.get(index, "") for index in range(len(patterns)))
+    return result
+
+
+def _final_framework_semantics(
+    final_changes: List[object],
+    final_capabilities: List[object],
+) -> tuple[Dict[str, tuple[str, ...]], Dict[str, tuple[str, str, str, str]]]:
+    changes = {
+        getattr(change, "slug", ""): tuple(
+            _semantic_text(getattr(change, field, ""))
+            for field in (
+                "intent", "outcome", "scope_in", "scope_out", "trigger", "normative_behavior",
+                "observable_outcome", "exception_semantics", "acceptance", "dependencies_raw",
+                "archive_condition", "split_merge_judgment",
+            )
+        )
+        for change in final_changes
+    }
+    capabilities = {
+        getattr(capability, "slug", ""): tuple(
+            _semantic_text(getattr(capability, field, "")) for field in ("purpose", "owns", "excludes", "rationale")
+        )
+        for capability in final_capabilities
+    }
+    return changes, capabilities
+
+
+def _validate_phase5_review(
+    orchestrate_dir: Path,
+    reporter: IssueReporter,
+    final_changes: List[object] | None,
+    final_capabilities: List[object] | None,
+    final_overlay: Dict[tuple[str, str], str] | None,
+) -> str:
+    review_path = orchestrate_dir / "phase-works/phase-5/plan-refit-review.md"
+    require_file(review_path, reporter, "phase5-review", "缺少 plan-refit-review.md")
+    if not review_path.exists():
+        return ""
+    text = review_path.read_text(encoding="utf-8")
+    headings = ["## Capability Review", "## Change Review", "## Unassigned and Gap Review", "## Final Decision"]
+    positions = [text.find(heading) for heading in headings]
+    if any(position < 0 for position in positions) or positions != sorted(positions):
+        reporter.error("phase5-review-headings", review_path, "review必须按固定顺序包含四个heading")
+
+    initial_changes, initial_capabilities = phase1_framework_ids(orchestrate_dir)
+    capability_rows = table_rows(
+        review_path,
+        ["Input Capability", "Evidence Collection", "Decision", "Final Capability(s)", "Failed or Passed Gates", "Reason"],
+    )
+    change_rows = table_rows(
+        review_path,
+        ["Input Change", "Evidence Collection", "Decision", "Final Change(s)", "Failed or Passed Gates", "Reason"],
+    )
+    gap_rows = table_rows(
+        review_path,
+        ["GA", "Provenance", "Source Fact Reference", "Disposition", "Final Change", "Final Capability", "Reason"],
+    )
+    capability_decisions: Dict[str, str] = {}
+    change_decisions: Dict[str, str] = {}
+    allowed_capability = {"keep", "split", "merge", "remove", "rename"}
+    allowed_change = {"keep", "split", "merge", "scope-adjusted", "remove", "rename", "reorder"}
+    final_cap_ids = {getattr(item, "slug", "") for item in final_capabilities or []}
+    final_change_ids = {getattr(item, "slug", "") for item in final_changes or []}
+
+    for row in capability_rows:
+        source = normalize_code(cell(row, "Input Capability"))
+        decision = normalize_code(cell(row, "Decision"))
+        if source in capability_decisions:
+            reporter.error("phase5-review-capability-duplicate", review_path, f"Capability review重复：{source}")
+        capability_decisions[source] = decision
+        if decision not in allowed_capability:
+            reporter.error("phase5-review-capability-decision", review_path, f"{source} decision非法：{decision}")
+        if not squash(cell(row, "Evidence Collection")) or not squash(cell(row, "Failed or Passed Gates")) or not squash(cell(row, "Reason")):
+            reporter.error("phase5-review-capability-fields", review_path, f"{source} review字段不完整")
+        for target in _review_final_ids(cell(row, "Final Capability(s)")):
+            if final_capabilities is not None and target not in final_cap_ids:
+                reporter.error("phase5-review-final-capability", review_path, f"{source}引用未知final Capability：{target}")
+    if set(capability_decisions) != initial_capabilities:
+        reporter.error(
+            "phase5-review-capability-coverage",
+            review_path,
+            f"每个initial Capability必须恰好一行；缺少={sorted(initial_capabilities-set(capability_decisions))}，多余={sorted(set(capability_decisions)-initial_capabilities)}",
+        )
+
+    for row in change_rows:
+        source = normalize_code(cell(row, "Input Change"))
+        decision = normalize_code(cell(row, "Decision"))
+        if source in change_decisions:
+            reporter.error("phase5-review-change-duplicate", review_path, f"Change review重复：{source}")
+        change_decisions[source] = decision
+        if decision not in allowed_change:
+            reporter.error("phase5-review-change-decision", review_path, f"{source} decision非法：{decision}")
+        if not squash(cell(row, "Evidence Collection")) or not squash(cell(row, "Failed or Passed Gates")) or not squash(cell(row, "Reason")):
+            reporter.error("phase5-review-change-fields", review_path, f"{source} review字段不完整")
+        for target in _review_final_ids(cell(row, "Final Change(s)")):
+            if final_changes is not None and target not in final_change_ids:
+                reporter.error("phase5-review-final-change", review_path, f"{source}引用未知final Change：{target}")
+    if set(change_decisions) != initial_changes:
+        reporter.error(
+            "phase5-review-change-coverage",
+            review_path,
+            f"每个initial Change必须恰好一行；缺少={sorted(initial_changes-set(change_decisions))}，多余={sorted(set(change_decisions)-initial_changes)}",
+        )
+
+    collection_path = orchestrate_dir / "phase-works/phase-4/source-evidence-collections/evidence-collection-index.json"
+    collection = read_json(collection_path) if collection_path.exists() else {}
+    expected_gap = {
+        normalize_code(row.get("global-atom-id"))
+        for row in collection.get("rows", [])
+        if isinstance(row, dict) and normalize_code(row.get("change-bucket")) == "unassigned-and-gap"
+    }
+    reviewed_gap: Set[str] = set()
+    for row in gap_rows:
+        ga = normalize_code(cell(row, "GA"))
+        if ga in reviewed_gap:
+            reporter.error("phase5-review-gap-duplicate", review_path, f"unassigned/gap review重复：{ga}")
+        reviewed_gap.add(ga)
+        for field in ("Provenance", "Source Fact Reference", "Disposition", "Final Change", "Reason"):
+            if not squash(cell(row, field)):
+                reporter.error("phase5-review-gap-fields", review_path, f"{ga} 缺少{field}")
+        final_change = normalize_code(cell(row, "Final Change"))
+        final_capability = markdown_target(cell(row, "Final Capability"))
+        if final_changes is not None and final_change not in final_change_ids:
+            reporter.error("phase5-review-gap-change", review_path, f"{ga}引用未知final Change：{final_change}")
+        if final_capabilities is not None and final_capability != "none" and final_capability not in final_cap_ids:
+            reporter.error("phase5-review-gap-capability", review_path, f"{ga}引用未知final Capability：{final_capability}")
+    if reviewed_gap != expected_gap:
+        reporter.error(
+            "phase5-review-gap-coverage",
+            review_path,
+            f"每个unassigned-and-gap GA必须恰好一行；缺少={sorted(expected_gap-reviewed_gap)}，多余={sorted(reviewed_gap-expected_gap)}",
+        )
+
+    status = _phase5_review_status(review_path)
+    if not status:
+        reporter.error("phase5-review-status", review_path, "Final Decision缺少有效Status")
+        return ""
+    if final_changes is not None and final_capabilities is not None and final_overlay is not None:
+        initial_change_order = _phase1_change_order(orchestrate_dir)
+        final_change_semantics, final_capability_semantics = _final_framework_semantics(final_changes, final_capabilities)
+        same_framework = (
+            initial_change_order == [getattr(item, "slug", "") for item in final_changes]
+            and initial_capabilities == final_cap_ids
+            and _phase1_overlay(orchestrate_dir) == set(final_overlay)
+            and _phase1_change_semantics(orchestrate_dir) == final_change_semantics
+            and _phase1_capability_semantics(orchestrate_dir) == final_capability_semantics
+        )
+        all_keep = all(value == "keep" for value in capability_decisions.values()) and all(value == "keep" for value in change_decisions.values())
+        if status == "accepted" and (not same_framework or not all_keep):
+            reporter.error("phase5-review-status-consistency", review_path, "accepted要求initial framework集合、顺序、overlay不变且逐项decision为keep")
+        if status == "adjusted" and same_framework and all_keep:
+            reporter.error("phase5-review-status-consistency", review_path, "adjusted要求至少一项source-backed framework调整")
+    return status
+
+
+def _validate_phase5_derived_outputs(
     orchestrate_dir: Path,
     repo_root: Path,
     reporter: IssueReporter,
-) -> Dict[str, Dict[str, object]]:
-    json_path = orchestrate_dir / "phase-works/phase-5/capability-baseline-reconciliation.json"
-    md_path = json_path.with_suffix(".md")
-    data = json_obj(json_path, reporter, CAPABILITY_BASELINE_SCHEMA)
-    if data and normalize_code(data.get("repository-specs-root")) != "openspec/specs":
-        reporter.error(
-            "phase5-capability-baseline-root",
-            json_path,
-            "repository-specs-root 必须是 openspec/specs",
-        )
-    if json_path.exists():
+    changes: List[object],
+    capabilities: List[object],
+    overlay: Dict[tuple[str, str], str],
+) -> None:
+    work = orchestrate_dir / "phase-works/phase-5"
+    mapping_path = work / "atom-plan-mapping.json"
+    mapping_data = json_obj(mapping_path, reporter, ATOM_PLAN_MAPPING_SCHEMA)
+    exact_fields(
+        mapping_data,
+        {"trace-schema", "trace-contract-version", "artifact-path", "rows"},
+        mapping_path,
+        reporter,
+        "phase5-mapping-top-fields",
+        "mapping",
+    )
+    expected_artifact_path = rel(mapping_path.with_suffix(".md"), repo_root)
+    if mapping_data.get("artifact-path") != expected_artifact_path:
+        reporter.error("phase5-mapping-artifact-path", mapping_path, f"artifact-path应为{expected_artifact_path}")
+    try:
+        evidence = load_phase5_evidence(orchestrate_dir)
+        mapping = load_phase5_mapping(mapping_path)
+        validate_phase5_mapping(evidence, mapping, changes, capabilities, overlay)
+    except (OSError, ValueError, json.JSONDecodeError) as exc:
+        reporter.error("phase5-mapping-contract", mapping_path, str(exc))
+        return
+
+    validate_mapping_mirror(orchestrate_dir, reporter)
+    baseline_path = work / "capability-baseline-reconciliation.json"
+    baseline = json_obj(baseline_path, reporter, CAPABILITY_BASELINE_SCHEMA)
+    expected_baseline = build_phase5_baseline(repo_root, changes, capabilities, mapping)
+    if baseline != expected_baseline:
+        reporter.error("phase5-baseline-drift", baseline_path, "baseline与final plan、mapping或repository specs不一致")
+    if baseline_path.exists():
         validate_rendered_markdown(
             orchestrate_dir,
-            json_path,
-            md_path,
+            baseline_path,
+            baseline_path.with_suffix(".md"),
             render_capability_baseline,
             reporter,
             "phase5-capability-baseline",
         )
-    rows = data.get("capabilities")
-    result: Dict[str, Dict[str, object]] = {}
-    if not isinstance(rows, list):
-        reporter.error("phase5-capability-baseline-rows", json_path, "capabilities 必须是 array")
-        return result
-    for row in rows:
-        if not isinstance(row, dict):
-            reporter.error("phase5-capability-baseline-row", json_path, "capabilities item 必须是 object")
-            continue
-        required_keys = {
-            "capability",
-            "baseline-status",
-            "spec-path",
-            "spec-sha256",
-            "baseline-evidence",
-            "first-planned-advancement",
-            "required-first-relation",
-            "later-relation-rule",
-        }
-        missing_keys = sorted(required_keys - set(row))
-        if missing_keys:
-            reporter.error(
-                "phase5-capability-baseline-fields",
-                json_path,
-                f"baseline row 缺少字段：{', '.join(missing_keys)}",
-            )
-        capability = normalize_code(row.get("capability"))
-        if not KEBAB_CASE_RE.match(capability):
-            reporter.error("phase5-capability-baseline-id", json_path, f"Capability ID 非法：{capability}")
-            continue
-        if capability in result:
-            reporter.error("phase5-capability-baseline-duplicate", json_path, f"Capability baseline 重复：{capability}")
-            continue
-        status = normalize_code(row.get("baseline-status"))
-        if status not in {"existing", "absent"}:
-            reporter.error("phase5-capability-baseline-status", json_path, f"{capability} baseline-status 非法：{status}")
-        expected_rel = f"openspec/specs/{capability}/spec.md"
-        spec_rel = normalize_code(row.get("spec-path"))
-        if spec_rel != expected_rel:
-            reporter.error("phase5-capability-baseline-path", json_path, f"{capability} spec-path 必须是 {expected_rel}")
-        spec_path = repo_root / expected_rel
-        actual_status = "existing" if spec_path.is_file() else "absent"
-        if status != actual_status:
-            reporter.error(
-                "phase5-capability-baseline-filesystem",
-                json_path,
-                f"{capability} 声明 {status}，实际 repository baseline 为 {actual_status}",
-            )
-        expected_sha = sha256_file(spec_path) if spec_path.is_file() else None
-        if row.get("spec-sha256") != expected_sha:
-            reporter.error("phase5-capability-baseline-sha", json_path, f"{capability} spec-sha256 与 repository baseline 不一致")
-        if not squash(row.get("baseline-evidence")):
-            reporter.error("phase5-capability-baseline-evidence", json_path, f"{capability} 缺少 baseline-evidence")
-        expected_first_relation = "modified" if status == "existing" else "new"
-        if normalize_code(row.get("required-first-relation")) != expected_first_relation:
-            reporter.error(
-                "phase5-capability-baseline-relation",
-                json_path,
-                f"{capability} required-first-relation 应为 {expected_first_relation}",
-            )
-        if normalize_code(row.get("later-relation-rule")) != "modified":
-            reporter.error("phase5-capability-baseline-relation", json_path, f"{capability} later-relation-rule 必须为 modified")
-        result[capability] = row
-    return result
 
-
-def validate_final_packets(orchestrate_dir: Path, repo_root: Path, reporter: IssueReporter, mapping: Dict[str, Dict[str, object]]) -> None:
-    index_path = orchestrate_dir / "phase-works/phase-5/final-packet-index.json"
-    data = json_obj(index_path, reporter, FINAL_PACKET_INDEX_SCHEMA)
-    packets = data.get("packets")
+    packet_index_path = work / "final-packet-index.json"
+    packet_index = json_obj(packet_index_path, reporter, FINAL_PACKET_INDEX_SCHEMA)
+    exact_fields(
+        packet_index,
+        {"trace-schema", "trace-contract-version", "packets"},
+        packet_index_path,
+        reporter,
+        "phase5-packet-index-fields",
+        "final packet index",
+    )
+    packets = packet_index.get("packets")
     if not isinstance(packets, list):
-        reporter.error("phase5-final-packet-index", index_path, "packets 必须是 array")
+        reporter.error("phase5-packet-index", packet_index_path, "packets必须是array")
         return
-
-    direct_by_view: Dict[tuple[str, str], Set[str]] = {}
-    direct_by_change: Dict[str, Set[str]] = {}
-    non_direct_by_change: Dict[str, Set[str]] = {}
-    for atom_id, row in mapping.items():
-        if is_executable_direct_row(row):
-            change = str(row.get("final-owner-change", ""))
-            direct_by_change.setdefault(change, set()).add(atom_id)
-            if is_capability_view_row(row):
-                capability = str(row.get("final-target-capability", ""))
-                direct_by_view.setdefault((change, capability), set()).add(atom_id)
+    by_change = {normalize_code(row.get("change")): row for row in packets if isinstance(row, dict)}
+    change_ids = [getattr(change, "slug", "") for change in changes]
+    if [normalize_code(row.get("change")) for row in packets if isinstance(row, dict)] != change_ids:
+        reporter.error("phase5-packet-order", packet_index_path, "packet顺序必须与final roadmap一致且每个Change恰好一行")
+    for change in changes:
+        slug = getattr(change, "slug", "")
+        row = by_change.get(slug)
+        if not isinstance(row, dict):
+            reporter.error("phase5-packet-missing", packet_index_path, f"缺少final packet：{slug}")
+            continue
+        exact_fields(
+            row,
+            {"change", "change-kind", "packet-path", "packet-digest", "direct-atom-ids", "owner-scoped-non-direct-atom-ids", "capability-view-paths"},
+            packet_index_path,
+            reporter,
+            "phase5-packet-fields",
+            slug,
+        )
+        expected_direct = sorted(ga for ga, item in mapping.items() if item.owner_change == slug and item.relation == "direct")
+        expected_non_direct = sorted(ga for ga, item in mapping.items() if item.owner_change == slug and item.relation != "direct")
+        if row.get("direct-atom-ids") != expected_direct or row.get("owner-scoped-non-direct-atom-ids") != expected_non_direct:
+            reporter.error("phase5-packet-ga-drift", packet_index_path, f"{slug} packet GA集合与mapping不一致")
+        expected_packet = orchestrate_dir / "change-capability-anchors" / slug / f"{slug}.md"
+        if row.get("packet-path") != rel(expected_packet, repo_root):
+            reporter.error("phase5-packet-path", packet_index_path, f"{slug} packet-path非法")
+        if not expected_packet.exists():
+            reporter.error("phase5-packet-missing", expected_packet, f"缺少{slug} packet")
         else:
-            change = str(row.get("final-owner-change", ""))
-            if not is_no_owner(change):
-                non_direct_by_change.setdefault(change, set()).add(atom_id)
-
-    packet_changes: Set[str] = set()
-    packet_direct_by_change: Dict[str, Set[str]] = {}
-    packet_non_direct_by_change: Dict[str, Set[str]] = {}
-    capability_views_by_owner: Set[tuple[str, str]] = set()
-    packet_change_kinds: Dict[str, str] = {}
-    packet_order: List[str] = []
-    foundation_packet_count = 0
-    for packet_index, packet in enumerate(packets):
-        if not isinstance(packet, dict):
-            reporter.error("phase5-final-packet-row", index_path, "packets item 必须是 object")
-            continue
-        change = str(packet.get("change", ""))
-        change_kind = str(packet.get("change-kind", ""))
-        if change_kind not in {FOUNDATION_CHANGE_KIND, BUSINESS_CHANGE_KIND}:
-            reporter.error(
-                "phase5-final-packet-change-kind",
-                index_path,
-                f"{change} packet 缺少有效的 change-kind foundation/business",
-            )
-            change_kind = BUSINESS_CHANGE_KIND
-        if change_kind == FOUNDATION_CHANGE_KIND:
-            foundation_packet_count += 1
-            if packet_index != 0:
-                reporter.error("phase5-foundation-order", index_path, f"{change} foundation packet 必须是第一个 packet")
-        packet_change_kinds[change] = change_kind
-        packet_order.append(change)
-        packet_changes.add(change)
-        packet_rel = packet.get("packet-path")
-        if not isinstance(packet_rel, str) or not packet_rel:
-            reporter.error("phase5-final-packet-path", index_path, f"{change} 缺少 packet-path")
-            continue
-        packet_path = repo_root / packet_rel
-        if not packet_path.exists():
-            reporter.error("phase5-final-packet-path", index_path, f"{change} 缺少 packet：{packet_rel}")
-            continue
-        text = packet_path.read_text(encoding="utf-8")
-        if "未做语义去重" not in text or "多对一" not in text:
-            reporter.error(
-                "phase5-packet-dedup-handoff",
-                packet_path,
-                "final packet 必须声明其为未语义去重的 evidence mapping，并要求下游保留多对一 GA trace",
-            )
-        if packet.get("packet-digest") != sha256_file(packet_path):
-            reporter.error("phase5-final-packet-digest", index_path, f"{change} 的 packet-digest 发生 drift")
-        direct_ids = set(packet.get("direct-atom-ids") if isinstance(packet.get("direct-atom-ids"), list) else [])
-        if change_kind == FOUNDATION_CHANGE_KIND and not direct_ids:
-            reporter.error(
-                "phase5-foundation-empty",
-                index_path,
-                f"{change} foundation packet 必须至少包含一个 direct foundation atom",
-            )
-        for atom_id in direct_ids:
-            row = mapping.get(str(atom_id))
-            if not row:
-                reporter.error("phase5-final-direct-packet-index", index_path, f"{change} packet 列出了未知 direct atom {atom_id}")
-                continue
-            if row.get("final-relation") != "direct" or row.get("final-owner-change") != change:
-                reporter.error(
-                    "phase5-final-direct-packet-owner",
-                    index_path,
-                    f"{change} packet 将 {atom_id} 列为 direct，但 mapping 未将其直接分配给该 Change",
-                )
-            cap = str(row.get("final-target-capability", ""))
-            impact = str(row.get("final-capability-impact", ""))
-            if change_kind == FOUNDATION_CHANGE_KIND:
-                if cap != FOUNDATION_CAPABILITY:
-                    reporter.error("phase5-foundation-capability", index_path, f"{change}/{atom_id} foundation direct atom 必须以 {FOUNDATION_CAPABILITY} 为 target")
-                if impact != FOUNDATION_IMPACT:
-                    reporter.error("phase5-foundation-impact", index_path, f"{change}/{atom_id} foundation direct atom 必须使用 {FOUNDATION_IMPACT}")
-            elif cap == FOUNDATION_CAPABILITY:
-                reporter.error("phase5-foundation-capability", index_path, f"{change}/{atom_id} business packet 不得以 {FOUNDATION_CAPABILITY} 为 target")
-        packet_direct_by_change.setdefault(change, set()).update(str(atom_id) for atom_id in direct_ids)
-        non_direct_ids = set(
-            packet.get("owner-scoped-non-direct-atom-ids")
-            if isinstance(packet.get("owner-scoped-non-direct-atom-ids"), list)
-            else []
-        )
-        packet_non_direct_by_change.setdefault(change, set()).update(str(atom_id) for atom_id in non_direct_ids)
-        for atom_id in non_direct_ids:
-            row = mapping.get(str(atom_id))
-            if not row:
-                reporter.error("phase5-final-non-direct-packet", index_path, f"{change} packet 列出了未知 non-direct atom {atom_id}")
-            elif row.get("final-relation") == "direct" or row.get("final-owner-change") != change:
-                reporter.error(
-                    "phase5-final-non-direct-packet-owner",
-                    index_path,
-                    f"{change} packet 将 {atom_id} 列为 non-direct，但 mapping 未将其 scope 归入该 Change",
-                )
-        direct_table_rows = table_rows(
-            packet_path,
-            ["Global Atom ID", "Capability Impact", "Target Capability", "Related Capabilities"],
-        )
-        direct_table = {
-            normalize_code(cell(row, "Global Atom ID")): row
-            for row in direct_table_rows
-            if normalize_code(cell(row, "Global Atom ID"))
-        }
-        if direct_ids and not direct_table:
-            reporter.error(
-                "phase5-final-direct-table-contract",
-                packet_path,
-                "final direct table 必须公开 Capability Impact、Target Capability 和 Related Capabilities",
-            )
-        for atom_id in direct_ids:
-            mapping_row = mapping.get(str(atom_id))
-            table_row = direct_table.get(str(atom_id))
-            if table_row is None:
-                reporter.error("phase5-final-direct-table-row", packet_path, f"v2 direct table 缺少 direct atom {atom_id}")
-                continue
-            if not mapping_row:
-                continue
-            displayed_impact = normalize_code(cell(table_row, "Capability Impact"))
-            displayed_target = markdown_target(cell(table_row, "Target Capability"))
-            displayed_related = sorted(markdown_capability_list(cell(table_row, "Related Capabilities")))
-            expected_related = sorted(str(value) for value in mapping_row.get("related-capabilities", []))
-            if displayed_impact != normalize_code(mapping_row.get("final-capability-impact")):
-                reporter.error("phase5-final-direct-table-drift", packet_path, f"{atom_id} 的 Capability Impact 与 mapping 不一致")
-            if displayed_target != normalize_code(mapping_row.get("final-target-capability")):
-                reporter.error("phase5-final-direct-table-drift", packet_path, f"{atom_id} 的 Target Capability 与 mapping 不一致")
-            if displayed_related != expected_related:
-                reporter.error("phase5-final-direct-table-drift", packet_path, f"{atom_id} 的 Related Capabilities 与 mapping 不一致")
-        for atom_id in set(direct_table) - {str(value) for value in direct_ids}:
-            reporter.error("phase5-final-direct-table-extra", packet_path, f"v2 direct table 包含未索引的 direct atom {atom_id}")
-        for atom_id in direct_ids:
-            if atom_id not in text:
-                reporter.error("phase5-final-direct-packet", packet_path, f"final packet 缺少 direct atom {atom_id}")
-            mapping_row = mapping.get(str(atom_id), {})
-            evidence_ref = mapping_row.get("evidence-ref")
-            if isinstance(evidence_ref, dict) and json.dumps(evidence_ref, ensure_ascii=False, sort_keys=True) not in text:
-                reporter.error("phase5-final-evidence-ref", packet_path, f"final packet 缺少 {atom_id} 的 evidence reference")
-        for atom_id in non_direct_ids:
-            if atom_id not in text:
-                reporter.error("phase5-final-non-direct-packet", packet_path, f"final packet 缺少 owner-scoped non-direct atom {atom_id}")
-            mapping_row = mapping.get(str(atom_id), {})
-            evidence_ref = mapping_row.get("evidence-ref")
-            if isinstance(evidence_ref, dict) and json.dumps(evidence_ref, ensure_ascii=False, sort_keys=True) not in text:
-                reporter.error("phase5-final-evidence-ref", packet_path, f"final packet 缺少 {atom_id} 的 evidence reference")
-
-        capability_paths = packet.get("capability-view-paths")
-        if not isinstance(capability_paths, list):
-            reporter.error("phase5-capability-view-paths", index_path, f"{change} 的 capability-view-paths 必须是 array")
-            continue
-        declared_cap_paths = {
-            (repo_root / cap_rel).resolve()
-            for cap_rel in capability_paths
-            if isinstance(cap_rel, str) and cap_rel
-        }
-        actual_cap_dir = packet_path.parent / "capability-anchors"
-        actual_cap_paths = {
-            path.resolve()
-            for path in actual_cap_dir.glob("*.md")
-        } if actual_cap_dir.exists() else set()
-        for cap_path in sorted(actual_cap_paths - declared_cap_paths):
-            reporter.error(
-                "phase5-capability-view-unindexed",
-                cap_path,
-                f"{change} 存在未索引的 capability view",
-            )
-        for cap_path in sorted(declared_cap_paths - actual_cap_paths):
-            if cap_path.exists():
-                reporter.error(
-                    "phase5-capability-view-location",
-                    cap_path,
-                    f"{change} 声明的 capability view 位于 canonical capability-anchors 目录之外",
-                )
-        for cap_path in sorted(declared_cap_paths | actual_cap_paths):
+            if expected_packet.read_text(encoding="utf-8") != render_packet(change, evidence, mapping):
+                reporter.error("phase5-packet-drift", expected_packet, "packet与frozen source-fact、final plan或mapping不一致")
+            if row.get("packet-digest") != sha256_file(expected_packet):
+                reporter.error("phase5-packet-digest", packet_index_path, f"{slug} packet digest不一致")
+        expected_caps = sorted({item.target_capability for item in mapping.values() if item.owner_change == slug and item.relation == "direct" and item.projection in SPEC_PROJECTIONS})
+        expected_paths = [rel(expected_packet.parent / "capability-anchors" / f"{cap}.md", repo_root) for cap in expected_caps]
+        if row.get("capability-view-paths") != expected_paths:
+            reporter.error("phase5-capability-view-index", packet_index_path, f"{slug} Capability view index与mapping不一致")
+        for cap, cap_rel in zip(expected_caps, expected_paths):
+            cap_path = repo_root / cap_rel
             if not cap_path.exists():
-                reporter.error("phase5-capability-view-path", index_path, f"缺少 capability view：{cap_path}")
-                continue
-            cap_slug = cap_path.stem
-            capability_views_by_owner.add((change, cap_slug))
-            text_ids = set(extract_ga_ids(cap_path.read_text(encoding="utf-8")))
-            if change_kind == FOUNDATION_CHANGE_KIND and cap_slug != FOUNDATION_CAPABILITY:
-                reporter.error("phase5-foundation-capability", cap_path, f"foundation packet capability view 必须是 {FOUNDATION_CAPABILITY}")
-            if change_kind == BUSINESS_CHANGE_KIND and cap_slug == FOUNDATION_CAPABILITY:
-                reporter.error("phase5-foundation-capability", cap_path, f"business packet 不得渲染 {FOUNDATION_CAPABILITY} capability view")
-            expected_ids = direct_by_view.get((change, cap_slug), set())
-            if not expected_ids:
-                reporter.error("phase5-capability-view-extra", cap_path, f"{change}/{cap_slug} 没有 spec capability delta")
-            for atom_id in text_ids:
-                row = mapping.get(atom_id)
-                if not row or row.get("final-relation") != "direct":
-                    reporter.error("phase5-capability-view-non-direct", cap_path, f"capability view 包含 non-direct 或未知 atom {atom_id}")
-                elif not is_capability_view_row(row):
-                    reporter.error("phase5-capability-view-non-advancing", cap_path, f"capability view 包含 non-advancing 或未知 atom {atom_id}")
-                elif row.get("final-owner-change") != change or row.get("final-target-capability") != cap_slug:
-                    reporter.error("phase5-capability-view-owner", cap_path, f"{atom_id} 不属于 {change}/{cap_slug}")
-            missing = expected_ids - text_ids
-            if missing:
-                reporter.error("phase5-capability-view-missing-direct", cap_path, f"capability view 缺少 direct atom：{', '.join(sorted(missing)[:12])}")
-
-    for change, atom_ids in direct_by_change.items():
-        if change not in packet_changes:
-            reporter.error("phase5-final-direct-owner", index_path, f"direct owner Change {change} 没有 final packet")
-            continue
-        missing_direct = atom_ids - packet_direct_by_change.get(change, set())
-        if missing_direct:
-            reporter.error("phase5-final-direct-packet-index", index_path, f"{change} 的 final packet index 缺少 direct atom：{', '.join(sorted(missing_direct)[:12])}")
-
-    for change, atom_ids in non_direct_by_change.items():
-        if change not in packet_changes:
-            reporter.error("phase5-final-non-direct-owner", index_path, f"non-direct owner Change {change} 没有 final packet")
-            continue
-        missing_non_direct = atom_ids - packet_non_direct_by_change.get(change, set())
-        if missing_non_direct:
-            reporter.error(
-                "phase5-final-non-direct-packet-index",
-                index_path,
-                f"{change} 的 final packet index 缺少 owner-scoped non-direct atom：{', '.join(sorted(missing_non_direct)[:12])}",
-            )
-
-    for change, cap_slug in direct_by_view:
-        if change in packet_changes and (change, cap_slug) not in capability_views_by_owner:
-            reporter.error("phase5-capability-view-missing-owner", index_path, f"{change}/{cap_slug} 有 capability delta atom，但没有 capability view")
-
-    baselines = load_capability_baselines(orchestrate_dir, repo_root, reporter)
-    active_capabilities = {
-        normalize_code(row.get("final-target-capability"))
-        for row in mapping.values()
-        if normalize_code(row.get("final-capability-impact")) in BUSINESS_CAPABILITY_IMPACTS
-    }
-    missing_baselines = active_capabilities - set(baselines)
-    extra_baselines = set(baselines) - active_capabilities
-    if missing_baselines:
-        reporter.error(
-            "phase5-capability-baseline-missing",
-            index_path,
-            f"缺少 active Capability baseline：{', '.join(sorted(missing_baselines))}",
-        )
-    if extra_baselines:
-        reporter.error(
-            "phase5-capability-baseline-extra",
-            index_path,
-            f"baseline reconciliation 包含未被 final spec atom 推进的 Capability：{', '.join(sorted(extra_baselines))}",
-        )
-
-    advancement_index: Dict[str, int] = {}
-    for change in packet_order:
-        impacts_by_target: Dict[str, Set[str]] = {}
-        for row in mapping.values():
-            if row.get("final-owner-change") != change or row.get("final-capability-impact") not in BUSINESS_CAPABILITY_IMPACTS:
-                continue
-            target = str(row.get("final-target-capability", ""))
-            impacts_by_target.setdefault(target, set()).add(str(row.get("final-capability-impact", "")))
-        for target, impacts in impacts_by_target.items():
-            if len(impacts) != 1:
-                reporter.error("phase5-capability-impact-mixed", index_path, f"{change}/{target} 混用了 impact：{sorted(impacts)}")
-                continue
-            impact = next(iter(impacts))
-            baseline = baselines.get(target, {})
-            status = normalize_code(baseline.get("baseline-status"))
-            position = advancement_index.get(target, 0)
-            expected = "modified" if status == "existing" or position > 0 else "new"
-            if impact != expected:
-                reporter.error(
-                    "phase5-capability-impact-baseline",
-                    index_path,
-                    f"{change}/{target} baseline={status}，期望 {expected}，实际为 {impact}",
-                )
-            if position == 0 and normalize_code(baseline.get("first-planned-advancement")) != change:
-                reporter.error(
-                    "phase5-capability-baseline-first-advancement",
-                    index_path,
-                    f"{target} first-planned-advancement 与 packet order 不一致",
-                )
-            advancement_index[target] = position + 1
-
-    for atom_id, row in mapping.items():
-        change = str(row.get("final-owner-change", ""))
-        if row.get("final-relation") != "direct" and change and change != "None" and change not in packet_changes:
-            reporter.error("phase5-final-non-direct-owner", index_path, f"{atom_id} 有 final owner Change，但没有 final packet：{change}")
-    if foundation_packet_count > 1:
-        reporter.error("phase5-foundation-count", index_path, "final-packet-index 最多只能包含一个 foundation packet")
+                reporter.error("phase5-capability-view-missing", cap_path, f"缺少{slug}/{cap} Capability view")
+            elif cap_path.read_text(encoding="utf-8") != render_capability_view(slug, cap, evidence, mapping):
+                reporter.error("phase5-capability-view-drift", cap_path, "Capability view与frozen source-fact或mapping不一致")
 
 
 def validate_phase_5(orchestrate_dir: Path, repo_root: Path, reporter: IssueReporter, complete: bool = False) -> None:
+    work = orchestrate_dir / "phase-works/phase-5"
     trace_path = orchestrate_dir / "trace/phase-5.trace.json"
     trace = json_obj(trace_path, reporter, PHASE_TRACE_SCHEMAS["phase-5"])
-    status = ""
-    if trace:
-        status = validate_trace_status(trace, trace_path, reporter, "phase-5", "phase5-status")
-    require_file(orchestrate_dir / "phase-works/phase-5/source-window-refit-trace.md", reporter, "phase5-interface-artifact", "缺少 Phase 5 source-window refit trace")
-    require_file(orchestrate_dir / "phase-works/phase-5/phase-5-agent-report.md", reporter, "phase5-interface-artifact", "缺少 Phase 5 agent 报告")
-    if status in NON_FINAL_PHASE5_STATUSES:
-        require_file(orchestrate_dir / "phase-works/phase-5/change-plan-adjustments.md", reporter, "phase5-interface-artifact", f"Phase 5 状态为 {status} 时必须提供 change-plan-adjustments.md")
+    trace_status = validate_trace_status(trace, trace_path, reporter, "phase-5", "phase5-status") if trace else ""
+    require_file(work / "phase-5-agent-report.md", reporter, "phase5-interface-artifact", "缺少Phase 5 agent报告")
+    legacy_names = [
+        "phase5-refit.config.json", "input-change-plan.md", "source-window-refit-trace.md",
+        "change-plan-adjustments.md", "capability-progression-review.md", "change-complexity-review.md",
+        "plan-refit-decision-log.md", "alignment-final-report.md", "change-capability-human-plan.md",
+    ]
+    for name in legacy_names:
+        path = work / name
+        if path.exists():
+            reporter.error("phase5-legacy-artifact", path, "旧Phase 5 artifact已废弃，必须清理")
+
+    final_plan_path = work / "change-plan.md"
+    final_changes: List[object] | None = None
+    final_capabilities: List[object] | None = None
+    final_overlay: Dict[tuple[str, str], str] | None = None
+    if final_plan_path.exists():
+        try:
+            final_changes, final_capabilities, final_overlay = parse_final_plan(final_plan_path)
+        except (OSError, ValueError) as exc:
+            reporter.error("phase5-final-plan-contract", final_plan_path, str(exc))
+    review_status = _validate_phase5_review(orchestrate_dir, reporter, final_changes, final_capabilities, final_overlay)
+    if trace_status and review_status and trace_status != review_status:
+        reporter.error("phase5-status-drift", trace_path, f"trace status {trace_status}与review status {review_status}不一致")
+
+    if trace_status in NON_FINAL_PHASE5_STATUSES:
+        exact_fields(
+            trace,
+            {
+                "trace-schema", "trace-contract-version", "status",
+                "plan-refit-review-path", "plan-refit-review-sha256", "issues",
+            },
+            trace_path,
+            reporter,
+            "phase5-trace-fields",
+            "nonterminal phase-5 trace",
+        )
+        review_path = work / "plan-refit-review.md"
+        expected_review_path = rel(review_path, repo_root)
+        if trace.get("plan-refit-review-path") != expected_review_path:
+            reporter.error("phase5-trace-path", trace_path, f"plan-refit-review-path应为{expected_review_path}")
+        if review_path.exists() and trace.get("plan-refit-review-sha256") != sha256_file(review_path):
+            reporter.error("phase5-trace-sha", trace_path, "plan-refit-review digest与trace不一致")
+        if not isinstance(trace.get("issues"), list) or not trace.get("issues"):
+            reporter.error("phase5-trace-issues", trace_path, f"{trace_status}状态要求非空issues[]")
         terminal_paths = [
-            orchestrate_dir / "phase-works/phase-5/input-change-plan.md",
-            orchestrate_dir / "phase-works/phase-5/change-plan.md",
-            orchestrate_dir / "phase-works/phase-5/atom-plan-mapping.md",
-            orchestrate_dir / "phase-works/phase-5/atom-plan-mapping.json",
-            orchestrate_dir / "phase-works/phase-5/capability-baseline-reconciliation.md",
-            orchestrate_dir / "phase-works/phase-5/capability-baseline-reconciliation.json",
-            orchestrate_dir / "phase-works/phase-5/final-packet-index.json",
-            orchestrate_dir / "phase-works/phase-5/capability-progression-review.md",
-            orchestrate_dir / "phase-works/phase-5/change-complexity-review.md",
-            orchestrate_dir / "phase-works/phase-5/plan-refit-decision-log.md",
-            orchestrate_dir / "phase-works/phase-5/alignment-final-report.md",
-            orchestrate_dir / "phase-works/phase-5/change-capability-human-plan.md",
+            final_plan_path,
+            work / "atom-plan-mapping.json",
+            work / "atom-plan-mapping.md",
+            work / "capability-baseline-reconciliation.json",
+            work / "capability-baseline-reconciliation.md",
+            work / "final-packet-index.json",
+            orchestrate_dir / "change-plan.md",
             orchestrate_dir / "change-capability-anchors/index.md",
         ]
-        for terminal_path in terminal_paths:
-            if terminal_path.exists():
-                reporter.error(
-                    "phase5-nonfinal-terminal-artifact",
-                    terminal_path,
-                    f"Phase 5 状态为 {status} 时不得保留 terminal artifact",
-                )
+        for path in terminal_paths:
+            if path.exists():
+                reporter.error("phase5-nonfinal-terminal-artifact", path, f"{trace_status}状态不得保留terminal artifact")
         anchors_dir = orchestrate_dir / "change-capability-anchors"
         if anchors_dir.exists():
             for child in anchors_dir.iterdir():
                 if child.is_dir():
-                    reporter.error(
-                        "phase5-nonfinal-terminal-artifact",
-                        child,
-                        f"Phase 5 状态为 {status} 时不得保留 final Change packet 或 Capability view",
-                    )
-        root_plan_path = orchestrate_dir / "change-plan.md"
-        if root_plan_path.exists():
-            reporter.error(
-                "phase5-nonfinal-root-plan",
-                root_plan_path,
-                f"Phase 5 状态为 {status} 时不得发布根 change-plan.md",
-            )
+                    reporter.error("phase5-nonfinal-terminal-artifact", child, f"{trace_status}状态不得保留final Change packet或Capability view")
         if complete:
-            reporter.error("phase5-complete-status", trace_path, f"--complete 要求 accepted/adjusted status，实际为 {status}")
+            reporter.error("phase5-complete-status", trace_path, f"--complete要求accepted/adjusted，实际为{trace_status}")
         return
-    if status in FINAL_PHASE5_STATUSES:
-        phase4_input_plan_path = orchestrate_dir / "phase-works/phase-4/input-change-plan.md"
-        phase5_input_plan_path = orchestrate_dir / "phase-works/phase-5/input-change-plan.md"
-        phase5_plan_path = orchestrate_dir / "phase-works/phase-5/change-plan.md"
-        root_plan_path = orchestrate_dir / "change-plan.md"
-        require_file(phase4_input_plan_path, reporter, "phase5-interface-input", "缺少 Phase 5 输入：Phase 4 input-change-plan.md")
-        require_file(phase5_input_plan_path, reporter, "phase5-interface-artifact", "缺少 Phase 5 input change plan")
-        require_file(phase5_plan_path, reporter, "phase5-interface-artifact", "缺少 Phase 5 change plan")
-        require_file(root_plan_path, reporter, "phase5-interface-artifact", "缺少 Phase 5 发布的根 change-plan.md")
-        require_same_file(
-            phase4_input_plan_path,
-            phase5_input_plan_path,
-            reporter,
-            "phase5-input-plan-drift",
-            "Phase 5 input-change-plan.md 必须与 Phase 4 input-change-plan.md 完全一致",
-        )
-        require_same_file(
-            phase5_plan_path,
-            root_plan_path,
-            reporter,
-            "phase5-root-plan-drift",
-            "根 change-plan.md 必须与 Phase 5 change-plan.md 完全一致",
-        )
-        require_file(orchestrate_dir / "phase-works/phase-5/atom-plan-mapping.md", reporter, "phase5-interface-artifact", "缺少 Phase 5 atom-plan-mapping.md")
-        require_file(orchestrate_dir / "phase-works/phase-5/atom-plan-mapping.json", reporter, "phase5-interface-artifact", "缺少 Phase 5 atom-plan-mapping.json")
-        baseline_json_path = orchestrate_dir / "phase-works/phase-5/capability-baseline-reconciliation.json"
-        require_file(baseline_json_path, reporter, "phase5-interface-artifact", "缺少 Capability baseline reconciliation JSON")
-        require_file(orchestrate_dir / "phase-works/phase-5/capability-baseline-reconciliation.md", reporter, "phase5-interface-artifact", "缺少 Capability baseline reconciliation Markdown")
-        require_file(orchestrate_dir / "phase-works/phase-5/final-packet-index.json", reporter, "phase5-interface-artifact", "缺少 Phase 5 final-packet-index.json")
-        require_file(orchestrate_dir / "phase-works/phase-5/capability-progression-review.md", reporter, "phase5-interface-artifact", "缺少 Phase 5 capability progression review")
-        require_file(orchestrate_dir / "phase-works/phase-5/change-complexity-review.md", reporter, "phase5-interface-artifact", "缺少 Phase 5 change complexity review")
-        require_file(orchestrate_dir / "phase-works/phase-5/plan-refit-decision-log.md", reporter, "phase5-interface-artifact", "缺少 Phase 5 plan refit decision log")
-        require_file(orchestrate_dir / "phase-works/phase-5/alignment-final-report.md", reporter, "phase5-interface-artifact", "缺少 Phase 5 alignment final report")
-        require_file(orchestrate_dir / "phase-works/phase-5/change-capability-human-plan.md", reporter, "phase5-interface-artifact", "缺少 Phase 5 human plan")
-        require_file(orchestrate_dir / "change-capability-anchors/index.md", reporter, "phase5-interface-artifact", "缺少 final change-capability anchor index")
-        trace_baseline_path = str(trace.get("capability-baseline-reconciliation-path", ""))
-        expected_baseline_rel = rel(baseline_json_path, repo_root)
-        if trace_baseline_path != expected_baseline_rel:
-            reporter.error(
-                "phase5-capability-baseline-trace-path",
-                trace_path,
-                f"baseline reconciliation path 应为 {expected_baseline_rel}",
-            )
-        if baseline_json_path.exists() and trace.get("capability-baseline-reconciliation-sha256") != sha256_file(baseline_json_path):
-            reporter.error("phase5-capability-baseline-trace-sha", trace_path, "baseline reconciliation digest 与 trace 不一致")
-    global_atoms = load_global_atoms(orchestrate_dir, reporter)
-    resolved_evidence = resolve_global_evidence(orchestrate_dir, global_atoms, reporter)
-    mapping = load_mapping(orchestrate_dir, reporter)
-    missing = sorted(set(global_atoms) - set(mapping))
-    extra = sorted(set(mapping) - set(global_atoms))
-    if missing:
-        reporter.error("phase5-mapping-coverage", orchestrate_dir / "phase-works/phase-5/atom-plan-mapping.json", f"mapping 缺少 global atom：{', '.join(missing[:12])}")
-    if extra:
-        reporter.error("phase5-mapping-extra", orchestrate_dir / "phase-works/phase-5/atom-plan-mapping.json", f"mapping 包含未知 global atom：{', '.join(extra[:12])}")
-    mapping_fields = {
-        "global-atom-id",
-        "evidence-ref",
-        "source-document",
-        "line-ranges",
-        "final-owner-type",
-        "final-owner-change",
-        "final-capability-impact",
-        "final-target-capability",
-        "related-capabilities",
-        "final-artifact-projection",
-        "final-relation",
-        "plan-decision",
-        "reason",
-    }
-    for atom_id, row in mapping.items():
-        mapping_path = orchestrate_dir / "phase-works/phase-5/atom-plan-mapping.json"
-        exact_fields(row, mapping_fields, mapping_path, reporter, "phase5-mapping-fields", atom_id)
-        reject_legacy_capability_fields(
-            row,
-            mapping_path,
-            reporter,
-            atom_id,
-        )
-        source_document = str(row.get("source-document", ""))
-        check_atom_range(mapping_path, reporter, row.get("line-ranges"), source_document, repo_root, atom_id)
-        global_row = global_atoms.get(atom_id)
-        evidence = resolved_evidence.get(atom_id)
-        if global_row and row.get("evidence-ref") != global_row.get("evidence-ref"):
-            reporter.error("phase5-mapping-evidence-ref-drift", mapping_path, f"{atom_id} 的 evidence-ref 与 global index不一致")
-        if evidence:
-            for field in ("source-document", "line-ranges"):
-                if row.get(field) != evidence.get(field):
-                    reporter.error(
-                        "phase5-mapping-source-drift",
-                        mapping_path,
-                        f"{atom_id} 的 {field} 与 resolved evidence不一致",
-                    )
-            check_source_fact_quote(
-                mapping_path,
-                reporter,
-                evidence.get("source-fact"),
-                evidence.get("line-ranges"),
-                str(evidence.get("source-document", "")),
-                repo_root,
-                atom_id,
-            )
-        relation = str(row.get("final-relation", ""))
-        projection = str(row.get("final-artifact-projection", ""))
-        impact = normalize_code(row.get("final-capability-impact"))
-        target = normalize_code(row.get("final-target-capability"))
-        related = validate_related_capabilities(
-            row,
-            "related-capabilities",
-            target,
-            orchestrate_dir / "phase-works/phase-5/atom-plan-mapping.json",
-            reporter,
-            atom_id,
-        )
-        if impact not in TERMINAL_CAPABILITY_IMPACTS:
-            reporter.error(
-                "phase5-capability-impact",
-                orchestrate_dir / "phase-works/phase-5/atom-plan-mapping.json",
-                f"{atom_id} 的 terminal capability impact 非法或尚未消解：{impact}",
-            )
-        if row.get("final-owner-type") == "foundation-reference" or relation == "foundation-reference":
-            reporter.error("phase5-foundation-reference-deprecated", orchestrate_dir / "phase-works/phase-5/atom-plan-mapping.json", f"{atom_id} 不得使用 foundation-reference owner/relation")
-        if row.get("foundation-reference-id") not in {None, "", "None"}:
-            reporter.error("phase5-foundation-reference-deprecated", orchestrate_dir / "phase-works/phase-5/atom-plan-mapping.json", f"{atom_id} 不得设置 foundation-reference-id")
-        if relation == "direct":
-            if projection not in DIRECT_PROJECTIONS:
-                reporter.error("phase5-direct-projection", orchestrate_dir / "phase-works/phase-5/atom-plan-mapping.json", f"{atom_id} direct 使用了非法 projection {projection}")
-            if row.get("final-owner-type") != EXECUTABLE_OWNER_TYPE:
-                reporter.error(
-                    "phase5-direct-owner-type",
-                    orchestrate_dir / "phase-works/phase-5/atom-plan-mapping.json",
-                    f"{atom_id} direct 的 final-owner-type 必须是 {EXECUTABLE_OWNER_TYPE}",
-                )
-            if is_no_owner(row.get("final-owner-change")):
-                reporter.error("phase5-direct-owner", orchestrate_dir / "phase-works/phase-5/atom-plan-mapping.json", f"{atom_id} direct 缺少 final owner Change")
-            if impact in BUSINESS_CAPABILITY_IMPACTS:
-                if projection not in SPEC_PROJECTIONS:
-                    reporter.error("phase5-capability-projection", orchestrate_dir / "phase-works/phase-5/atom-plan-mapping.json", f"{atom_id} 使用 new/modified 时必须采用 spec projection")
-                if is_no_owner(target) or target == "unresolved" or not KEBAB_CASE_RE.match(target):
-                    reporter.error("phase5-capability-target", orchestrate_dir / "phase-works/phase-5/atom-plan-mapping.json", f"{atom_id} 使用 new/modified 时必须指定 target Capability")
-                elif target == "candidate-new-capability":
-                    reporter.error("phase5-capability-target", orchestrate_dir / "phase-works/phase-5/atom-plan-mapping.json", f"{atom_id} 必须在终态输出前消解 candidate-new-capability")
-            elif impact == "none":
-                if target != "none":
-                    reporter.error("phase5-capability-target", orchestrate_dir / "phase-works/phase-5/atom-plan-mapping.json", f"{atom_id} 使用 impact=none 时必须使用 target=none")
-                if projection in SPEC_PROJECTIONS:
-                    reporter.error("phase5-spec-impact", orchestrate_dir / "phase-works/phase-5/atom-plan-mapping.json", f"{atom_id} direct spec atom 必须使用 new/modified")
-            elif impact == FOUNDATION_IMPACT:
-                if target != FOUNDATION_CAPABILITY:
-                    reporter.error("phase5-foundation-impact", orchestrate_dir / "phase-works/phase-5/atom-plan-mapping.json", f"{atom_id} 使用 foundation-substrate 时必须指定 runtime target")
-            if projection in CHANGE_ONLY_PROJECTIONS and impact not in {"none", FOUNDATION_IMPACT}:
-                reporter.error("phase5-change-only-impact", orchestrate_dir / "phase-works/phase-5/atom-plan-mapping.json", f"{atom_id} 的 {projection} 必须是 change-only")
-        else:
-            if impact != "none" or target != "none":
-                reporter.error("phase5-non-direct-capability", orchestrate_dir / "phase-works/phase-5/atom-plan-mapping.json", f"{atom_id} 的 non-direct row 必须使用 impact=none、target=none")
-    validate_mapping_mirror(orchestrate_dir, reporter)
-    validate_final_packets(orchestrate_dir, repo_root, reporter, mapping)
-    if (orchestrate_dir / "foundation-reference").exists():
-        reporter.error("phase5-foundation-reference-deprecated", orchestrate_dir / "foundation-reference", "foundation-reference 输出已废弃；Phase 5 必须改为输出 executable foundation packet")
+    if trace_status not in FINAL_PHASE5_STATUSES:
+        if complete:
+            reporter.error("phase5-complete-status", trace_path, f"--complete要求accepted/adjusted，实际为{trace_status or 'missing'}")
+        return
 
-    if complete:
-        status = str(trace.get("status", ""))
-        if status not in {"accepted", "adjusted"}:
-            reporter.error("phase5-complete-status", orchestrate_dir / "trace/phase-5.trace.json", f"--complete 要求 accepted/adjusted status，实际为 {status}")
-        anchors_index = orchestrate_dir / "change-capability-anchors/index.md"
-        if not anchors_index.exists():
-            reporter.error("phase5-complete-packets", anchors_index, "缺少 final change-capability anchor index")
+    exact_fields(
+        trace,
+        {
+            "trace-schema", "trace-contract-version", "status",
+            "final-change-plan-path", "final-change-plan-sha256",
+            "plan-refit-review-path", "plan-refit-review-sha256",
+            "atom-plan-mapping-path", "atom-plan-mapping-sha256",
+            "capability-baseline-reconciliation-path", "capability-baseline-reconciliation-sha256",
+            "final-packet-index-path", "final-packet-index-sha256",
+        },
+        trace_path,
+        reporter,
+        "phase5-trace-fields",
+        "phase-5 trace",
+    )
+
+    required = [
+        final_plan_path,
+        work / "plan-refit-review.md",
+        work / "atom-plan-mapping.json",
+        work / "atom-plan-mapping.md",
+        work / "capability-baseline-reconciliation.json",
+        work / "capability-baseline-reconciliation.md",
+        work / "final-packet-index.json",
+        orchestrate_dir / "change-plan.md",
+        orchestrate_dir / "change-capability-anchors/index.md",
+    ]
+    for path in required:
+        require_file(path, reporter, "phase5-interface-artifact", f"缺少Phase 5 terminal artifact：{path.name}")
+    require_same_file(final_plan_path, orchestrate_dir / "change-plan.md", reporter, "phase5-root-plan-drift", "根change-plan.md必须与Phase 5 final plan逐字节一致")
+    if final_changes is not None and final_capabilities is not None and final_overlay is not None:
+        _validate_phase5_derived_outputs(orchestrate_dir, repo_root, reporter, final_changes, final_capabilities, final_overlay)
+
+    trace_specs = [
+        ("final-change-plan", final_plan_path),
+        ("plan-refit-review", work / "plan-refit-review.md"),
+        ("atom-plan-mapping", work / "atom-plan-mapping.json"),
+        ("capability-baseline-reconciliation", work / "capability-baseline-reconciliation.json"),
+        ("final-packet-index", work / "final-packet-index.json"),
+    ]
+    for prefix, path in trace_specs:
+        expected_path = rel(path, repo_root)
+        if trace.get(f"{prefix}-path") != expected_path:
+            reporter.error("phase5-trace-path", trace_path, f"{prefix}-path应为{expected_path}")
+        if path.exists() and trace.get(f"{prefix}-sha256") != sha256_file(path):
+            reporter.error("phase5-trace-sha", trace_path, f"{prefix} digest与trace不一致")
 
 
 def validate(orchestrate_dir: Path, repo_root: Path, phase: str, complete: bool) -> Dict[str, object]:

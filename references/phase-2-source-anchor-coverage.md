@@ -173,7 +173,7 @@ Capability 不是 co-owner，target 也不表示 Capability advancement。
 - `normativity`：`must`、`must-not`、`should` 或 `context`。source 中“用户可/系统允许”若定义必须提供的可用能力，记录为 `must`。
 - `rationale`：简短说明 status/projection/mapping；`unassigned`、`contextual-candidate`、`unresolved-conflict` 和 `unclassified` 必须非空。
 
-Phase 2 不记录 `candidate-capability-impact`、`candidate-related-capabilities`、`roles`、`propose-use` 或 `evidence-need`；这些字段需要 source-window grounding 或 final plan context，提前填写只会制造噪声和伪精度。
+Phase 2 不记录 `candidate-capability-impact`、`candidate-related-capabilities`、`roles`、`propose-use` 或 `evidence-need`；这些字段需要完整原文集合复审或 final plan context，提前填写只会制造噪声和伪精度。
 
 ## Canonical source atom file
 

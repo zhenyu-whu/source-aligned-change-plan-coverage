@@ -5,9 +5,9 @@ description: 当用户明确要求从指定 source document 出发，在 openspe
 
 # source-aligned-change-plan-coverage：五阶段编排协议
 
-先从完整 source document 建立 Capability-first 的初始 Change/Capability framework，再提取 source atom、审计覆盖补集、为每个 evidence occurrence建立独立 GA，最终结合原始 source-window semantics 推导可供 `openspec-propose` 消费的 final Change packet。本技能不执行 semantic duplicate识别或去重。
+先从完整source document建立Capability-first初始Change/Capability framework，再提取source atom、审计覆盖补集、为每个evidence occurrence建立独立GA，随后直接汇总Phase 2/3冻结的原文并用与Phase 1相同的framework标准完成最小plan refit。本技能不执行semantic duplicate识别或去重。
 
-本工作流遵循 `Capability-first、Outcome-sliced、Obligation-later`：Phase 1 只建立 coarse semantic landscape、candidate Capability topology 和 outcome-based Change roadmap，不执行 obligation atom extraction、line-level coverage 或 final `New`/`Modified` 判定；Phase 2–5 才完成 obligation extraction、coverage closure、source-window grounding、baseline reconciliation 与 final plan refit。
+本工作流遵循`Capability-first、Outcome-sliced、Obligation-later`：Phase 1使用共享标准建立initial framework；Phase 2/3完成obligation extraction和coverage closure；Phase 4直接重排冻结`source-fact`；Phase 5复用同一标准复审initial framework、完成baseline reconciliation和final mapping。
 
 ## 输入与执行授权
 
@@ -22,6 +22,7 @@ description: 当用户明确要求从指定 source document 出发，在 openspe
 共享 contract：
 
 - `references/cross-phase-contract.md`：所有 Phase 和 reviewer/repair 必须直接加载的跨 Phase 语义。
+- `references/change-capability-framework-principles.md`：Phase 1和Phase 5必须直接加载的唯一Change/Capability标准。
 - `references/trace-sidecar-contract.md`：canonical JSON、manifest、renderer、validator 和 schema。
 - `references/reviewer-repair-loop.md`：统一 writer/reviewer/repair/final-integration 闭环。
 
@@ -32,7 +33,7 @@ description: 当用户明确要求从指定 source document 出发，在 openspe
 | Phase 1 | `references/phase-1-initial-change-plan.md` |
 | Phase 2 | `references/phase-2-source-anchor-coverage.md` |
 | Phase 3 | `references/phase-3-coverage-review-iteration.md` |
-| Phase 4 | `references/phase-4-source-window-grounding.md` |
+| Phase 4 | `references/phase-4-frozen-evidence-collections.md` |
 | Phase 5 | `references/phase-5-targeted-plan-adjustment.md` |
 
 ## Agent 拓扑与运行时
@@ -43,7 +44,7 @@ description: 当用户明确要求从指定 source document 出发，在 openspe
 - writer、reviewer 和 repair-writer 都是单层 leaf worker，不得启动 nested subagent、`codex exec`、multi-agent worker 或其他 agentic child process，也不得自行进入另一 Phase。
 - reviewer 必须不同于 writer；repair-writer 必须不同于 writer 和所有 reviewer。validator 或 writer self-check 不能替代 independent reviewer。
 - 所有 Phase writer、index/report writer、reviewer 和 repair-writer 必须使用 `model=GPT-5.5`、`reasoningEffort=xhigh`。runtime 无法保证时立即返回 blocker，不得降级或由 main agent 代做。
-- main agent 必须在每个 worker prompt 中要求直接完整读取 `references/cross-phase-contract.md` 和对应 Phase reference，并明确允许读写范围、runtime 要求和 leaf boundary；final integration reviewer 必须读取 Phase 3–5 reference。prompt 摘要不能替代原文件。
+- main agent必须在每个worker prompt中要求直接完整读取`references/cross-phase-contract.md`和对应Phase reference；Phase 1/5 worker还必须读取共享framework原则。final integration reviewer必须读取共享原则及Phase 3–5 reference。prompt摘要不能替代原文件。
 
 ## Phase 状态机
 
@@ -54,10 +55,10 @@ description: 当用户明确要求从指定 source document 出发，在 openspe
 | Phase 3 | 机械 complement、遗漏补提取与 evidence occurrence GA index | `coverage-complete` | Phase 4 |
 | Phase 3 | broad/失效 extraction | `needs-extraction-recheck` | targeted Phase 2，再执行 Phase 3 |
 | Phase 3 | 无法稳定 coverage/evidence identity | `blocked` | 停止并报告 |
-| Phase 4 | source-window dossier 与 semantic profile grounding | `grounded` | Phase 5 |
+| Phase 4 | 按initial Change/Capability和unassigned/gap汇总冻结原文 | `assembled` | Phase 5 |
 | Phase 4 | 暴露 missing/broad/conflicting extraction | `needs-coverage-recheck` | 按 finding targeted Phase 2/3，再执行 Phase 4 |
-| Phase 4 | 无法安全 grounding | `blocked` | 停止并报告 |
-| Phase 5 | atom-driven plan refit 完成 | `accepted` 或 `adjusted` | final validation 与 handoff |
+| Phase 4 | 无法解析冻结evidence | `blocked` | 停止并报告 |
+| Phase 5 | 使用共享标准完成initial framework逐项复审与最小refit | `accepted` 或 `adjusted` | final validation 与 handoff |
 | Phase 5 | 暴露 missing/broad/conflicting extraction | `needs-coverage-recheck` | 按 finding targeted Phase 2/3，再执行 Phase 4、Phase 5 |
 | Phase 5 | 需要用户决定或越权 reanalysis | `blocked` | 停止并报告 |
 
@@ -87,7 +88,7 @@ recheck 必须 targeted 到受影响的 Phase 2 source/atom；不得无依据重
 ## 完成与 handoff
 
 - Phase 5 为 `accepted` 或 `adjusted` 后，必须让 `phase-works/phase-5/change-plan.md` 与根 `change-plan.md` 完全一致，再按 trace contract 执行 all-phase complete validation，并运行 fresh independent final integration reviewer。
-- final integration reviewer 必须核对 global atom index、source-window index、atom-plan mapping、Capability baseline reconciliation、final Change packet、Capability view、根 `change-plan.md` 和 human plan 的一致性。
+- final integration reviewer必须核对global atom index、evidence collection index、plan refit review、atom-plan mapping、Capability baseline、final Change packet、Capability view和根`change-plan.md`的一致性。
 - final integration reviewer 必须确认每个 Phase 2/3 evidence occurrence都有独立 GA和独立 Phase 5 mapping，且没有 semantic duplicate处理或基于 GA数量的 framework推断。
 - 只有 complete validator 和 final integration reviewer 都通过，且 final Change packet 已存在时，才允许从 packet 启动 `openspec-propose`。
 - handoff 必须明确：final packet是未语义去重的完整 evidence mapping；后续规格生成可以综合多个 GA，但必须保留多对一 trace。

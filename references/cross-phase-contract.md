@@ -1,51 +1,54 @@
 # 跨 Phase 语义契约
 
-本文件定义 Phase 1–5 以及 reviewer/repair 共同遵守的语义不变量。Phase 内任务和 artifact 由对应 Phase reference 定义；JSON schema、renderer 和 validator 由 `references/trace-sidecar-contract.md` 定义。
+本文件定义 Phase 1–5 以及 reviewer/repair共同遵守的不变量。Change/Capability boundary只以`references/change-capability-framework-principles.md`为准；Phase内artifact和任务由对应Phase reference定义；JSON schema、renderer和validator由trace contract定义。
 
-## 强制加载与权威边界
+## 权威边界
 
-- main agent、所有 writer、reviewer、repair-writer 和 final integration reviewer 必须直接完整读取本文件。
-- source document 是 production obligation 的语义来源；canonical JSON 是 machine-readable authority，renderer-backed Markdown 只是 review mirror。
-- Phase 2 source atom JSON 通过 reviewer 后冻结。Phase 3 只能补充 uncovered range 中遗漏的 evidence occurrence；broad atom 必须返回 targeted Phase 2 re-extraction，不得在 Phase 3 拆分或改写。
-- contract 之间冲突时停止并报告 blocker，不得自行弱化规则。
+- source document是production obligation的原始语义来源。
+- Phase 2/3通过原始source验证并冻结`source-fact`；Phase 4/5只通过evidence resolver消费frozen evidence，不重新读取source或扩展source window。
+- canonical JSON是machine-readable authority；renderer-backed Markdown只是review mirror。
+- Phase 2 source atom通过reviewer后冻结。Phase 3只在uncovered range补充gap atom；broad Phase 2 atom必须targeted回Phase 2重提取。
+- contract冲突时停止并报告blocker，不得弱化规则。
 
-## Evidence occurrence 与 GA identity
+## Evidence occurrence与GA identity
 
-- 每个 Phase 2 source atom 和每个 Phase 3 gap atom都是一个独立的 extracted evidence occurrence，并恰好获得一个 `GA-####`。
-- GA 不是语义去重后的唯一 requirement。多个语义相同的 occurrence 必须保留为多个 GA；本技能不识别、标记、合并、归组或消除 semantic duplicate。
-- Phase 3 global index 只保存 `global-atom-id` 和 `evidence-ref`，不得复制 Phase 2 `source-fact`、行范围、atom type、normativity 或 extraction metadata。
-- `evidence-ref` 指向 frozen Phase 2 atom或 Phase 3 gap atom。Phase 4/5 通过 evidence resolver 加载原始证据，不得把 global index 扩展为第二份 extraction ledger。
-- technical duplicate ID、重复 source-atom key、dangling reference 和一对多/多对一 identity 错误仍由 validator 拒绝。
+- 每个Phase 2 source atom和Phase 3 gap atom都是独立evidence occurrence，并恰好获得一个`GA-####`。
+- GA不是语义去重后的requirement。语义相同、原文相同或range重叠的occurrence仍保留独立GA。
+- Phase 3 global index只保存`global-atom-id`和`evidence-ref`；Phase 4/5通过resolver取得frozen evidence。
+- 本技能不识别、标记、合并、归组或消除semantic duplicate。
+- duplicate ID、重复source-atom key、dangling ref和identity cardinality错误由validator拒绝。
 
-## Coverage 与重新提取
+## Coverage与重新提取
 
-- Phase 3 coverage closure 是 Phase 2 atom ranges 的机械补集加上对每个 uncovered range 的处置，不是语义唯一性证明。
-- `coverage-complete` 只表示：每份 `read-full` source 有有效 Phase 2 artifact；所有 uncovered range 已补提取或安全分类；不存在 broad extraction recheck 或 blocker。
-- semantic duplicate 不影响 coverage decision。
-- Phase 3、Phase 4 或 Phase 5 发现 broad/missing extraction 时，只能返回 targeted coverage/extraction recheck。Phase 3 gap atom只允许来自 uncovered range。
+- Phase 3 coverage closure是Phase 2 atom range的机械补集及每个uncovered range的处置，不是语义唯一性证明。
+- `coverage-complete`只表示source/artifact有效、全部uncovered range已补提取或安全分类、没有recheck/blocker。
+- Phase 3/4/5发现missing/broad extraction时只能返回targeted recheck；Phase 4/5不得自行读取source补充原文。
 
-## Ownership、projection 与 Capability
+## Framework标准与Phase边界
 
-- Phase 2 candidate owner/projection/target 仅是 extraction-time hint；Phase 3 不判断 Change owner、artifact projection、relation 或 Capability。
-- Phase 5 必须为每个 GA 独立给出 final owner Change、artifact projection、relation、Capability impact/target 和 related Capability。语义相同的 GA 可以具有完全相同的 mapping。
-- executable direct evidence 的 final mapping 恰好一个 Change owner。Capability metadata 不是 co-ownership surface。
-- Capability advancement 只来自 final direct `spec-requirement` / `spec-guard` mapping；普通 design/verification 和 non-direct mapping 不推进 Capability。
-- Capability/Change boundary 只能依据 intent、outcome、acceptance、dependency、Capability boundary 和独立 archive 条件；不得从 GA 数量、重复 evidence 数量或表格形状推断。
-- Phase 5 返回 `accepted` 或 `adjusted` 前，必须解决每个 GA 的 final mapping 和 repository baseline reconciliation。
+- Phase 1和Phase 5必须直接读取同一份`change-capability-framework-principles.md`。
+- Phase 1使用共享标准初次生成coarse hypothesis；不执行atom extraction、coverage或final`New` / `Modified`。
+- Phase 4只按Phase 2 candidate hint和Phase 3 provenance汇总frozen source fact；不做semantic profile、refit、owner、projection、relation或Capability impact判断。
+- Phase 5使用共享标准复审initial framework；默认保留，只在Phase 4 evidence collection证明gate失败时做最小refit。
+- Phase 5先冻结final framework，再完成repository baseline reconciliation和逐GA mapping。
 
-## Capability、Change 与 Phase 1 边界
+## Ownership、projection与Capability
 
-- Capability 是可跨 Change 演进的稳定 behavior/spec boundary；Change 是一个 source-backed、可独立决策、验收和归档的 outcome slice。两者多对多，不能互相机械生成。
-- Phase 1 先建立 candidate Capability topology，再按 outcome/cohesion/acceptance/dependency 建立 Change roadmap；不得执行 atom extraction、coverage 或 final `New`/`Modified` 判断。
-- Phase 5 将 final target 与只读 `openspec/specs/<capability>/spec.md` baseline 对齐。existing target 为 Capability-level `Modified`；absent target 的首次 roadmap advancement 为 `New`，后续为 `Modified`。
+- Phase 2 candidate owner/projection/target只是extraction-time hint。
+- Phase 3不判断planning metadata。
+- Phase 4 bucket只是initial framework投影，不是final owner或advancement。
+- Phase 5必须为每个GA给出一个final owner Change、relation、projection和Capability字段。
+- direct evidence恰好一个final Change owner；non-direct evidence也必须owner-scoped地进入一个final packet。
+- Capability advancement只来自direct `spec-requirement` / `spec-guard` mapping；design/verification、non-direct和related-only mapping不推进Capability。
+- existing target为Capability-level`modified`；absent target首次advancement为`new`，之后为`modified`。
 
-## 下游 semantic dedup handoff
+## 下游handoff
 
-- Phase 5 final packet 是完整 evidence mapping，不是经过语义去重的 requirement inventory。
-- 后续规格生成流程可以把多个 GA 综合成一个 requirement，但必须保留多对一 GA trace。该判断与实现不属于本技能。
+- Phase 5 final packet是完整、未语义去重的evidence mapping，不是requirement inventory。
+- 下游规格生成可以综合多个GA为一个requirement，但必须保留多对一GA trace；该判断不属于本技能。
 
 ## Artifact Language Gate
 
-- agent 编写的解释、判断、理由、报告和 handoff 使用简体中文。
-- 固定 heading、field、enum、ID、path、代码符号和精确 source quote 可以保留英文。
-- `source-fact` 必须保持 source 原文，不翻译、不转述。
+- agent编写的解释、判断、理由、报告和handoff使用简体中文。
+- 固定heading、field、enum、ID、path、代码符号和精确source quote可以保留英文。
+- `source-fact`保持source原文，不翻译、不转述、不改写。
