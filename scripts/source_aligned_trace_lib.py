@@ -16,23 +16,25 @@ from pathlib import Path
 from typing import Dict, Iterable, List, Optional, Sequence, Tuple
 
 
-TRACE_CONTRACT_VERSION = "source-aligned-trace-v2"
+TRACE_CONTRACT_VERSION = "source-aligned-trace-v3"
 MANIFEST_SCHEMA = "source-aligned-orchestrate-manifest-v2"
 PHASE_TRACE_SCHEMAS = {
-    "phase-1": "source-aligned-phase-1-trace-v2",
-    "phase-2": "source-aligned-phase-2-trace-v3",
-    "phase-3": "source-aligned-phase-3-trace-v2",
-    "phase-4": "source-aligned-phase-4-trace-v3",
-    "phase-5": "source-aligned-phase-5-trace-v3",
+    "phase-1": "source-aligned-phase-1-trace-v3",
+    "phase-2": "source-aligned-phase-2-trace-v4",
+    "phase-3": "source-aligned-phase-3-trace-v3",
+    "phase-4": "source-aligned-phase-4-trace-v4",
+    "phase-5": "source-aligned-phase-5-trace-v4",
 }
 SOURCE_ATOMS_SCHEMA = "source-aligned-source-atoms-v4"
 GLOBAL_ATOM_INDEX_SCHEMA = "source-aligned-global-atom-index-v3"
-PHASE3_COVERAGE_REVIEW_SCHEMA = "source-aligned-phase-3-coverage-review-v1"
+PHASE3_COVERAGE_REVIEW_SCHEMA = "source-aligned-phase-3-coverage-review-v2"
 EVIDENCE_COLLECTION_INDEX_SCHEMA = "source-aligned-evidence-collection-index-v2"
-FRAMEWORK_REFIT_TRACE_SCHEMA = "source-aligned-framework-refit-trace-v1"
+FRAMEWORK_REFIT_TRACE_SCHEMA = "source-aligned-framework-refit-trace-v2"
 ATOM_PLAN_MAPPING_SCHEMA = "source-aligned-atom-plan-mapping-v4"
 FINAL_PACKET_INDEX_SCHEMA = "source-aligned-final-packet-index-v2"
 CAPABILITY_BASELINE_SCHEMA = "source-aligned-capability-baseline-v1"
+EVIDENCE_PATCH_REQUEST_SCHEMA = "source-aligned-evidence-patch-request-v1"
+PHASE5_CHECKPOINT_SCHEMA = "source-aligned-phase-5-checkpoint-v1"
 
 GLOBAL_ATOM_ID_RE = re.compile(r"^GA-\d{4}$")
 GLOBAL_ATOM_ID_FIND_RE = re.compile(r"GA-\d{4}")
@@ -84,6 +86,26 @@ class IssueReporter:
         }
 
 
+def canonical_json_sha256(value: object) -> str:
+    """Return the canonical row digest used by patch/checkpoint contracts."""
+    payload = json.dumps(
+        value,
+        ensure_ascii=False,
+        sort_keys=True,
+        separators=(",", ":"),
+    ).encode("utf-8")
+    return hashlib.sha256(payload).hexdigest()
+
+
+def source_window_sha256(path: Path, start: int, end: int) -> str:
+    """Hash an exact 1-based line window using normalized LF joins and no trailing LF."""
+    lines = path.read_text(encoding="utf-8").splitlines()
+    if start < 1 or end < start or end > len(lines):
+        raise ValueError(f"source window越界：{path}:{start}-{end}")
+    payload = "\n".join(lines[start - 1 : end]).encode("utf-8")
+    return hashlib.sha256(payload).hexdigest()
+
+
 def split_md_row(line: str) -> Optional[List[str]]:
     """拆分 Markdown table 行，同时保留 code span 中的竖线。"""
     text = line.strip()
@@ -126,6 +148,45 @@ def normalize_code(value: object) -> str:
     while len(text) >= 2 and text.startswith("`") and text.endswith("`"):
         text = text[1:-1].strip()
     return text.replace("\\|", "|").strip()
+
+
+def evidence_patch_finding_fingerprint(targets: object) -> str:
+    """Return the deterministic identity of an evidence-integrity finding set.
+
+    Remediation choices, prose reasons, owner identities, and generated successor
+    IDs are deliberately excluded so a different writer cannot disguise the same
+    located defect as a new finding.
+    """
+    rows: List[Dict[str, object]] = []
+    for target in targets if isinstance(targets, list) else []:
+        if not isinstance(target, dict):
+            continue
+        window = target.get("allowed-line-window")
+        normalized_window = {
+            "start": window.get("start"),
+            "end": window.get("end"),
+        } if isinstance(window, dict) else None
+        evidence_ref = target.get("evidence-ref")
+        witness = target.get("defect-witness")
+        rows.append({
+            "source-document": normalize_code(target.get("source-document")),
+            "source-atom-id": normalize_code(target.get("source-atom-id")) or None,
+            "global-atom-id": normalize_code(target.get("global-atom-id")) or None,
+            "evidence-ref": evidence_ref if isinstance(evidence_ref, dict) else None,
+            "defect": normalize_code(target.get("defect")),
+            "allowed-line-window": normalized_window,
+            "source-sha256": normalize_code(witness.get("source-sha256")) if isinstance(witness, dict) else None,
+            "window-sha256": normalize_code(witness.get("window-sha256")) if isinstance(witness, dict) else None,
+        })
+    rows.sort(
+        key=lambda row: json.dumps(
+            row,
+            ensure_ascii=False,
+            sort_keys=True,
+            separators=(",", ":"),
+        )
+    )
+    return canonical_json_sha256({"evidence-integrity-defects": rows})
 
 
 def squash(value: object) -> str:

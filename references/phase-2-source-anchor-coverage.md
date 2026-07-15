@@ -2,7 +2,7 @@
 
 Phase 2 逐份完整阅读 source document，提取所有具有产品或系统语义的 source atom candidate。analysis unit 是 source document，不是 planned Change；Phase 1 framework 只提供现有 Change/Capability 的候选映射目标。
 
-本 Phase 只负责 raw extraction 和 existing-framework mapping。不执行跨文档去重、global coverage closure、new/refit Change 判断、new Capability 判断或 repository baseline reconciliation；无法映射到现有 framework 的 atom 统一标记为 `unassigned`。
+本 Phase 只负责 raw extraction 和 existing-framework candidate mapping。正常路径使用 `mode: initial`；唯一回补路径使用 `mode: targeted-patch`，且只能消费 Phase 5 生成的 `EPR-0001`。本 Phase 不执行跨文档去重、global coverage closure、new/refit Change 判断、new Capability 判断或 repository baseline reconciliation；无法映射到现有 framework 的 atom 统一标记为 `unassigned`。
 
 ## 目录
 
@@ -21,6 +21,7 @@ Phase 2 逐份完整阅读 source document，提取所有具有产品或系统�
 - `openspec/orchestrate/phase-works/phase-1/initial-change-plan.md`
 - `openspec/orchestrate/phase-works/phase-1/source-doc-manifest.md`
 - 用户指定的 source root 或精确 source path，用于读取正文和生成行引用。
+- `mode: targeted-patch` 时还必须读取 `phase-works/phase-5/evidence-patch-request.json` 和 `phase-works/phase-5/phase-5-checkpoint.json`；缺少、digest不匹配或request-id不是`EPR-0001`时立即`blocked`。
 
 只写入以下 Phase 2 artifact：
 
@@ -35,20 +36,19 @@ Phase 2 逐份完整阅读 source document，提取所有具有产品或系统�
 
 canonical JSON、renderer 和 validator 以 `references/trace-sidecar-contract.md` 为准；跨阶段语义以 `references/cross-phase-contract.md` 为准。每个 extraction writer 和 index/report writer 必须直接完整读取本文件、cross-phase contract 和 trace-sidecar contract。
 
-validator 与 independent reviewer 通过后冻结 `.atoms.json`；`.atoms.md` 只能由 renderer 刷新。
+validator 通过后冻结 `.atoms.json`；`.atoms.md` 只能由 renderer 刷新。validator 未通过时本 Phase `blocked`，不得自动重启 producer 或重复当前 Phase。唯一例外是已进入合法 `mode: targeted-patch` 的单次局部写入。
 
 ## 角色与执行顺序
 
 | 角色 | 允许读取 | Phase 2 content 写入 | 禁止事项 |
 | --- | --- | --- | --- |
-| main agent | Phase 1 plan、manifest 和 source metadata | `work-queue.md` | 提取或修复 atom、作 coverage 判断 |
+| main agent | Phase 1 plan、manifest、source metadata；targeted mode下读取request/checkpoint metadata | `work-queue.md` | 提取或修改 atom、作 coverage 判断 |
 | extraction writer | 分配的 source 正文、Phase 1 plan/manifest、work queue、必需 contract | 分配 source 的 canonical `.atoms.json` | 写其他 source、跨文档比较、聚合、判断 new Change/Capability、读取 Phase 3–5 output |
+| targeted patch writer | request列出的source、atom/range及必要最小局部上下文、request/checkpoint | 只修改request targets所在canonical `.atoms.json` | 全量重提取、越过allowed window、删除/合并/重命名atom、改变protected row |
 | renderer | work queue、canonical Phase 2 JSON、Phase trace | 匹配的`.atoms.md` mirror和聚合`index.md` | 解释或补充atom |
-| index/report writer | Phase 1 plan/manifest、work queue、全部 `.atoms.json` | 非canonical`phase-2-agent-report.md`、`phase-2.trace.json` | 手写index、重读source创建evidence、编辑atom、repair、去重、闭合coverage或作final decision |
+| index/report writer | Phase 1 plan/manifest、work queue、全部 `.atoms.json` | 非canonical`phase-2-agent-report.md`、`phase-2.trace.json` | 手写index、重读source创建evidence、编辑atom、去重、闭合coverage或作final decision |
 
-reviewer 与 repair-writer 的权限由 `references/reviewer-repair-loop.md` 定义。
-
-表中的写入限制只约束 Phase 2 content artifact。main agent 仍按 trace contract 负责共享 `trace/manifest.json` 的初始化、validator 前刷新和 reviewer 通过后刷新；这不构成 extraction content 写入。
+表中的写入限制只约束 Phase 2 content artifact。main agent 仍按 trace contract 负责共享 `trace/manifest.json` 的初始化和 validator 前后刷新；这不构成 extraction content 写入。
 
 执行顺序：
 
@@ -69,7 +69,21 @@ reviewer 与 repair-writer 的权限由 `references/reviewer-repair-loop.md` 定
      --write
    ```
 6. 聚合发现缺失或格式错误时只记录blocker，不得修复extraction。
-7. main agent运行validator、reviewer和必要的repair loop；通过后刷新manifest并冻结Phase 2。
+7. main agent运行validator；通过后刷新manifest并冻结Phase 2，失败则记录issue并`blocked`。不得启动reviewer/repair或自动重复当前Phase。
+
+## Targeted patch mode
+
+每个 generation 最多执行一次 targeted patch，且固定消费 `source-aligned-evidence-patch-request-v1` 的 `request-id: EPR-0001`。
+
+- `targets[]` 只允许 defect `quote-mismatch`、`range-mismatch`、`mixed-independent-occurrences`、`missing-occurrence`；只允许 operation `replace-quote`、`adjust-range`、`split`、`add`。
+- writer只能读取并写入target的`source-document`、`source-atom-id`和`allowed-line-window`；必须使用request中的`canonical-owner`。不得删除、合并或重命名任何atom。
+- `missing-occurrence`只能使用`add`，其`source-atom-id`、`global-atom-id`、`evidence-ref`、`base-row`和`base-row-sha256`必须为null；新增ID从`patch-epr-0001-add-01`连续分配。
+- `split`保留原atom ID作为第一项，新增ID从`<old-source-atom-id>.part-02`连续分配；不得复用其他ID。
+- `replace-quote`、`adjust-range`和`split`必须先验证immutable `base-row`及其`base-row-sha256`；原row除allowed operation对应的`source-fact`/`line-ranges`外不得改变；所有target必须限制在`allowed-line-window`。
+- 每个target必须携带已冻结的`defect-witness`：只允许`phase-2-atom|phase-3-disposition` locator origin，source/window digest与canonical source逐字匹配，且window完全位于origin ranges的连续闭包内。existing target必须以自身immutable base row作为origin；非原文base不得进入targeted mode。
+- `protected-rows`中的每行必须按compact sorted UTF-8 JSON计算SHA256并保持不变。任一protected row变化、request越界或需要第二次patch时立即`blocked`。
+- targeted patch不得改变candidate mapping。split successor继承原atom的candidate status/projection/owner/target；新增遗漏occurrence使用`unassigned` owner/status且不得预填现有Capability target。最终mapping仍由Phase 5裁决。
+- patch完成后仍使用canonical status `source-atoms-written`，只通过`phase-2.trace.json.mode: targeted-patch`区分；不得新增另一terminal status。
 
 ## Work queue
 
@@ -105,11 +119,11 @@ reviewer 与 repair-writer 的权限由 `references/reviewer-repair-loop.md` 定
 
 ### 2. 控制 atom 粒度
 
-一个 atom 应能被独立接受、拒绝、实现、保护或验证。
+一个 atom 的粒度只需保证该source occurrence可被独立引用，并能由单一mapping tuple无损表达。长度、behavior数量、实现或验证是否可独立执行，都不是单独的拆分指标。
 
 - 保留同一规则的 condition + trigger/action + expected effect，不机械拆分。
-- 多个 behavior、不同 normativity、不同 projection、不同 failure/recovery path 或不同 acceptance obligation 可以独立变化时才拆分。
-- 不得用 “page detail”“flow behavior” 或宽泛 summary 覆盖整个页面、对象或流程。
+- 只有source内存在需要独立引用的多个occurrence，或一个tuple无法无损表达其责任时才拆分。Phase 2不因猜测final owner、relation、projection或target Capability而拆分。
+- 内容较长但单一tuple可无损表达时不报错；内容较短但可导出多个合理tuple时，保留occurrence并交Phase 3记录mapping ambiguity，不在Phase 2主观过拆。
 - 每个 atom 的 `line-ranges[]` 必须且只能包含一个连续 range。连续多行可使用一个 `{start, end}`；互不连续的 source 片段必须分别提取为独立 atom。即使这些 atom语义相同，后续也保留独立 evidence occurrence。
 
 对 UI/flow source，至少检查 page role、route/entry/exit、具名 state、trigger、可见行为、允许/禁用 action、failure/recovery、persistence/navigation/access/privacy、影响任务完成的 responsive behavior、acceptance 和 scope guard。
@@ -195,7 +209,7 @@ Phase 2 不记录 `candidate-capability-impact`、`candidate-related-capabilitie
 | Source Atom ID | Lines | Atom Type | Source Fact | Normativity | Candidate Status | Candidate Artifact Projection | Candidate Owner Change | Candidate Target Capability | Rationale |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
 
-`Lines`列由canonical `line-ranges[]`生成。`.atoms.md`还包含source identity、Phase 1 context、blocker、language self-check和`Trace Appendix`；render contract为`source-aligned-render-v6`。
+`Lines`列由canonical `line-ranges[]`生成。`.atoms.md`还包含source identity、Phase 1 context、blocker、language self-check和`Trace Appendix`；render contract为`source-aligned-render-v7`。
 
 字段 shape：
 
@@ -222,16 +236,17 @@ Phase 2 不记录 `candidate-capability-impact`、`candidate-related-capabilitie
 
 aggregate 不发布 duplicate statistic、candidate new boundary、global coverage statistic、global atom 或 final plan map。
 
-若repair修改canonical `.atoms.json`，repair-writer必须刷新report和Phase trace count/digest，再重跑Phase 2 atoms/index renderer；不得借此补做新的extraction或全局判断。随后main agent再刷新manifest、运行validator，并启动fresh reviewer。
+`phase-2.trace.json` 使用 `source-aligned-phase-2-trace-v4`，在既有字段外增加`mode`、`patch-request-ref`、`checkpoint-ref`和`patch-summary`。initial mode的两个ref和summary均为null。targeted mode的`patch-summary`必须且只能包含`base-phase-2-trace-sha256`、`affected-sources[]`、`changed-atoms[]`、`new-atoms[]`和`patch-writer-id`；changed row只含source document/atom ID与before/after row SHA，new row只含source document/atom ID与row SHA。不得把patch写成第二次initial extraction。`blocked` trace必须且只能包含schema/version、status、mode、两个patch ref、nullable `base-phase-2-trace-sha256`、`affected-sources[]`和非空`issues[]`；initial blocked的refs/base为null且affected为空，targeted blocked必须绑定唯一request/checkpoint、request中的base Phase 2 digest，并按request target首次出现顺序精确列出affected sources。
 
 ## 完成门禁
 
 1. **Source gate**：每份 `read-full` source 在 work queue 中恰好一次，并有一个 canonical JSON 与 mirror。
-2. **Semantic gate**：每项有产品/系统语义的 source fact 都有 atom；每个 atom 只有一个尽量紧凑的连续 evidence range，`source-fact` 是该 range 内的原文连续摘录，不使用整章或整页范围掩盖未提取语义。全文 remainder disposition 留给 Phase 3。
-3. **Atom gate**：atom 不 broad、不机械过拆；status 仅使用五种允许值；guard/non-goal 语义没有塞入 status；不存在 duplicate/new Change/new Capability 的 Phase 2 判断。
+2. **Semantic gate**：每项有产品/系统语义的 source fact 都有 atom；每个 atom 只有一个连续 evidence range，`source-fact` 是该 range 内的原文连续摘录，且该occurrence可被独立引用。全文 remainder disposition 留给 Phase 3。
+3. **Atom gate**：每个atom可由一个mapping tuple无损表达；不以长度、behavior数量或主观“粗/细”判定质量。多义但可独立引用的occurrence交Phase 3 ambiguity audit；status仅使用五种允许值；guard/non-goal语义没有塞入status；不存在duplicate/new Change/new Capability的Phase 2判断。
 4. **Mapping gate**：owner/target 只引用现有 framework 或使用 `unassigned` / `unresolved` / `none`；不存在 Capability impact 判断。
 5. **Artifact gate**：canonical JSON 使用 v4 schema 且只含 `line-ranges[]`；mirror 与 renderer output 一致。
 6. **Role gate**：extraction writer 只写分配 JSON；index/report writer 未编辑 extraction 或执行全局判断。
-7. **Review gate**：validator 和 fresh reviewer 通过；repair 后已重新验证；manifest 已刷新并冻结 evidence。
+7. **Validation gate**：validator通过且manifest已刷新；失败即`blocked`，不得自动重启producer、重复当前Phase或启动reviewer/repair。
+8. **Patch gate**：targeted mode只出现一次，request/checkpoint/base/protected row全部有效，修改严格落在targets与allowed operations内。
 
 final reply 使用简短中文，报告 batch、已处理 source、atom count、mapped/unassigned atom、conflict/unclassified、language gate 和 blocker。

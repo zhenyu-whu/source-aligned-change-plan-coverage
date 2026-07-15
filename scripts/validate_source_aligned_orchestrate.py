@@ -15,6 +15,7 @@ from source_aligned_trace_lib import (
     CAPABILITY_BASELINE_SCHEMA,
     DIRECT_PROJECTIONS,
     EVIDENCE_COLLECTION_INDEX_SCHEMA,
+    EVIDENCE_PATCH_REQUEST_SCHEMA,
     FINAL_PACKET_INDEX_SCHEMA,
     FRAMEWORK_REFIT_TRACE_SCHEMA,
     GLOBAL_ATOM_ID_RE,
@@ -22,11 +23,14 @@ from source_aligned_trace_lib import (
     KEBAB_CASE_RE,
     MANIFEST_SCHEMA,
     PHASE3_COVERAGE_REVIEW_SCHEMA,
+    PHASE5_CHECKPOINT_SCHEMA,
     PHASE_TRACE_SCHEMAS,
     SOURCE_ATOMS_SCHEMA,
     TRACE_CONTRACT_VERSION,
     IssueReporter,
+    canonical_json_sha256,
     cell,
+    evidence_patch_finding_fingerprint,
     line_range_label,
     merge_line_ranges,
     range_covered_by,
@@ -34,6 +38,7 @@ from source_aligned_trace_lib import (
     sha256_file,
     source_atom_file_name,
     source_line_count,
+    source_window_sha256,
     table_rows,
     uncovered_line_ranges,
     validate_kebab_keys,
@@ -54,9 +59,14 @@ from render_source_aligned_orchestrate import (
 )
 from phase5_plan_refit import (
     build_baseline as build_phase5_baseline,
+    framework_dependency_edges,
+    framework_ga_lineage,
+    framework_review_lineage,
+    framework_semantic_digest_rows,
     load_framework_refit,
     load_evidence as load_phase5_evidence,
     load_mapping as load_phase5_mapping,
+    parse_dependencies,
     parse_final_plan,
     render_anchor_index,
     render_capability_view,
@@ -113,7 +123,13 @@ PHASE2_TOP_LEVEL_FIELDS = {
 }
 PHASE3_GAP_ID_RE = re.compile(r"^P3-GAP-\d{4}$")
 PHASE3_DISPOSITION_ID_RE = re.compile(r"^RD-\d{4}$")
-PHASE3_DISPOSITIONS = {"missing-obligation", "safe-non-obligation", "requires-reextract", "blocked"}
+PHASE3_DISPOSITIONS = {"missing-obligation", "safe-non-obligation", "blocked"}
+MAPPING_AMBIGUITY_DIMENSIONS = {"owner-change", "relation", "artifact-projection", "target-capability"}
+PATCH_DEFECTS = {"quote-mismatch", "range-mismatch", "mixed-independent-occurrences", "missing-occurrence"}
+PATCH_OPERATIONS = {"replace-quote", "adjust-range", "split", "add"}
+PATCH_REQUEST_ID = "EPR-0001"
+CHECKPOINT_ID = "P5CP-0001"
+SHA256_RE = re.compile(r"^[0-9a-f]{64}$")
 LEGACY_CAPABILITY_FIELDS = {
     "candidate-owner-capability",
     "owner-capability",
@@ -122,12 +138,12 @@ LEGACY_CAPABILITY_FIELDS = {
 }
 PHASE_NAMES = ("phase-1", "phase-2", "phase-3", "phase-4", "phase-5")
 FINAL_PHASE5_STATUSES = {"accepted", "adjusted"}
-NON_FINAL_PHASE4_STATUSES = {"needs-coverage-recheck", "blocked"}
-NON_FINAL_PHASE5_STATUSES = {"needs-coverage-recheck", "blocked"}
+NON_FINAL_PHASE4_STATUSES = {"blocked"}
+NON_FINAL_PHASE5_STATUSES = {"needs-targeted-evidence-patch", "blocked"}
 PHASE_ALLOWED_TRACE_STATUSES = {
-    "phase-1": {"initial-plan-written"},
-    "phase-2": {"source-atoms-written"},
-    "phase-3": {"coverage-complete", "needs-extraction-recheck", "blocked"},
+    "phase-1": {"initial-plan-written", "blocked"},
+    "phase-2": {"source-atoms-written", "blocked"},
+    "phase-3": {"coverage-complete", "blocked"},
     "phase-4": {"assembled", *NON_FINAL_PHASE4_STATUSES},
     "phase-5": {*FINAL_PHASE5_STATUSES, *NON_FINAL_PHASE5_STATUSES},
 }
@@ -482,6 +498,12 @@ def expected_manifest_artifacts(orchestrate_dir: Path, repo_root: Path) -> Dict[
         ),
         (orchestrate_dir / "trace/phase-5.trace.json", PHASE_TRACE_SCHEMAS["phase-5"], "phase-5", "control", "phase-trace"),
     ]
+    patch_request_path = _patch_request_path(orchestrate_dir)
+    checkpoint_path = _checkpoint_path(orchestrate_dir)
+    if patch_request_path.exists():
+        specs.append((patch_request_path, EVIDENCE_PATCH_REQUEST_SCHEMA, "phase-5", "control", "evidence-patch-request"))
+    if checkpoint_path.exists():
+        specs.append((checkpoint_path, PHASE5_CHECKPOINT_SCHEMA, "phase-5", "semantic", "phase-5-checkpoint"))
     atom_root = orchestrate_dir / "phase-works/phase-2/source-obligation-atoms"
     specs.extend((path, SOURCE_ATOMS_SCHEMA, "phase-2", "semantic", "source-atoms") for path in sorted(atom_root.glob("*.atoms.json")))
     return {
@@ -568,16 +590,16 @@ def validate_manifest(orchestrate_dir: Path, repo_root: Path, reporter: IssueRep
                     path,
                     f"--complete 要求 phase-statuses.{phase_name} 为 {sorted(allowed)}，实际为 {actual or 'missing'}",
                 )
-        phase3_trace_path = orchestrate_dir / "trace/phase-3.trace.json"
-        if phase3_trace_path.exists():
-            phase3_trace = read_json(phase3_trace_path)
-            reviewer_loop = phase3_trace.get("reviewer-loop")
-            reviewer_status = normalize_code(reviewer_loop.get("status")) if isinstance(reviewer_loop, dict) else ""
-            if reviewer_status != "passed":
+        phase1_trace_path = orchestrate_dir / "trace/phase-1.trace.json"
+        if phase1_trace_path.exists():
+            phase1_trace = read_json(phase1_trace_path)
+            review_gate = phase1_trace.get("review-gate")
+            gate_status = normalize_code(review_gate.get("status")) if isinstance(review_gate, dict) else ""
+            if gate_status != "passed":
                 reporter.error(
-                    "manifest-complete-phase3-reviewer",
+                    "manifest-complete-phase1-review-gate",
                     path,
-                    f"--complete 要求 Phase 3 reviewer-loop.status=passed，实际为 {reviewer_status or 'missing'}",
+                    f"--complete 要求 Phase 1 review-gate.status=passed，实际为 {gate_status or 'missing'}",
                 )
     artifacts = data.get("artifacts")
     if not isinstance(artifacts, list):
@@ -636,18 +658,213 @@ def validate_manifest(orchestrate_dir: Path, repo_root: Path, reporter: IssueRep
         reporter.error("manifest-artifact-missing", path, f"manifest artifacts 缺少应登记JSON：{trace_rel}")
 
 
+def _validate_phase1_review_gate(
+    gate: object,
+    trace_path: Path,
+    plan_path: Path,
+    reporter: IssueReporter,
+) -> str:
+    if not isinstance(gate, dict):
+        reporter.error("phase1-review-gate", trace_path, "review-gate必须是object")
+        return ""
+    exact_fields(
+        gate,
+        {"status", "writer-id", "reviews", "repairs"},
+        trace_path,
+        reporter,
+        "phase1-review-gate-fields",
+        "review-gate",
+    )
+    status = normalize_code(gate.get("status"))
+    if status not in {"passed", "blocked"}:
+        reporter.error("phase1-review-gate-status", trace_path, "review-gate.status只允许passed|blocked")
+    writer_id = squash(gate.get("writer-id"))
+    if not writer_id:
+        reporter.error("phase1-review-gate-writer", trace_path, "review-gate.writer-id不得为空")
+    reviews = gate.get("reviews")
+    if not isinstance(reviews, list) or not 1 <= len(reviews) <= 3:
+        reporter.error("phase1-review-gate-reviews", trace_path, "reviews必须包含1..3轮")
+        reviews = []
+    reviewer_ids: Set[str] = set()
+    review_by_round: Dict[int, Dict[str, object]] = {}
+    for index, review in enumerate(reviews, start=1):
+        if not isinstance(review, dict):
+            reporter.error("phase1-review-row", trace_path, f"reviews[{index}]必须是object")
+            continue
+        exact_fields(
+            review,
+            {"round", "reviewer-id", "validator-status", "plan-sha256", "finding-fingerprints"},
+            trace_path,
+            reporter,
+            "phase1-review-row-fields",
+            f"reviews[{index}]",
+        )
+        round_number = review.get("round")
+        if round_number != index:
+            reporter.error("phase1-review-round", trace_path, "review round必须从1连续递增")
+            continue
+        reviewer_id = squash(review.get("reviewer-id"))
+        if not reviewer_id or reviewer_id == writer_id or reviewer_id in reviewer_ids:
+            reporter.error("phase1-reviewer-independence", trace_path, f"round {index} reviewer必须fresh且不同于writer")
+        reviewer_ids.add(reviewer_id)
+        if normalize_code(review.get("validator-status")) not in {"passed", "failed"}:
+            reporter.error("phase1-review-validator-status", trace_path, f"round {index} validator-status非法")
+        if not _is_sha256(review.get("plan-sha256")):
+            reporter.error("phase1-review-plan-sha", trace_path, f"round {index} plan-sha256非法")
+        findings = review.get("finding-fingerprints")
+        if (
+            not isinstance(findings, list)
+            or any(not _is_sha256(item) for item in findings)
+            or len(findings) != len(set(findings))
+        ):
+            reporter.error("phase1-review-findings", trace_path, f"round {index} finding-fingerprints必须是唯一SHA-256 array")
+        review_by_round[index] = review
+    if reviews and plan_path.exists() and reviews[-1].get("plan-sha256") != sha256_file(plan_path):
+        reporter.error("phase1-review-current-plan", trace_path, "最后一轮review必须绑定当前initial plan digest")
+
+    repairs = gate.get("repairs")
+    if not isinstance(repairs, list) or len(repairs) > 2:
+        reporter.error("phase1-review-gate-repairs", trace_path, "repairs必须是0..2条")
+        repairs = []
+    repair_by_round: Dict[int, Dict[str, object]] = {}
+    repair_writer_ids: Set[str] = set()
+    forced_block_rounds: Set[int] = set()
+    for index, repair in enumerate(repairs, start=1):
+        if not isinstance(repair, dict):
+            reporter.error("phase1-repair-row", trace_path, f"repairs[{index}]必须是object")
+            continue
+        exact_fields(
+            repair,
+            {"round", "repair-writer-id", "finding-fingerprints", "before-plan-sha256", "after-plan-sha256"},
+            trace_path,
+            reporter,
+            "phase1-repair-row-fields",
+            f"repairs[{index}]",
+        )
+        round_number = repair.get("round")
+        if not isinstance(round_number, int) or round_number not in review_by_round or round_number > len(reviews) or round_number in repair_by_round:
+            reporter.error("phase1-repair-round", trace_path, f"repair round必须唯一对应已存在review：{round_number}")
+            continue
+        repair_by_round[round_number] = repair
+        repair_writer = squash(repair.get("repair-writer-id"))
+        if (
+            not repair_writer
+            or repair_writer == writer_id
+            or repair_writer in reviewer_ids
+            or repair_writer in repair_writer_ids
+        ):
+            reporter.error("phase1-repair-independence", trace_path, f"round {round_number} repair writer身份不独立")
+        repair_writer_ids.add(repair_writer)
+        findings = repair.get("finding-fingerprints")
+        review_findings = review_by_round[round_number].get("finding-fingerprints")
+        if (
+            not isinstance(findings, list)
+            or not findings
+            or any(not _is_sha256(item) for item in findings)
+            or len(findings) != len(set(findings))
+        ):
+            reporter.error("phase1-repair-findings", trace_path, f"round {round_number} repair findings必须是非空唯一SHA-256 array")
+        elif isinstance(review_findings, list) and not set(findings).issubset(set(review_findings)):
+            reporter.error("phase1-repair-findings", trace_path, f"round {round_number} repair不得消费review之外的finding")
+        before_sha = repair.get("before-plan-sha256")
+        after_sha = repair.get("after-plan-sha256")
+        if not _is_sha256(before_sha) or not _is_sha256(after_sha):
+            reporter.error("phase1-repair-plan-sha", trace_path, f"round {round_number} repair plan digest非法")
+        if before_sha != review_by_round[round_number].get("plan-sha256"):
+            reporter.error("phase1-repair-before", trace_path, f"round {round_number} before digest与review不一致")
+        next_review = review_by_round.get(round_number + 1)
+        if next_review and after_sha != next_review.get("plan-sha256"):
+            reporter.error("phase1-repair-after", trace_path, f"round {round_number} after digest与下一轮review不一致")
+        if before_sha == after_sha:
+            forced_block_rounds.add(round_number)
+
+    terminal_repair = repair_by_round.get(len(reviews))
+    terminal_noop_repair = (
+        status == "blocked"
+        and isinstance(terminal_repair, dict)
+        and terminal_repair.get("before-plan-sha256") == terminal_repair.get("after-plan-sha256")
+    )
+    if not (
+        len(reviews) == len(repairs) + 1
+        or (len(reviews) == len(repairs) and terminal_noop_repair)
+    ):
+        reporter.error(
+            "phase1-review-gate-cardinality",
+            trace_path,
+            "reviews通常必须比repairs多1；仅blocked的terminal no-op repair允许两者等长",
+        )
+
+    for round_number in range(1, len(reviews)):
+        repair = repair_by_round.get(round_number)
+        if repair is None:
+            reporter.error("phase1-repair-missing", trace_path, f"round {round_number}与下一轮review之间缺少repair")
+    seen_findings: Set[str] = set()
+    for round_number in range(1, len(reviews) + 1):
+        review = review_by_round.get(round_number, {})
+        findings = review.get("finding-fingerprints") if isinstance(review, dict) else []
+        if not isinstance(findings, list) or not all(_is_sha256(item) for item in findings):
+            continue
+        if seen_findings.intersection(findings):
+            forced_block_rounds.add(round_number)
+        seen_findings.update(findings)
+    if forced_block_rounds and status != "blocked":
+        reporter.error(
+            "phase1-review-no-progress",
+            trace_path,
+            "repair未改变plan，或同一finding在后续review再次出现时review-gate只能blocked",
+        )
+    if forced_block_rounds and len(reviews) > min(forced_block_rounds):
+        reporter.error(
+            "phase1-review-continued-after-block",
+            trace_path,
+            "重复finding或no-op repair一经确认必须立即blocked，不得继续repair/review",
+        )
+    if status == "passed" and reviews:
+        last = reviews[-1]
+        if last.get("finding-fingerprints") != [] or normalize_code(last.get("validator-status")) != "passed":
+            reporter.error("phase1-review-pass", trace_path, "passed要求最后review无finding且validator-status=passed")
+    if status == "blocked" and reviews and not forced_block_rounds:
+        last = reviews[-1]
+        if last.get("finding-fingerprints") == [] and normalize_code(last.get("validator-status")) == "passed":
+            reporter.error(
+                "phase1-review-block-reason",
+                trace_path,
+                "blocked必须由当前blocking finding、validator failure、重复finding或no-op repair支持",
+            )
+    return status
+
+
 def validate_phase_1(orchestrate_dir: Path, repo_root: Path, reporter: IssueReporter) -> None:
     path = orchestrate_dir / "trace/phase-1.trace.json"
     data = json_obj(path, reporter, PHASE_TRACE_SCHEMAS["phase-1"])
     if not data:
         return
-    validate_trace_status(data, path, reporter, "phase-1", "phase1-status")
+    exact_fields(
+        data,
+        {"trace-schema", "trace-contract-version", "status", "source-documents", "initial-change-plan", "review-gate"},
+        path,
+        reporter,
+        "phase1-trace-fields",
+        "Phase 1 trace",
+    )
+    phase1_status = validate_trace_status(data, path, reporter, "phase-1", "phase1-status")
     initial_plan_path = orchestrate_dir / "phase-works/phase-1/initial-change-plan.md"
     source_manifest_path = orchestrate_dir / "phase-works/phase-1/source-doc-manifest.md"
     require_file(initial_plan_path, reporter, "phase1-interface-artifact", "缺少 Phase 1 initial-change-plan.md")
     require_file(source_manifest_path, reporter, "phase1-interface-artifact", "缺少 Phase 1 source-doc-manifest.md")
     require_file(orchestrate_dir / "phase-works/phase-1/phase-1-agent-report.md", reporter, "phase1-interface-artifact", "缺少 Phase 1 agent 报告")
     validate_phase1_plan_structure(initial_plan_path, reporter)
+    gate_status = _validate_phase1_review_gate(data.get("review-gate"), path, initial_plan_path, reporter)
+    expected_gate_status = {
+        "initial-plan-written": "passed",
+        "blocked": "blocked",
+    }.get(phase1_status)
+    if expected_gate_status and gate_status != expected_gate_status:
+        reporter.error(
+            "phase1-status-review-gate-drift",
+            path,
+            f"Phase 1 status={phase1_status} 要求 review-gate.status={expected_gate_status}，实际为 {gate_status or 'missing'}",
+        )
 
     if "change-plan" in data:
         reporter.error("phase1-legacy-plan-trace", path, "Phase 1 v2 trace 不得包含旧 change-plan object")
@@ -838,11 +1055,200 @@ def validate_phase_2(orchestrate_dir: Path, repo_root: Path, reporter: IssueRepo
     trace_path = orchestrate_dir / "trace/phase-2.trace.json"
     trace = json_obj(trace_path, reporter, PHASE_TRACE_SCHEMAS["phase-2"])
     trace_sources: Dict[str, Dict[str, object]] = {}
+    mode = ""
     if trace:
-        validate_trace_status(trace, trace_path, reporter, "phase-2", "phase2-status")
-        for field in ("work-queue-path", "sources", "phase-report-path"):
-            if field not in trace:
-                reporter.error("phase2-trace-field", trace_path, f"Phase 2 trace 缺少字段：{field}")
+        trace_status = validate_trace_status(trace, trace_path, reporter, "phase-2", "phase2-status")
+        mode = normalize_code(trace.get("mode"))
+        if trace_status == "blocked":
+            exact_fields(
+                trace,
+                {
+                    "trace-schema", "trace-contract-version", "status", "mode",
+                    "patch-request-ref", "checkpoint-ref", "base-phase-2-trace-sha256",
+                    "affected-sources", "issues",
+                },
+                trace_path,
+                reporter,
+                "phase2-trace-fields",
+                "blocked Phase 2 trace",
+            )
+            if mode not in {"initial", "targeted-patch"}:
+                reporter.error("phase2-trace-mode", trace_path, "blocked mode只允许initial|targeted-patch")
+            if not isinstance(trace.get("issues"), list) or not trace.get("issues"):
+                reporter.error("phase2-trace-issues", trace_path, "blocked要求非空issues[]")
+            affected_sources = trace.get("affected-sources")
+            if (
+                not isinstance(affected_sources, list)
+                or any(not isinstance(item, str) for item in affected_sources)
+                or len(affected_sources) != len(set(affected_sources))
+            ):
+                reporter.error("phase2-blocked-affected-sources", trace_path, "blocked affected-sources必须是唯一string array")
+                affected_sources = []
+            if mode == "initial":
+                if (
+                    trace.get("patch-request-ref") is not None
+                    or trace.get("checkpoint-ref") is not None
+                    or trace.get("base-phase-2-trace-sha256") is not None
+                    or affected_sources
+                ):
+                    reporter.error("phase2-blocked-patch-fields", trace_path, "initial blocked要求patch refs/base为null且affected-sources为空")
+            elif mode == "targeted-patch":
+                _validate_artifact_ref(
+                    trace.get("patch-request-ref"),
+                    _patch_request_path(orchestrate_dir),
+                    trace_path,
+                    repo_root,
+                    reporter,
+                    "phase2-patch-request-ref",
+                )
+                _validate_artifact_ref(
+                    trace.get("checkpoint-ref"),
+                    _checkpoint_path(orchestrate_dir),
+                    trace_path,
+                    repo_root,
+                    reporter,
+                    "phase2-checkpoint-ref",
+                )
+                request = _validate_aborted_patch_request_snapshot(orchestrate_dir, reporter)
+                base = request.get("base-artifacts") if isinstance(request.get("base-artifacts"), dict) else {}
+                if trace.get("base-phase-2-trace-sha256") != base.get("phase-2-trace-sha256"):
+                    reporter.error("phase2-blocked-base-trace", trace_path, "blocked base Phase 2 trace digest与request不一致")
+                expected_sources: List[str] = []
+                for target in request.get("targets", []) if isinstance(request.get("targets"), list) else []:
+                    if isinstance(target, dict):
+                        source = normalize_code(target.get("source-document"))
+                        if source and source not in expected_sources:
+                            expected_sources.append(source)
+                if affected_sources != expected_sources:
+                    reporter.error("phase2-blocked-affected-sources", trace_path, "targeted blocked affected-sources必须按request顺序恰好覆盖")
+            return
+        exact_fields(
+            trace,
+            {
+                "trace-schema", "trace-contract-version", "status", "mode", "work-queue-path", "sources",
+                "phase-report-path", "patch-request-ref", "checkpoint-ref", "patch-summary",
+            },
+            trace_path,
+            reporter,
+            "phase2-trace-fields",
+            "Phase 2 trace",
+        )
+        if mode not in {"initial", "targeted-patch"}:
+            reporter.error("phase2-trace-mode", trace_path, "mode只允许initial|targeted-patch")
+        work_queue_path = orchestrate_dir / "phase-works/phase-2/source-obligation-atoms/work-queue.md"
+        phase_report_path = orchestrate_dir / "phase-works/phase-2/phase-2-agent-report.md"
+        if trace.get("work-queue-path") != rel(work_queue_path, repo_root):
+            reporter.error("phase2-trace-path", trace_path, "work-queue-path与canonical path不一致")
+        if trace.get("phase-report-path") != rel(phase_report_path, repo_root):
+            reporter.error("phase2-trace-path", trace_path, "phase-report-path与canonical path不一致")
+        if mode == "initial":
+            if trace.get("patch-request-ref") is not None or trace.get("checkpoint-ref") is not None or trace.get("patch-summary") is not None:
+                reporter.error("phase2-initial-patch-fields", trace_path, "initial mode要求patch refs和patch-summary均为null")
+        elif mode == "targeted-patch":
+            request_path = _patch_request_path(orchestrate_dir)
+            checkpoint_path = _checkpoint_path(orchestrate_dir)
+            _validate_artifact_ref(
+                trace.get("patch-request-ref"), request_path, trace_path, repo_root, reporter, "phase2-patch-request-ref",
+            )
+            _validate_artifact_ref(
+                trace.get("checkpoint-ref"), checkpoint_path, trace_path, repo_root, reporter, "phase2-checkpoint-ref",
+            )
+            request = _validate_patch_request(orchestrate_dir, repo_root, reporter)
+            _validate_checkpoint(orchestrate_dir, repo_root, reporter)
+            summary = trace.get("patch-summary")
+            if not isinstance(summary, dict):
+                reporter.error("phase2-patch-summary", trace_path, "targeted-patch要求patch-summary object")
+                summary = {}
+            else:
+                exact_fields(
+                    summary,
+                    {
+                        "base-phase-2-trace-sha256", "affected-sources", "changed-atoms", "new-atoms",
+                        "patch-writer-id",
+                    },
+                    trace_path,
+                    reporter,
+                    "phase2-patch-summary-fields",
+                    "patch-summary",
+                )
+            request_base = request.get("base-artifacts") if isinstance(request.get("base-artifacts"), dict) else {}
+            if summary.get("base-phase-2-trace-sha256") != request_base.get("phase-2-trace-sha256"):
+                reporter.error("phase2-patch-summary-base", trace_path, "patch-summary base Phase 2 trace与request不一致")
+            request_targets = request.get("targets") if isinstance(request.get("targets"), list) else []
+            expected_sources: List[str] = []
+            expected_changed: List[Tuple[str, str, str]] = []
+            expected_new: List[Tuple[str, str]] = []
+            for target in request_targets:
+                if not isinstance(target, dict):
+                    continue
+                source = normalize_code(target.get("source-document"))
+                if source and source not in expected_sources:
+                    expected_sources.append(source)
+                atom_id = normalize_code(target.get("source-atom-id"))
+                if atom_id:
+                    expected_changed.append((source, atom_id, normalize_code(target.get("base-row-sha256"))))
+                for new_id in target.get("new-source-atom-ids", []) if isinstance(target.get("new-source-atom-ids"), list) else []:
+                    expected_new.append((source, normalize_code(new_id)))
+            if summary.get("affected-sources") != expected_sources:
+                reporter.error("phase2-patch-affected-sources", trace_path, "affected-sources必须按request target首次出现顺序恰好覆盖")
+            current_atoms = _current_protected_rows(orchestrate_dir)["phase-2-atoms"]
+            changed_rows = summary.get("changed-atoms")
+            seen_changed: List[Tuple[str, str, str]] = []
+            if not isinstance(changed_rows, list):
+                reporter.error("phase2-patch-changed-atoms", trace_path, "changed-atoms必须是array")
+                changed_rows = []
+            for index, row in enumerate(changed_rows):
+                if not isinstance(row, dict):
+                    reporter.error("phase2-patch-changed-row", trace_path, f"changed-atoms[{index}]必须是object")
+                    continue
+                exact_fields(
+                    row,
+                    {"source-document", "source-atom-id", "before-row-sha256", "after-row-sha256"},
+                    trace_path,
+                    reporter,
+                    "phase2-patch-changed-row-fields",
+                    f"changed-atoms[{index}]",
+                )
+                source = normalize_code(row.get("source-document"))
+                atom_id = normalize_code(row.get("source-atom-id"))
+                before = normalize_code(row.get("before-row-sha256"))
+                after = normalize_code(row.get("after-row-sha256"))
+                seen_changed.append((source, atom_id, before))
+                current_row = current_atoms.get(f"{source}::{atom_id}")
+                if not _is_sha256(before) or not _is_sha256(after):
+                    reporter.error("phase2-patch-changed-row-sha", trace_path, f"changed-atoms[{index}] digest非法")
+                elif current_row is None or after != canonical_json_sha256(current_row) or before == after:
+                    reporter.error("phase2-patch-changed-row-drift", trace_path, f"changed-atoms[{index}]未绑定真实before/after变化")
+            if seen_changed != expected_changed:
+                reporter.error("phase2-patch-changed-coverage", trace_path, "changed-atoms必须按request顺序恰好覆盖existing targets")
+            new_rows = summary.get("new-atoms")
+            seen_new: List[Tuple[str, str]] = []
+            if not isinstance(new_rows, list):
+                reporter.error("phase2-patch-new-atoms", trace_path, "new-atoms必须是array")
+                new_rows = []
+            for index, row in enumerate(new_rows):
+                if not isinstance(row, dict):
+                    reporter.error("phase2-patch-new-row", trace_path, f"new-atoms[{index}]必须是object")
+                    continue
+                exact_fields(
+                    row,
+                    {"source-document", "source-atom-id", "row-sha256"},
+                    trace_path,
+                    reporter,
+                    "phase2-patch-new-row-fields",
+                    f"new-atoms[{index}]",
+                )
+                source = normalize_code(row.get("source-document"))
+                atom_id = normalize_code(row.get("source-atom-id"))
+                digest = normalize_code(row.get("row-sha256"))
+                seen_new.append((source, atom_id))
+                current_row = current_atoms.get(f"{source}::{atom_id}")
+                if not _is_sha256(digest) or current_row is None or digest != canonical_json_sha256(current_row):
+                    reporter.error("phase2-patch-new-row-drift", trace_path, f"new-atoms[{index}]未绑定当前新增row")
+            if seen_new != expected_new:
+                reporter.error("phase2-patch-new-coverage", trace_path, "new-atoms必须按request顺序恰好覆盖声明的新source atom")
+            if not squash(summary.get("patch-writer-id")):
+                reporter.error("phase2-patch-writer", trace_path, "patch-writer-id不得为空")
         raw_trace_sources = trace.get("sources")
         if not isinstance(raw_trace_sources, list):
             reporter.error("phase2-trace-sources", trace_path, "Phase 2 trace sources 必须是 array")
@@ -1134,6 +1540,1917 @@ def exact_fields(row: Dict[str, object], expected: Set[str], path: Path, reporte
         reporter.error(rule, path, f"{context} 字段不符合 schema；缺少={missing or 'None'}，多余={extra or 'None'}")
 
 
+def _is_sha256(value: object) -> bool:
+    return isinstance(value, str) and bool(SHA256_RE.fullmatch(value))
+
+
+def _patch_request_path(orchestrate_dir: Path) -> Path:
+    return orchestrate_dir / "phase-works/phase-5/evidence-patch-request.json"
+
+
+def _checkpoint_path(orchestrate_dir: Path) -> Path:
+    return orchestrate_dir / "phase-works/phase-5/phase-5-checkpoint.json"
+
+
+def _patch_base_artifact_paths(orchestrate_dir: Path) -> Dict[str, Path]:
+    return {
+        "phase-2-trace-sha256": orchestrate_dir / "trace/phase-2.trace.json",
+        "phase-3-trace-sha256": orchestrate_dir / "trace/phase-3.trace.json",
+        "global-atom-index-sha256": orchestrate_dir / "change-capability-anchors/obligation-atom-index.json",
+        "coverage-review-sha256": orchestrate_dir / "phase-works/phase-3/coverage-review.json",
+        "phase-4-index-sha256": (
+            orchestrate_dir
+            / "phase-works/phase-4/source-evidence-collections/evidence-collection-index.json"
+        ),
+    }
+
+
+def _phase2_trace_mode(orchestrate_dir: Path) -> str:
+    path = orchestrate_dir / "trace/phase-2.trace.json"
+    if not path.exists():
+        return ""
+    try:
+        return normalize_code(read_json(path).get("mode"))
+    except Exception:  # noqa: BLE001
+        return ""
+
+
+def _validate_artifact_ref(
+    value: object,
+    expected_path: Path,
+    contract_path: Path,
+    repo_root: Path,
+    reporter: IssueReporter,
+    rule: str,
+) -> None:
+    if not isinstance(value, dict):
+        reporter.error(rule, contract_path, "artifact ref必须是object")
+        return
+    exact_fields(value, {"artifact-path", "sha256"}, contract_path, reporter, rule, "artifact ref")
+    if value.get("artifact-path") != rel(expected_path, repo_root):
+        reporter.error(rule, contract_path, f"artifact-path必须为{rel(expected_path, repo_root)}")
+    if not _is_sha256(value.get("sha256")):
+        reporter.error(rule, contract_path, "artifact ref sha256必须是64位小写十六进制")
+    elif expected_path.exists() and value.get("sha256") != sha256_file(expected_path):
+        reporter.error(rule, contract_path, "artifact ref sha256与当前文件不一致")
+
+
+PROTECTED_ROW_KEY_FIELDS: Dict[str, str] = {
+    "phase-2-atoms": "source-atom-key",
+    "phase-3-documents": "source-document",
+    "phase-3-gap-atoms": "gap-atom-id",
+    "phase-3-dispositions": "disposition-id",
+    "phase-3-mapping-ambiguities": "global-atom-id",
+    "global-atoms": "global-atom-id",
+    "phase-4-index-rows": "global-atom-id",
+    "phase-4-rendered-artifacts": "artifact-path",
+}
+
+DEFECT_WITNESS_ROW_KINDS = {"phase-2-atom", "phase-3-disposition"}
+
+
+def _validate_defect_witness_shape(
+    value: object,
+    path: Path,
+    reporter: IssueReporter,
+    context: str,
+) -> List[Dict[str, object]]:
+    if not isinstance(value, dict):
+        reporter.error("evidence-patch-witness", path, f"{context} defect-witness必须是object")
+        return []
+    exact_fields(
+        value,
+        {"locator-origin", "source-sha256", "window-sha256"},
+        path,
+        reporter,
+        "evidence-patch-witness-fields",
+        context,
+    )
+    for field in ("source-sha256", "window-sha256"):
+        if not _is_sha256(value.get(field)):
+            reporter.error("evidence-patch-witness-sha", path, f"{context}.{field}必须是SHA-256")
+    origin = value.get("locator-origin")
+    if not isinstance(origin, dict):
+        reporter.error("evidence-patch-witness-origin", path, f"{context}.locator-origin必须是object")
+        return []
+    exact_fields(
+        origin,
+        {"row-refs"},
+        path,
+        reporter,
+        "evidence-patch-witness-origin-fields",
+        context,
+    )
+    rows = origin.get("row-refs")
+    if not isinstance(rows, list) or not rows:
+        reporter.error("evidence-patch-witness-origin", path, f"{context}.row-refs必须是非空array")
+        return []
+    result: List[Dict[str, object]] = []
+    seen: Set[Tuple[str, str]] = set()
+    for index, row in enumerate(rows):
+        if not isinstance(row, dict):
+            reporter.error("evidence-patch-witness-origin-row", path, f"{context}.row-refs[{index}]必须是object")
+            continue
+        exact_fields(
+            row,
+            {"artifact-path", "row-kind", "row-key", "row-sha256"},
+            path,
+            reporter,
+            "evidence-patch-witness-origin-row-fields",
+            f"{context}.row-refs[{index}]",
+        )
+        kind = normalize_code(row.get("row-kind"))
+        key = normalize_code(row.get("row-key"))
+        identity = (kind, key)
+        if kind not in DEFECT_WITNESS_ROW_KINDS or not key or identity in seen:
+            reporter.error("evidence-patch-witness-origin-row", path, f"{context} origin kind/key非法或重复：{identity}")
+        seen.add(identity)
+        if not normalize_code(row.get("artifact-path")) or not _is_sha256(row.get("row-sha256")):
+            reporter.error("evidence-patch-witness-origin-row", path, f"{context} origin path/digest非法：{identity}")
+        result.append(row)
+    return result
+
+
+def _current_protected_rows(orchestrate_dir: Path) -> Dict[str, Dict[str, Dict[str, object]]]:
+    current: Dict[str, Dict[str, Dict[str, object]]] = {name: {} for name in PROTECTED_ROW_KEY_FIELDS}
+    atom_root = orchestrate_dir / "phase-works/phase-2/source-obligation-atoms"
+    for atom_path in sorted(atom_root.glob("*.atoms.json")):
+        try:
+            atom_data = read_json(atom_path)
+        except Exception:  # noqa: BLE001
+            continue
+        source = normalize_code(atom_data.get("source-document"))
+        for row in atom_data.get("source-atoms", []) if isinstance(atom_data.get("source-atoms"), list) else []:
+            if isinstance(row, dict):
+                atom_id = normalize_code(row.get("source-atom-id"))
+                current["phase-2-atoms"][f"{source}::{atom_id}"] = row
+
+    coverage_path = orchestrate_dir / "phase-works/phase-3/coverage-review.json"
+    if coverage_path.exists():
+        try:
+            coverage = read_json(coverage_path)
+        except Exception:  # noqa: BLE001
+            coverage = {}
+        coverage_specs = (
+            ("phase-3-documents", "documents", "source-document"),
+            ("phase-3-gap-atoms", "gap-atoms", "gap-atom-id"),
+            ("phase-3-dispositions", "remainder-dispositions", "disposition-id"),
+            ("phase-3-mapping-ambiguities", "mapping-ambiguities", "global-atom-id"),
+        )
+        for kind, field, key_field in coverage_specs:
+            rows = coverage.get(field)
+            for row in rows if isinstance(rows, list) else []:
+                if isinstance(row, dict):
+                    current[kind][normalize_code(row.get(key_field))] = row
+
+    global_path = orchestrate_dir / "change-capability-anchors/obligation-atom-index.json"
+    if global_path.exists():
+        try:
+            global_data = read_json(global_path)
+        except Exception:  # noqa: BLE001
+            global_data = {}
+        rows = global_data.get("global-atoms")
+        for row in rows if isinstance(rows, list) else []:
+            if isinstance(row, dict):
+                current["global-atoms"][normalize_code(row.get("global-atom-id"))] = row
+
+    phase4_path = orchestrate_dir / "phase-works/phase-4/source-evidence-collections/evidence-collection-index.json"
+    if phase4_path.exists():
+        try:
+            phase4 = read_json(phase4_path)
+        except Exception:  # noqa: BLE001
+            phase4 = {}
+        for kind, field, key_field in (
+            ("phase-4-index-rows", "rows", "global-atom-id"),
+            ("phase-4-rendered-artifacts", "rendered-artifacts", "artifact-path"),
+        ):
+            rows = phase4.get(field)
+            for row in rows if isinstance(rows, list) else []:
+                if isinstance(row, dict):
+                    current[kind][normalize_code(row.get(key_field))] = row
+    return current
+
+
+def _validate_protected_rows(
+    value: object,
+    orchestrate_dir: Path,
+    path: Path,
+    reporter: IssueReporter,
+    rule_prefix: str,
+    *,
+    verify_current_surfaces: bool = True,
+) -> Dict[str, Set[str]]:
+    protected_keys: Dict[str, Set[str]] = {name: set() for name in PROTECTED_ROW_KEY_FIELDS}
+    if not isinstance(value, dict):
+        reporter.error(f"{rule_prefix}-shape", path, "protected rows必须是object")
+        return protected_keys
+    exact_fields(value, set(PROTECTED_ROW_KEY_FIELDS), path, reporter, f"{rule_prefix}-fields", "protected rows")
+    current = _current_protected_rows(orchestrate_dir) if verify_current_surfaces else {}
+    for kind, key_field in PROTECTED_ROW_KEY_FIELDS.items():
+        rows = value.get(kind)
+        if not isinstance(rows, list):
+            reporter.error(f"{rule_prefix}-rows", path, f"{kind}必须是array")
+            continue
+        for index, row in enumerate(rows):
+            if not isinstance(row, dict):
+                reporter.error(f"{rule_prefix}-row", path, f"{kind}[{index}]必须是object")
+                continue
+            exact_fields(row, {key_field, "sha256"}, path, reporter, f"{rule_prefix}-row-fields", f"{kind}[{index}]")
+            key = normalize_code(row.get(key_field))
+            if not key or key in protected_keys[kind]:
+                reporter.error(f"{rule_prefix}-row-key", path, f"{kind}稳定key为空或重复：{key}")
+                continue
+            protected_keys[kind].add(key)
+            if not _is_sha256(row.get("sha256")):
+                reporter.error(f"{rule_prefix}-row-sha", path, f"{kind}/{key} sha256非法")
+                continue
+            if verify_current_surfaces:
+                current_row = current[kind].get(key)
+                if current_row is None:
+                    reporter.error(f"{rule_prefix}-row-missing", path, f"受保护row不存在：{kind}/{key}")
+                elif row.get("sha256") != canonical_json_sha256(current_row):
+                    reporter.error(f"{rule_prefix}-row-drift", path, f"受保护row发生变化：{kind}/{key}")
+    return protected_keys
+
+
+def _validate_patch_request(
+    orchestrate_dir: Path,
+    repo_root: Path,
+    reporter: IssueReporter,
+) -> Dict[str, object]:
+    path = _patch_request_path(orchestrate_dir)
+    data = json_obj(path, reporter, EVIDENCE_PATCH_REQUEST_SCHEMA)
+    if not data:
+        return {}
+    exact_fields(
+        data,
+        {"trace-schema", "trace-contract-version", "request-id", "base-artifacts", "targets", "protected-rows"},
+        path,
+        reporter,
+        "evidence-patch-fields",
+        "evidence patch request",
+    )
+    if data.get("request-id") != PATCH_REQUEST_ID:
+        reporter.error("evidence-patch-request-id", path, f"单次patch request-id必须为{PATCH_REQUEST_ID}")
+    base = data.get("base-artifacts")
+    base_fields = {
+        "phase-2-trace-sha256", "phase-3-trace-sha256", "global-atom-index-sha256",
+        "coverage-review-sha256", "phase-4-index-sha256",
+    }
+    patch_applied = _phase2_trace_mode(orchestrate_dir) == "targeted-patch"
+    if not isinstance(base, dict):
+        reporter.error("evidence-patch-base", path, "base-artifacts必须是object")
+    else:
+        exact_fields(base, base_fields, path, reporter, "evidence-patch-base-fields", "base-artifacts")
+        for field in base_fields:
+            if not _is_sha256(base.get(field)):
+                reporter.error("evidence-patch-base-sha", path, f"base-artifacts.{field}必须是SHA-256")
+
+        base_paths = _patch_base_artifact_paths(orchestrate_dir)
+        if not patch_applied:
+            for field, artifact_path in base_paths.items():
+                if not artifact_path.exists():
+                    reporter.error("evidence-patch-base-artifact", path, f"请求初态缺少base artifact：{artifact_path}")
+                elif base.get(field) != sha256_file(artifact_path):
+                    reporter.error(
+                        "evidence-patch-base-current-drift",
+                        path,
+                        f"请求初态base-artifacts.{field}与当前artifact不一致",
+                    )
+
+    protected = _validate_protected_rows(data.get("protected-rows"), orchestrate_dir, path, reporter, "evidence-patch-protected")
+    targets = data.get("targets")
+    if not isinstance(targets, list) or not targets:
+        reporter.error("evidence-patch-targets", path, "targets必须是非空array")
+        targets = []
+    target_fields = {
+        "source-document", "source-atom-id", "global-atom-id", "evidence-ref", "defect",
+        "allowed-operations", "allowed-line-window", "new-source-atom-ids", "base-row", "base-row-sha256",
+        "canonical-owner", "reason", "defect-witness",
+    }
+    current_rows = _current_protected_rows(orchestrate_dir)
+    global_rows = current_rows["global-atoms"]
+    atom_rows = current_rows["phase-2-atoms"]
+    source_owners: Dict[str, str] = {}
+    phase2_source_digests: Dict[str, str] = {}
+    atom_root = orchestrate_dir / "phase-works/phase-2/source-obligation-atoms"
+    for atom_path in sorted(atom_root.glob("*.atoms.json")):
+        try:
+            atom_data = read_json(atom_path)
+        except Exception:  # noqa: BLE001
+            continue
+        source_owners[normalize_code(atom_data.get("source-document"))] = squash(atom_data.get("canonical-owner"))
+        phase2_source_digests[normalize_code(atom_data.get("source-document"))] = normalize_code(
+            atom_data.get("source-sha256")
+        )
+    phase1_source_digests = {
+        normalize_code(row.get("source-document")): normalize_code(row.get("source-sha256"))
+        for row in phase1_sources(orchestrate_dir, repo_root)
+        if isinstance(row, dict) and normalize_code(row.get("source-document"))
+    }
+    read_full = set(read_full_sources(orchestrate_dir, repo_root))
+    seen_targets: Set[str] = set()
+    seen_new_ids: Set[str] = set()
+    new_atom_keys: Set[str] = set()
+    add_ids: List[str] = []
+    target_atom_keys: Set[str] = set()
+    target_ga_ids: Set[str] = set()
+    target_sources: Set[str] = set()
+    target_windows: Dict[str, List[Dict[str, int]]] = {}
+    for index, target in enumerate(targets):
+        if not isinstance(target, dict):
+            reporter.error("evidence-patch-target", path, f"targets[{index}]必须是object")
+            continue
+        exact_fields(target, target_fields, path, reporter, "evidence-patch-target-fields", f"targets[{index}]")
+        source = normalize_code(target.get("source-document"))
+        atom_id = normalize_code(target.get("source-atom-id"))
+        ga_id = normalize_code(target.get("global-atom-id"))
+        defect = normalize_code(target.get("defect"))
+        target_key = f"{source}::{atom_id or '<missing>'}"
+        if target_key in seen_targets:
+            reporter.error("evidence-patch-target-duplicate", path, f"重复target：{target_key}")
+        seen_targets.add(target_key)
+        if source not in read_full:
+            reporter.error("evidence-patch-target-source", path, f"target source不是read-full source：{source}")
+        target_sources.add(source)
+        source_path = repo_root / source
+        if not source_path.exists():
+            reporter.error("evidence-patch-source-missing", path, f"target source不存在：{source}")
+        else:
+            current_source_sha = sha256_file(source_path)
+            if (
+                phase1_source_digests.get(source) != current_source_sha
+                or phase2_source_digests.get(source) != current_source_sha
+            ):
+                reporter.error(
+                    "evidence-patch-source-drift",
+                    path,
+                    f"target source必须与Phase 1/2冻结digest保持一致：{source}",
+                )
+        if defect not in PATCH_DEFECTS:
+            reporter.error("evidence-patch-defect", path, f"{target_key} defect非法：{defect}")
+        operations = target.get("allowed-operations")
+        if (
+            not isinstance(operations, list)
+            or not operations
+            or any(not isinstance(item, str) for item in operations)
+            or len(operations) != len(set(operations))
+        ):
+            reporter.error("evidence-patch-operations", path, f"{target_key} allowed-operations必须是非空唯一array")
+            operations = []
+        normalized_ops = [normalize_code(item) for item in operations]
+        if any(item not in PATCH_OPERATIONS for item in normalized_ops):
+            reporter.error("evidence-patch-operations", path, f"{target_key}包含非法operation")
+        operation_compatibility = {
+            "quote-mismatch": ({"replace-quote", "adjust-range"}, "replace-quote"),
+            "range-mismatch": ({"adjust-range", "replace-quote"}, "adjust-range"),
+            "mixed-independent-occurrences": ({"split", "adjust-range", "replace-quote"}, "split"),
+            "missing-occurrence": ({"add"}, "add"),
+        }
+        if defect in operation_compatibility:
+            allowed_set, required_operation = operation_compatibility[defect]
+            if set(normalized_ops) - allowed_set or required_operation not in normalized_ops:
+                reporter.error(
+                    "evidence-patch-operation-compatibility",
+                    path,
+                    f"{target_key} 的operation与defect={defect}不兼容",
+                )
+        window = target.get("allowed-line-window")
+        if not isinstance(window, dict):
+            reporter.error("evidence-patch-window", path, f"{target_key} allowed-line-window必须是object")
+        else:
+            if "add" in normalized_ops and defect != "missing-occurrence":
+                reporter.error("evidence-patch-existing-add", path, "existing target不得包含add operation")
+            exact_fields(window, {"start", "end"}, path, reporter, "evidence-patch-window-fields", target_key)
+            start, end = window.get("start"), window.get("end")
+            line_count = source_line_count(repo_root, source) or 0
+            if not isinstance(start, int) or not isinstance(end, int) or start < 1 or end < start or end > line_count:
+                reporter.error("evidence-patch-window", path, f"{target_key} allowed-line-window越界或非法")
+            else:
+                target_windows.setdefault(source, []).append({"start": start, "end": end})
+        canonical_owner = squash(target.get("canonical-owner"))
+        if not canonical_owner or not squash(target.get("reason")):
+            reporter.error("evidence-patch-target-required", path, f"{target_key} canonical-owner/reason不得为空")
+        if source_owners.get(source) and canonical_owner != source_owners[source]:
+            reporter.error(
+                "evidence-patch-canonical-owner",
+                path,
+                f"{target_key} canonical-owner与Phase 2 source owner不一致",
+            )
+        new_ids = target.get("new-source-atom-ids")
+        if (
+            not isinstance(new_ids, list)
+            or any(not isinstance(item, str) or not normalize_code(item) for item in new_ids)
+            or len(new_ids) != len(set(new_ids))
+        ):
+            reporter.error("evidence-patch-new-ids", path, f"{target_key} new-source-atom-ids必须是唯一array")
+            new_ids = []
+        for new_id in [normalize_code(item) for item in new_ids]:
+            if not new_id or new_id in seen_new_ids:
+                reporter.error("evidence-patch-new-id-duplicate", path, f"新source atom ID为空或重复：{new_id}")
+            seen_new_ids.add(new_id)
+            new_atom_keys.add(f"{source}::{new_id}")
+
+        missing = defect == "missing-occurrence"
+        if missing:
+            if (
+                atom_id
+                or ga_id
+                or target.get("evidence-ref") is not None
+                or target.get("base-row") is not None
+                or target.get("base-row-sha256") is not None
+            ):
+                reporter.error("evidence-patch-missing-identity", path, "missing-occurrence要求旧identity、base-row和base-row-sha256均为null")
+            if set(normalized_ops) != {"add"} or not new_ids:
+                reporter.error("evidence-patch-missing-operation", path, "missing-occurrence只允许add且必须提供新ID")
+            add_ids.extend(normalize_code(item) for item in new_ids)
+        else:
+            if not atom_id or not GLOBAL_ATOM_ID_RE.match(ga_id) or not isinstance(target.get("evidence-ref"), dict):
+                reporter.error("evidence-patch-existing-identity", path, f"{target_key}必须提供source atom、GA和evidence-ref")
+            base_row = target.get("base-row")
+            if not isinstance(base_row, dict):
+                reporter.error("evidence-patch-base-row", path, f"{target_key} base-row必须是完整的原始source atom row")
+                base_row = {}
+            else:
+                exact_fields(
+                    base_row,
+                    PHASE2_ATOM_FIELDS,
+                    path,
+                    reporter,
+                    "evidence-patch-base-row-fields",
+                    f"{target_key}.base-row",
+                )
+                if normalize_code(base_row.get("source-atom-id")) != atom_id:
+                    reporter.error("evidence-patch-base-row-id", path, f"{target_key} base-row必须保留source-atom-id")
+                check_source_fact_quote(
+                    path,
+                    reporter,
+                    base_row.get("source-fact"),
+                    base_row.get("line-ranges"),
+                    source,
+                    repo_root,
+                    f"{target_key}.base-row",
+                )
+                if isinstance(window, dict):
+                    allowed = {"start": window.get("start"), "end": window.get("end")}
+                    base_ranges = valid_range_items(base_row.get("line-ranges"))
+                    if not base_ranges or any(not range_covered_by(item, [allowed]) for item in base_ranges):
+                        reporter.error(
+                            "evidence-patch-base-window",
+                            path,
+                            f"{target_key} base row range必须落在预先固定的allowed-line-window内",
+                        )
+            if not _is_sha256(target.get("base-row-sha256")):
+                reporter.error("evidence-patch-base-row-sha", path, f"{target_key} base-row-sha256非法")
+            elif base_row and target.get("base-row-sha256") != canonical_json_sha256(base_row):
+                reporter.error("evidence-patch-base-row-sha", path, f"{target_key} base-row-sha256与immutable base-row不一致")
+            target_atom_keys.add(f"{source}::{atom_id}")
+            target_ga_ids.add(ga_id)
+            expected_ref = {"kind": "phase-2-source-atom", "source-document": source, "source-atom-id": atom_id}
+            if target.get("evidence-ref") != expected_ref:
+                reporter.error("evidence-patch-evidence-ref", path, f"{target_key} evidence-ref与identity不一致")
+            global_row = global_rows.get(ga_id)
+            if global_row is None or global_row.get("evidence-ref") != expected_ref:
+                reporter.error("evidence-patch-ga-ref", path, f"{ga_id}未保持原evidence-ref")
+            current_atom = atom_rows.get(f"{source}::{atom_id}")
+            if current_atom is None:
+                reporter.error("evidence-patch-target-atom", path, f"target atom不存在：{target_key}")
+            else:
+                current_sha = canonical_json_sha256(current_atom)
+                if patch_applied and current_sha == target.get("base-row-sha256"):
+                    reporter.error("evidence-patch-target-unchanged", path, f"target atom在targeted-patch后没有变化：{target_key}")
+                if not patch_applied and current_sha != target.get("base-row-sha256"):
+                    reporter.error("evidence-patch-base-row-drift", path, f"请求初态target atom与base-row-sha256不一致：{target_key}")
+                if not patch_applied and base_row and current_atom != base_row:
+                    reporter.error("evidence-patch-base-row-drift", path, f"请求初态target atom与immutable base-row不一致：{target_key}")
+                if patch_applied and base_row:
+                    mutable_fields: Set[str] = set()
+                    if "replace-quote" in normalized_ops:
+                        mutable_fields.add("source-fact")
+                    if "adjust-range" in normalized_ops:
+                        mutable_fields.add("line-ranges")
+                    if "split" in normalized_ops:
+                        mutable_fields.update({"line-ranges", "source-fact"})
+                    changed_fields = {
+                        field
+                        for field in PHASE2_ATOM_FIELDS
+                        if current_atom.get(field) != base_row.get(field)
+                    }
+                    unauthorized = sorted(changed_fields - mutable_fields)
+                    if unauthorized:
+                        reporter.error(
+                            "evidence-patch-target-field-scope",
+                            path,
+                            f"{target_key}修改了allowed operations之外的字段：{unauthorized}",
+                        )
+                    if defect == "quote-mismatch" and "source-fact" not in changed_fields:
+                        reporter.error("evidence-patch-operation-not-applied", path, f"{target_key}未执行replace-quote")
+                    if defect == "range-mismatch" and "line-ranges" not in changed_fields:
+                        reporter.error("evidence-patch-operation-not-applied", path, f"{target_key}未执行adjust-range")
+                if patch_applied and isinstance(window, dict):
+                    allowed = {"start": window.get("start"), "end": window.get("end")}
+                    current_ranges = valid_range_items(current_atom.get("line-ranges"))
+                    if not current_ranges or any(not range_covered_by(item, [allowed]) for item in current_ranges):
+                        reporter.error(
+                            "evidence-patch-target-window",
+                            path,
+                            f"targeted-patch后的target atom超出allowed-line-window：{target_key}",
+                        )
+            if defect == "mixed-independent-occurrences":
+                if "split" not in normalized_ops or not new_ids:
+                    reporter.error("evidence-patch-split", path, "mixed-independent-occurrences要求split及新ID")
+                expected_split = [f"{atom_id}.part-{part:02d}" for part in range(2, 2 + len(new_ids))]
+                if [normalize_code(item) for item in new_ids] != expected_split:
+                    reporter.error("evidence-patch-split-id", path, f"split新ID必须从{atom_id}.part-02连续追加")
+            elif "split" in normalized_ops:
+                reporter.error("evidence-patch-split-defect", path, "只有mixed-independent-occurrences允许split")
+            elif new_ids:
+                reporter.error("evidence-patch-unexpected-new-id", path, f"{target_key}非split不得新增ID")
+
+        witness = target.get("defect-witness")
+        witness_rows = _validate_defect_witness_shape(witness, path, reporter, target_key)
+        if isinstance(witness, dict):
+            current_source_sha = sha256_file(source_path) if source_path.exists() else ""
+            if witness.get("source-sha256") != current_source_sha:
+                reporter.error("evidence-patch-witness-source-sha", path, f"{target_key} witness source digest与冻结source不一致")
+            if isinstance(window, dict):
+                start, end = window.get("start"), window.get("end")
+                if isinstance(start, int) and isinstance(end, int) and source_path.exists():
+                    try:
+                        expected_window_sha = source_window_sha256(source_path, start, end)
+                    except ValueError:
+                        expected_window_sha = ""
+                    if witness.get("window-sha256") != expected_window_sha:
+                        reporter.error("evidence-patch-witness-window-sha", path, f"{target_key} witness window digest不一致")
+
+        origin_ranges: List[Dict[str, int]] = []
+        own_origin = False
+        for origin in witness_rows:
+            kind = normalize_code(origin.get("row-kind"))
+            row_key = normalize_code(origin.get("row-key"))
+            origin_row: Dict[str, object] | None = None
+            origin_source = ""
+            expected_origin_path = ""
+            if kind == "phase-2-atom":
+                origin_source, separator, origin_atom_id = row_key.partition("::")
+                if not separator or not origin_source or not origin_atom_id:
+                    reporter.error("evidence-patch-witness-origin-row", path, f"{target_key} Phase 2 origin row-key非法：{row_key}")
+                    continue
+                expected_origin_path = rel(
+                    atom_root / source_atom_file_name(origin_source).replace(".md", ".json"),
+                    repo_root,
+                )
+                if origin_source == source and origin_atom_id == atom_id and isinstance(target.get("base-row"), dict):
+                    origin_row = target.get("base-row")
+                    own_origin = True
+                elif not patch_applied:
+                    origin_row = atom_rows.get(row_key)
+            elif kind == "phase-3-disposition":
+                expected_origin_path = rel(
+                    orchestrate_dir / "phase-works/phase-3/coverage-review.json",
+                    repo_root,
+                )
+                if not patch_applied:
+                    origin_row = current_rows["phase-3-dispositions"].get(row_key)
+                if isinstance(origin_row, dict):
+                    origin_source = normalize_code(origin_row.get("source-document"))
+                    if missing and normalize_code(origin_row.get("classification")) == "missing-obligation":
+                        reporter.error(
+                            "evidence-patch-witness-existing-gap",
+                            path,
+                            f"{target_key} missing occurrence不得以已存在gap的disposition作为locator origin",
+                        )
+            if origin.get("artifact-path") != expected_origin_path:
+                reporter.error("evidence-patch-witness-origin-path", path, f"{target_key} origin artifact-path非法：{row_key}")
+            if isinstance(origin_row, dict):
+                if origin.get("row-sha256") != canonical_json_sha256(origin_row):
+                    reporter.error("evidence-patch-witness-origin-drift", path, f"{target_key} origin row digest失效：{row_key}")
+                if origin_source != source:
+                    reporter.error("evidence-patch-witness-origin-source", path, f"{target_key} origin必须属于同一source：{row_key}")
+                origin_ranges.extend(valid_range_items(origin_row.get("line-ranges")))
+            elif not patch_applied:
+                reporter.error("evidence-patch-witness-origin-missing", path, f"{target_key} locator origin不存在：{row_key}")
+
+        if not missing and not own_origin:
+            reporter.error("evidence-patch-witness-own-origin", path, f"{target_key} existing target必须以自身immutable base row作为locator origin")
+        if not patch_applied and isinstance(window, dict):
+            allowed_window = {"start": window.get("start"), "end": window.get("end")}
+            if not origin_ranges or not range_covered_by(allowed_window, merge_line_ranges(origin_ranges)):
+                reporter.error(
+                    "evidence-patch-witness-origin-window",
+                    path,
+                    f"{target_key} allowed-line-window必须落在locator origin ranges的连续闭包内",
+                )
+
+    expected_add_ids = [f"patch-epr-0001-add-{index:02d}" for index in range(1, len(add_ids) + 1)]
+    if add_ids != expected_add_ids:
+        reporter.error("evidence-patch-add-id", path, "add新ID必须从patch-epr-0001-add-01全局连续追加")
+
+    for target in targets:
+        if not isinstance(target, dict):
+            continue
+        source = normalize_code(target.get("source-document"))
+        window = target.get("allowed-line-window")
+        if not isinstance(window, dict):
+            continue
+        for new_id in target.get("new-source-atom-ids", []) if isinstance(target.get("new-source-atom-ids"), list) else []:
+            key = f"{source}::{normalize_code(new_id)}"
+            new_row = atom_rows.get(key)
+            if patch_applied and new_row is None:
+                reporter.error("evidence-patch-new-atom-missing", path, f"targeted-patch缺少声明的新atom：{key}")
+                continue
+            if not patch_applied and new_row is not None:
+                reporter.error("evidence-patch-new-atom-premature", path, f"请求初态不应已存在新atom：{key}")
+            if new_row is not None:
+                ranges = valid_range_items(new_row.get("line-ranges"))
+                allowed = {"start": window.get("start"), "end": window.get("end")}
+                if len(ranges) != 1 or not range_covered_by(ranges[0], [allowed]):
+                    reporter.error("evidence-patch-new-atom-window", path, f"新atom超出allowed-line-window：{key}")
+                defect = normalize_code(target.get("defect"))
+                if defect == "mixed-independent-occurrences":
+                    base_row = target.get("base-row") if isinstance(target.get("base-row"), dict) else {}
+                    mapping_fields = {
+                        "candidate-status",
+                        "candidate-artifact-projection",
+                        "candidate-owner-change",
+                        "candidate-target-capability",
+                    }
+                    changed_mapping_fields = sorted(
+                        field for field in mapping_fields if new_row.get(field) != base_row.get(field)
+                    )
+                    if changed_mapping_fields:
+                        reporter.error(
+                            "evidence-patch-split-candidate-mapping",
+                            path,
+                            f"split successor不得借evidence patch改变candidate mapping：{key}/{changed_mapping_fields}",
+                        )
+                elif defect == "missing-occurrence":
+                    target_capability = normalize_code(new_row.get("candidate-target-capability"))
+                    if (
+                        normalize_code(new_row.get("candidate-status")) != "unassigned"
+                        or normalize_code(new_row.get("candidate-owner-change")) != "unassigned"
+                        or target_capability in phase1_framework_ids(orchestrate_dir)[1]
+                    ):
+                        reporter.error(
+                            "evidence-patch-add-candidate-mapping",
+                            path,
+                            f"新增occurrence必须使用不预判framework的unassigned candidate mapping：{key}",
+                        )
+
+    current_base_atom_keys = set(atom_rows) - new_atom_keys
+    if protected["phase-2-atoms"].intersection(target_atom_keys):
+        reporter.error("evidence-patch-protection-overlap", path, "target Phase 2 atom不得同时列为protected")
+    if protected["phase-2-atoms"] | target_atom_keys != current_base_atom_keys:
+        reporter.error("evidence-patch-protection-coverage", path, "protected Phase 2 atoms与targets未恰好覆盖base atom identity")
+
+    phase3_trace_path = orchestrate_dir / "trace/phase-3.trace.json"
+    try:
+        phase3_trace = read_json(phase3_trace_path) if phase3_trace_path.exists() else {}
+    except Exception:  # noqa: BLE001
+        phase3_trace = {}
+    new_global_atom_ids = {
+        normalize_code(item)
+        for item in phase3_trace.get("new-global-atom-ids", [])
+        if isinstance(item, str)
+    } if normalize_code(phase3_trace.get("update-mode")) == "incremental-patch" else set()
+    expected_protected_global = set(global_rows) - target_ga_ids - new_global_atom_ids
+    if protected["global-atoms"] != expected_protected_global:
+        reporter.error(
+            "evidence-patch-global-protection-coverage",
+            path,
+            "protected global-atoms必须恰好覆盖全部base GA减target GA",
+        )
+    expected_protected_phase4_rows = set(current_rows["phase-4-index-rows"]) - target_ga_ids - new_global_atom_ids
+    if protected["phase-4-index-rows"] != expected_protected_phase4_rows:
+        reporter.error(
+            "evidence-patch-phase4-row-protection-coverage",
+            path,
+            "protected phase-4-index-rows必须恰好覆盖全部base row减target/new GA",
+        )
+    expected_protected_documents = set(current_rows["phase-3-documents"]) - target_sources
+    if protected["phase-3-documents"] != expected_protected_documents:
+        reporter.error(
+            "evidence-patch-document-protection-coverage",
+            path,
+            "protected Phase 3 documents必须恰好覆盖非target sources",
+        )
+
+    def intersects_target_window(source: str, ranges: List[Dict[str, int]]) -> bool:
+        return any(
+            item["start"] <= window["end"] and window["start"] <= item["end"]
+            for item in ranges
+            for window in target_windows.get(source, [])
+        )
+
+    expected_gap_keys = {
+        key
+        for key, row in current_rows["phase-3-gap-atoms"].items()
+        if not intersects_target_window(
+            normalize_code(row.get("source-document")),
+            valid_range_items(row.get("line-ranges")),
+        )
+    }
+    if protected["phase-3-gap-atoms"] != expected_gap_keys:
+        reporter.error(
+            "evidence-patch-gap-protection-coverage",
+            path,
+            "protected gap atoms必须恰好覆盖target window之外的rows",
+        )
+    expected_disposition_keys = {
+        key
+        for key, row in current_rows["phase-3-dispositions"].items()
+        if not intersects_target_window(
+            normalize_code(row.get("source-document")),
+            valid_range_items(row.get("line-ranges")),
+        )
+    }
+    if protected["phase-3-dispositions"] != expected_disposition_keys:
+        reporter.error(
+            "evidence-patch-disposition-protection-coverage",
+            path,
+            "protected dispositions必须恰好覆盖target window之外的rows",
+        )
+
+    expected_ambiguity_keys = (
+        set(current_rows["phase-3-mapping-ambiguities"])
+        - target_ga_ids
+        - new_global_atom_ids
+    )
+    if protected["phase-3-mapping-ambiguities"] != expected_ambiguity_keys:
+        reporter.error(
+            "evidence-patch-ambiguity-protection-coverage",
+            path,
+            "protected mapping ambiguities必须恰好覆盖全部非target/new GA，不得因range重叠放开无关row",
+        )
+
+    rendered_rows = current_rows["phase-4-rendered-artifacts"]
+    rendered_index_paths = {
+        key
+        for key, row in rendered_rows.items()
+        if normalize_code(row.get("collection-kind")) == "index"
+    }
+    unassigned_paths = {
+        key
+        for key, row in rendered_rows.items()
+        if normalize_code(row.get("collection-kind")) == "unassigned-and-gap"
+    }
+    affected_rendered_paths: Set[str] = set()
+    has_new_occurrence = False
+    for target in targets:
+        if not isinstance(target, dict):
+            continue
+        ga_id = normalize_code(target.get("global-atom-id"))
+        phase4_row = current_rows["phase-4-index-rows"].get(ga_id)
+        if isinstance(phase4_row, dict):
+            affected_rendered_paths.update(
+                normalize_code(item)
+                for item in phase4_row.get("rendered-collection-paths", [])
+                if isinstance(item, str) and normalize_code(item)
+            )
+        new_ids = target.get("new-source-atom-ids")
+        if isinstance(new_ids, list) and new_ids:
+            has_new_occurrence = True
+            if normalize_code(target.get("defect")) == "missing-occurrence":
+                affected_rendered_paths.update(unassigned_paths)
+    if has_new_occurrence:
+        affected_rendered_paths.update(rendered_index_paths)
+    expected_protected_rendered = set(rendered_rows) - affected_rendered_paths
+    if protected["phase-4-rendered-artifacts"] != expected_protected_rendered:
+        reporter.error(
+            "evidence-patch-rendered-protection-coverage",
+            path,
+            "protected Phase 4 rendered artifacts必须恰好覆盖target old/new bucket之外的collection",
+        )
+    return data
+
+
+def _validate_aborted_patch_request_snapshot(
+    orchestrate_dir: Path,
+    reporter: IssueReporter,
+) -> Dict[str, object]:
+    """Validate an immutable request after the incremental surfaces were abandoned."""
+    path = _patch_request_path(orchestrate_dir)
+    data = json_obj(path, reporter, EVIDENCE_PATCH_REQUEST_SCHEMA)
+    if not data:
+        return {}
+    exact_fields(
+        data,
+        {"trace-schema", "trace-contract-version", "request-id", "base-artifacts", "targets", "protected-rows"},
+        path,
+        reporter,
+        "evidence-patch-abort-fields",
+        "aborted evidence patch request",
+    )
+    if data.get("request-id") != PATCH_REQUEST_ID:
+        reporter.error("evidence-patch-request-id", path, f"单次patch request-id必须为{PATCH_REQUEST_ID}")
+    base = data.get("base-artifacts")
+    base_fields = {
+        "phase-2-trace-sha256", "phase-3-trace-sha256", "global-atom-index-sha256",
+        "coverage-review-sha256", "phase-4-index-sha256",
+    }
+    if not isinstance(base, dict):
+        reporter.error("evidence-patch-base", path, "base-artifacts必须是object")
+    else:
+        exact_fields(base, base_fields, path, reporter, "evidence-patch-base-fields", "base-artifacts")
+        for field in base_fields:
+            if not _is_sha256(base.get(field)):
+                reporter.error("evidence-patch-base-sha", path, f"base-artifacts.{field}必须是SHA-256")
+
+    targets = data.get("targets")
+    if not isinstance(targets, list) or not targets:
+        reporter.error("evidence-patch-targets", path, "targets必须是非空array")
+        targets = []
+    target_fields = {
+        "source-document", "source-atom-id", "global-atom-id", "evidence-ref", "defect",
+        "allowed-operations", "allowed-line-window", "new-source-atom-ids", "base-row",
+        "base-row-sha256", "canonical-owner", "reason", "defect-witness",
+    }
+    seen: Set[Tuple[str, str]] = set()
+    for index, target in enumerate(targets):
+        if not isinstance(target, dict):
+            reporter.error("evidence-patch-target", path, f"targets[{index}]必须是object")
+            continue
+        exact_fields(target, target_fields, path, reporter, "evidence-patch-target-fields", f"targets[{index}]")
+        _validate_defect_witness_shape(
+            target.get("defect-witness"),
+            path,
+            reporter,
+            f"targets[{index}]",
+        )
+        source = normalize_code(target.get("source-document"))
+        atom_id = normalize_code(target.get("source-atom-id"))
+        key = (source, atom_id or "<missing>")
+        if not source or key in seen:
+            reporter.error("evidence-patch-target-duplicate", path, f"target source为空或重复：{key}")
+        seen.add(key)
+        defect = normalize_code(target.get("defect"))
+        if defect not in PATCH_DEFECTS:
+            reporter.error("evidence-patch-defect", path, f"targets[{index}] defect非法：{defect}")
+        operations = target.get("allowed-operations")
+        normalized_ops = [normalize_code(item) for item in operations] if isinstance(operations, list) else []
+        if (
+            not normalized_ops
+            or len(normalized_ops) != len(set(normalized_ops))
+            or any(item not in PATCH_OPERATIONS for item in normalized_ops)
+        ):
+            reporter.error("evidence-patch-operations", path, f"targets[{index}] allowed-operations非法")
+        window = target.get("allowed-line-window")
+        if not isinstance(window, dict):
+            reporter.error("evidence-patch-window", path, f"targets[{index}] allowed-line-window必须是object")
+        else:
+            exact_fields(window, {"start", "end"}, path, reporter, "evidence-patch-window-fields", f"targets[{index}]")
+            if (
+                not isinstance(window.get("start"), int)
+                or not isinstance(window.get("end"), int)
+                or window["start"] < 1
+                or window["end"] < window["start"]
+            ):
+                reporter.error("evidence-patch-window", path, f"targets[{index}] allowed-line-window非法")
+        new_ids = target.get("new-source-atom-ids")
+        if not isinstance(new_ids, list) or len(new_ids) != len(set(new_ids)):
+            reporter.error("evidence-patch-new-ids", path, f"targets[{index}] new-source-atom-ids必须是唯一array")
+        base_row = target.get("base-row")
+        base_sha = target.get("base-row-sha256")
+        if defect == "missing-occurrence":
+            if atom_id or target.get("global-atom-id") is not None or base_row is not None or base_sha is not None:
+                reporter.error("evidence-patch-missing-identity", path, "missing-occurrence要求旧identity与base row为null")
+        elif not isinstance(base_row, dict) or not _is_sha256(base_sha) or canonical_json_sha256(base_row) != base_sha:
+            reporter.error("evidence-patch-base-row-sha", path, f"targets[{index}] immutable base-row或digest非法")
+        if not squash(target.get("canonical-owner")) or not squash(target.get("reason")):
+            reporter.error("evidence-patch-target-required", path, f"targets[{index}] canonical-owner/reason不得为空")
+
+    _validate_protected_rows(
+        data.get("protected-rows"),
+        orchestrate_dir,
+        path,
+        reporter,
+        "evidence-patch-abort-protected",
+        verify_current_surfaces=False,
+    )
+    return data
+
+
+CHECKPOINT_COMPLETED_ROW_FIELDS: Dict[str, Set[str]] = {
+    "capability-reviews": {
+        "input-capability", "evidence-collection-path", "decision", "final-capabilities",
+        "gate-results", "reason",
+    },
+    "change-reviews": {
+        "input-change", "evidence-collection-path", "decision", "final-changes",
+        "gate-results", "reason",
+    },
+    "unassigned-and-gap-reviews": {
+        "global-atom-id", "evidence-ref", "disposition", "final-change", "final-capability", "reason",
+    },
+    "atom-plan-mappings": {
+        "global-atom-id", "evidence-ref", "final-owner-change", "final-relation",
+        "final-artifact-projection", "final-capability-impact", "final-target-capability",
+        "related-capabilities", "reason",
+    },
+}
+CHECKPOINT_ROW_KEY_FIELDS = {
+    "capability-reviews": "input-capability",
+    "change-reviews": "input-change",
+    "unassigned-and-gap-reviews": "global-atom-id",
+    "atom-plan-mappings": "global-atom-id",
+}
+CHECKPOINT_PENDING_FIELDS = {
+    "capability-reviews",
+    "change-reviews",
+    "unassigned-and-gap-reviews",
+    "atom-plan-mappings",
+}
+
+
+def _validate_identifier_array(
+    value: object,
+    path: Path,
+    reporter: IssueReporter,
+    rule: str,
+    context: str,
+    *,
+    global_atoms: bool = False,
+) -> List[str]:
+    if (
+        not isinstance(value, list)
+        or any(not isinstance(item, str) or not normalize_code(item) for item in value)
+        or len(value) != len(set(value))
+    ):
+        reporter.error(rule, path, f"{context}必须是元素非空且不重复的string array（array本身可为空）")
+        return []
+    result = [normalize_code(item) for item in value]
+    pattern = GLOBAL_ATOM_ID_RE if global_atoms else KEBAB_CASE_RE
+    for item in result:
+        if not pattern.fullmatch(item):
+            reporter.error(rule, path, f"{context}包含非法ID：{item}")
+    return result
+
+
+def _scope_covers_full_typed_framework(
+    initial_ids: Set[str],
+    provisional_ids: Set[str],
+    scoped_initial_ids: Set[str],
+    scoped_final_ids: Set[str],
+) -> bool:
+    """任一initial或current-final typed universe全覆盖都视为full refit。"""
+    union_ids = initial_ids | provisional_ids
+    mutable_union = scoped_initial_ids | scoped_final_ids
+    return (
+        (bool(initial_ids) and initial_ids.issubset(scoped_initial_ids))
+        or (bool(provisional_ids) and provisional_ids.issubset(scoped_final_ids))
+        or (bool(union_ids) and union_ids.issubset(mutable_union))
+    )
+
+
+def _validate_checkpoint(
+    orchestrate_dir: Path,
+    repo_root: Path,
+    reporter: IssueReporter,
+    *,
+    verify_current_surfaces: bool = True,
+) -> Dict[str, object]:
+    path = _checkpoint_path(orchestrate_dir)
+    data = json_obj(path, reporter, PHASE5_CHECKPOINT_SCHEMA)
+    if not data:
+        return {}
+    exact_fields(
+        data,
+        {
+            "trace-schema", "trace-contract-version", "checkpoint-id", "stage", "patch-request-ref",
+            "input-fingerprints", "provisional-framework", "completed-rows", "pending-ids",
+            "allowed-update-scope", "preserved-row-digests", "patch-attempt",
+        },
+        path,
+        reporter,
+        "phase5-checkpoint-fields",
+        "Phase 5 checkpoint",
+    )
+    if data.get("checkpoint-id") != CHECKPOINT_ID:
+        reporter.error("phase5-checkpoint-id", path, f"checkpoint-id必须为{CHECKPOINT_ID}")
+    if normalize_code(data.get("stage")) != "mapping":
+        reporter.error(
+            "phase5-checkpoint-stage",
+            path,
+            "evidence patch checkpoint必须固定在mapping stage；全局refit审查完成后只可重开局部影响闭包",
+        )
+
+    request_path = _patch_request_path(orchestrate_dir)
+    _validate_artifact_ref(
+        data.get("patch-request-ref"),
+        request_path,
+        path,
+        repo_root,
+        reporter,
+        "phase5-checkpoint-request-ref",
+    )
+
+    fingerprints = data.get("input-fingerprints")
+    fingerprint_map: Dict[str, str] = {}
+    forbidden_fingerprint_prefixes = (
+        rel(orchestrate_dir / "phase-works/phase-2", repo_root) + "/",
+        rel(orchestrate_dir / "phase-works/phase-3", repo_root) + "/",
+        rel(orchestrate_dir / "phase-works/phase-4", repo_root) + "/",
+    )
+    forbidden_fingerprint_paths = {
+        rel(orchestrate_dir / "trace/phase-2.trace.json", repo_root),
+        rel(orchestrate_dir / "trace/phase-3.trace.json", repo_root),
+        rel(orchestrate_dir / "trace/phase-4.trace.json", repo_root),
+        rel(orchestrate_dir / "change-capability-anchors/obligation-atom-index.json", repo_root),
+        rel(orchestrate_dir / "change-capability-anchors/obligation-atom-index.md", repo_root),
+    }
+    if not isinstance(fingerprints, list) or not fingerprints:
+        reporter.error("phase5-checkpoint-input-fingerprints", path, "input-fingerprints必须是非空array")
+        fingerprints = []
+    for index, row in enumerate(fingerprints):
+        if not isinstance(row, dict):
+            reporter.error("phase5-checkpoint-input-fingerprint", path, f"input-fingerprints[{index}]必须是object")
+            continue
+        exact_fields(
+            row,
+            {"artifact-path", "sha256"},
+            path,
+            reporter,
+            "phase5-checkpoint-input-fingerprint-fields",
+            f"input-fingerprints[{index}]",
+        )
+        artifact_rel = normalize_code(row.get("artifact-path"))
+        digest = normalize_code(row.get("sha256"))
+        if not artifact_rel or artifact_rel in fingerprint_map:
+            reporter.error("phase5-checkpoint-input-fingerprint-path", path, f"fingerprint path为空或重复：{artifact_rel}")
+            continue
+        fingerprint_map[artifact_rel] = digest
+        if artifact_rel in forbidden_fingerprint_paths or artifact_rel.startswith(forbidden_fingerprint_prefixes):
+            reporter.error(
+                "phase5-checkpoint-patchable-fingerprint",
+                path,
+                f"input-fingerprints不得锁定targeted patch期间应变化的Phase 2–4 artifact：{artifact_rel}",
+            )
+        if not _is_sha256(digest):
+            reporter.error("phase5-checkpoint-input-fingerprint-sha", path, f"{artifact_rel} sha256非法")
+            continue
+        if verify_current_surfaces:
+            artifact_path = repo_root / artifact_rel
+            if not artifact_path.exists():
+                reporter.error("phase5-checkpoint-input-missing", path, f"checkpoint input不存在：{artifact_rel}")
+            elif sha256_file(artifact_path) != digest:
+                reporter.error("phase5-checkpoint-input-drift", path, f"checkpoint input fingerprint失效：{artifact_rel}")
+    required_fingerprints = {
+        rel(orchestrate_dir / "phase-works/phase-1/initial-change-plan.md", repo_root),
+        ".codex/skills/source-aligned-change-plan-coverage/references/change-capability-framework-principles.md",
+    }
+    missing_required_fingerprints = sorted(required_fingerprints - set(fingerprint_map))
+    if missing_required_fingerprints:
+        reporter.error(
+            "phase5-checkpoint-required-fingerprint-missing",
+            path,
+            f"input-fingerprints缺少稳定authority：{missing_required_fingerprints}",
+        )
+
+    framework = data.get("provisional-framework")
+    if not isinstance(framework, dict):
+        reporter.error("phase5-checkpoint-framework", path, "provisional-framework必须是object")
+        framework = {}
+    else:
+        exact_fields(
+            framework,
+            {
+                "change-order", "capabilities", "overlay",
+                "change-semantic-digests", "capability-semantic-digests",
+                "dependency-edges", "change-lineage", "capability-lineage", "ga-lineage",
+            },
+            path,
+            reporter,
+            "phase5-checkpoint-framework-fields",
+            "provisional-framework",
+        )
+    provisional_changes = _validate_identifier_array(
+        framework.get("change-order"), path, reporter, "phase5-checkpoint-framework-change-order", "change-order",
+    )
+    provisional_capabilities = _validate_identifier_array(
+        framework.get("capabilities"), path, reporter, "phase5-checkpoint-framework-capabilities", "capabilities",
+    )
+    overlay = framework.get("overlay")
+    overlay_pairs: Set[Tuple[str, str]] = set()
+    if not isinstance(overlay, list):
+        reporter.error("phase5-checkpoint-framework-overlay", path, "provisional-framework.overlay必须是array")
+        overlay = []
+    for index, row in enumerate(overlay):
+        if not isinstance(row, dict):
+            reporter.error("phase5-checkpoint-framework-overlay-row", path, f"overlay[{index}]必须是object")
+            continue
+        exact_fields(
+            row,
+            {"change", "capability", "capability-impact"},
+            path,
+            reporter,
+            "phase5-checkpoint-framework-overlay-fields",
+            f"overlay[{index}]",
+        )
+        pair = (normalize_code(row.get("change")), normalize_code(row.get("capability")))
+        impact = normalize_code(row.get("capability-impact"))
+        if (
+            pair in overlay_pairs
+            or pair[0] not in provisional_changes
+            or pair[1] not in provisional_capabilities
+            or impact not in {"new", "modified"}
+        ):
+            reporter.error("phase5-checkpoint-framework-overlay-row", path, f"overlay[{index}]引用或impact非法")
+        overlay_pairs.add(pair)
+
+    semantic_digest_specs = (
+        (
+            "change-semantic-digests",
+            "final-change",
+            provisional_changes,
+            "phase5-checkpoint-change-semantic-digests",
+        ),
+        (
+            "capability-semantic-digests",
+            "final-capability",
+            provisional_capabilities,
+            "phase5-checkpoint-capability-semantic-digests",
+        ),
+    )
+    for field, key_field, expected_ids, rule in semantic_digest_specs:
+        rows = framework.get(field)
+        if not isinstance(rows, list):
+            reporter.error(rule, path, f"provisional-framework.{field}必须是array")
+            continue
+        actual_ids: List[str] = []
+        for index, row in enumerate(rows):
+            if not isinstance(row, dict):
+                reporter.error(rule, path, f"{field}[{index}]必须是object")
+                continue
+            exact_fields(
+                row,
+                {key_field, "sha256"},
+                path,
+                reporter,
+                f"{rule}-fields",
+                f"{field}[{index}]",
+            )
+            row_id = normalize_code(row.get(key_field))
+            actual_ids.append(row_id)
+            if not _is_sha256(row.get("sha256")):
+                reporter.error(rule, path, f"{field}[{index}].sha256必须是SHA-256")
+        if actual_ids != expected_ids or len(actual_ids) != len(set(actual_ids)):
+            reporter.error(
+                rule,
+                path,
+                f"{field}必须按provisional framework顺序恰好覆盖全部ID",
+            )
+
+    dependency_edges = framework.get("dependency-edges")
+    if not isinstance(dependency_edges, list):
+        reporter.error(
+            "phase5-checkpoint-dependency-edges",
+            path,
+            "provisional-framework.dependency-edges必须是array",
+        )
+        dependency_edges = []
+    change_positions = {change_id: index for index, change_id in enumerate(provisional_changes)}
+    normalized_dependency_edges: List[Dict[str, str]] = []
+    seen_dependency_edges: Set[Tuple[str, str]] = set()
+    for index, row in enumerate(dependency_edges):
+        if not isinstance(row, dict):
+            reporter.error("phase5-checkpoint-dependency-edges", path, f"dependency-edges[{index}]必须是object")
+            continue
+        exact_fields(
+            row,
+            {"change", "depends-on"},
+            path,
+            reporter,
+            "phase5-checkpoint-dependency-edge-fields",
+            f"dependency-edges[{index}]",
+        )
+        change_id = normalize_code(row.get("change"))
+        dependency_id = normalize_code(row.get("depends-on"))
+        pair = (change_id, dependency_id)
+        if (
+            pair in seen_dependency_edges
+            or change_id not in change_positions
+            or dependency_id not in change_positions
+            or change_positions[dependency_id] >= change_positions[change_id]
+        ):
+            reporter.error(
+                "phase5-checkpoint-dependency-edges",
+                path,
+                f"dependency-edges[{index}]引用、顺序或唯一性非法：{pair}",
+            )
+        seen_dependency_edges.add(pair)
+        normalized_dependency_edges.append({"change": change_id, "depends-on": dependency_id})
+    expected_dependency_order = sorted(
+        normalized_dependency_edges,
+        key=lambda row: (
+            change_positions.get(row["change"], len(change_positions)),
+            change_positions.get(row["depends-on"], len(change_positions)),
+        ),
+    )
+    if normalized_dependency_edges != expected_dependency_order:
+        reporter.error(
+            "phase5-checkpoint-dependency-edge-order",
+            path,
+            "dependency-edges必须按provisional Change顺序确定性排列",
+        )
+
+    initial_plan_path = orchestrate_dir / "phase-works/phase-1/initial-change-plan.md"
+    if verify_current_surfaces:
+        expected_initial_change_order = _phase1_change_order(orchestrate_dir)
+        expected_initial_capability_order = [
+            normalize_code(cell(row, "Candidate Capability"))
+            for row in table_rows(
+                initial_plan_path,
+                ["Candidate Capability", "Purpose", "Owns", "Excludes", "Boundary Rationale"],
+            )
+            if normalize_code(cell(row, "Candidate Capability"))
+        ]
+    else:
+        expected_initial_change_order = [
+            normalize_code(row.get("input-change"))
+            for row in framework.get("change-lineage", [])
+            if isinstance(row, dict)
+        ]
+        expected_initial_capability_order = [
+            normalize_code(row.get("input-capability"))
+            for row in framework.get("capability-lineage", [])
+            if isinstance(row, dict)
+        ]
+    lineage_specs = (
+        (
+            "change-lineage", "input-change", "provisional-final-changes",
+            expected_initial_change_order, set(provisional_changes),
+            "phase5-checkpoint-change-lineage",
+        ),
+        (
+            "capability-lineage", "input-capability", "provisional-final-capabilities",
+            expected_initial_capability_order, set(provisional_capabilities),
+            "phase5-checkpoint-capability-lineage",
+        ),
+    )
+    lineage_by_field: Dict[str, Dict[str, Dict[str, object]]] = {}
+    for field, input_field, output_field, expected_inputs, valid_outputs, rule in lineage_specs:
+        rows = framework.get(field)
+        indexed: Dict[str, Dict[str, object]] = {}
+        actual_inputs: List[str] = []
+        if not isinstance(rows, list):
+            reporter.error(rule, path, f"provisional-framework.{field}必须是array")
+            rows = []
+        for index, row in enumerate(rows):
+            if not isinstance(row, dict):
+                reporter.error(rule, path, f"{field}[{index}]必须是object")
+                continue
+            exact_fields(
+                row,
+                {input_field, output_field},
+                path,
+                reporter,
+                f"{rule}-fields",
+                f"{field}[{index}]",
+            )
+            input_id = normalize_code(row.get(input_field))
+            output_ids = row.get(output_field)
+            actual_inputs.append(input_id)
+            if (
+                not isinstance(output_ids, list)
+                or any(not isinstance(item, str) or normalize_code(item) not in valid_outputs for item in output_ids)
+                or len(output_ids) != len(set(output_ids))
+            ):
+                reporter.error(rule, path, f"{field}[{index}].{output_field}必须是唯一且引用provisional ID的array")
+            if input_id in indexed:
+                reporter.error(rule, path, f"{field} input重复：{input_id}")
+            indexed[input_id] = row
+        if actual_inputs != expected_inputs:
+            reporter.error(rule, path, f"{field}必须按Phase 1顺序恰好覆盖全部initial ID")
+        lineage_by_field[field] = indexed
+
+    ga_lineage_rows = framework.get("ga-lineage")
+    ga_lineage_by_id: Dict[str, Dict[str, object]] = {}
+    ga_lineage_order: List[str] = []
+    if not isinstance(ga_lineage_rows, list):
+        reporter.error("phase5-checkpoint-ga-lineage", path, "provisional-framework.ga-lineage必须是array")
+        ga_lineage_rows = []
+    for index, row in enumerate(ga_lineage_rows):
+        if not isinstance(row, dict):
+            reporter.error("phase5-checkpoint-ga-lineage", path, f"ga-lineage[{index}]必须是object")
+            continue
+        exact_fields(
+            row,
+            {
+                "global-atom-id", "provisional-final-change",
+                "provisional-final-capability", "provisional-related-capabilities",
+            },
+            path,
+            reporter,
+            "phase5-checkpoint-ga-lineage-fields",
+            f"ga-lineage[{index}]",
+        )
+        ga_id = normalize_code(row.get("global-atom-id"))
+        change_id = normalize_code(row.get("provisional-final-change"))
+        capability_id = normalize_code(row.get("provisional-final-capability"))
+        related = row.get("provisional-related-capabilities")
+        ga_lineage_order.append(ga_id)
+        if not GLOBAL_ATOM_ID_RE.fullmatch(ga_id) or ga_id in ga_lineage_by_id:
+            reporter.error("phase5-checkpoint-ga-lineage", path, f"ga-lineage GA非法或重复：{ga_id}")
+        if change_id not in set(provisional_changes):
+            reporter.error("phase5-checkpoint-ga-lineage", path, f"{ga_id} provisional final Change非法：{change_id}")
+        if capability_id not in {"none", *set(provisional_capabilities)}:
+            reporter.error("phase5-checkpoint-ga-lineage", path, f"{ga_id} provisional final Capability非法：{capability_id}")
+        if (
+            not isinstance(related, list)
+            or any(not isinstance(item, str) or normalize_code(item) not in set(provisional_capabilities) for item in related)
+            or len(related) != len(set(related))
+        ):
+            reporter.error("phase5-checkpoint-ga-lineage", path, f"{ga_id} related Capability lineage非法")
+        ga_lineage_by_id[ga_id] = row
+    if ga_lineage_order != sorted(ga_lineage_order):
+        reporter.error("phase5-checkpoint-ga-lineage-order", path, "ga-lineage必须按GA单调顺序排列")
+
+    completed = data.get("completed-rows")
+    completed_by_kind: Dict[str, Dict[str, Dict[str, object]]] = {
+        kind: {} for kind in CHECKPOINT_COMPLETED_ROW_FIELDS
+    }
+    if not isinstance(completed, dict):
+        reporter.error("phase5-checkpoint-completed", path, "completed-rows必须是object")
+        completed = {}
+    else:
+        exact_fields(
+            completed,
+            set(CHECKPOINT_COMPLETED_ROW_FIELDS),
+            path,
+            reporter,
+            "phase5-checkpoint-completed-fields",
+            "completed-rows",
+        )
+    for kind, fields in CHECKPOINT_COMPLETED_ROW_FIELDS.items():
+        rows = completed.get(kind)
+        if not isinstance(rows, list):
+            reporter.error("phase5-checkpoint-completed-rows", path, f"completed-rows.{kind}必须是array")
+            continue
+        key_field = CHECKPOINT_ROW_KEY_FIELDS[kind]
+        for index, row in enumerate(rows):
+            if not isinstance(row, dict):
+                reporter.error("phase5-checkpoint-completed-row", path, f"{kind}[{index}]必须是object")
+                continue
+            exact_fields(
+                row,
+                fields,
+                path,
+                reporter,
+                "phase5-checkpoint-completed-row-fields",
+                f"{kind}[{index}]",
+            )
+            key = normalize_code(row.get(key_field))
+            if not key or key in completed_by_kind[kind]:
+                reporter.error("phase5-checkpoint-completed-row-key", path, f"{kind} row key为空或重复：{key}")
+                continue
+            completed_by_kind[kind][key] = row
+
+    completed_lineage_specs = (
+        (
+            "change-reviews", "change-lineage", "input-change",
+            "final-changes", "provisional-final-changes",
+            "phase5-checkpoint-change-lineage-drift",
+        ),
+        (
+            "capability-reviews", "capability-lineage", "input-capability",
+            "final-capabilities", "provisional-final-capabilities",
+            "phase5-checkpoint-capability-lineage-drift",
+        ),
+    )
+    for review_kind, lineage_field, input_field, review_final_field, lineage_final_field, rule in completed_lineage_specs:
+        lineage_rows = lineage_by_field.get(lineage_field, {})
+        for origin, review_row in completed_by_kind[review_kind].items():
+            lineage_row = lineage_rows.get(origin)
+            if (
+                lineage_row is None
+                or review_row.get(review_final_field) != lineage_row.get(lineage_final_field)
+                or normalize_code(lineage_row.get(input_field)) != origin
+            ):
+                reporter.error(
+                    rule,
+                    path,
+                    f"completed {review_kind}/{origin}与provisional lineage不一致",
+                )
+    for ga_id, mapping_row in completed_by_kind["atom-plan-mappings"].items():
+        lineage_row = ga_lineage_by_id.get(ga_id)
+        expected_lineage = {
+            "global-atom-id": ga_id,
+            "provisional-final-change": normalize_code(mapping_row.get("final-owner-change")),
+            "provisional-final-capability": normalize_code(mapping_row.get("final-target-capability")),
+            "provisional-related-capabilities": list(mapping_row.get("related-capabilities", [])),
+        }
+        if lineage_row != expected_lineage:
+            reporter.error(
+                "phase5-checkpoint-ga-lineage-drift",
+                path,
+                f"completed atom mapping/{ga_id}与provisional GA lineage不一致",
+            )
+
+    pending = data.get("pending-ids")
+    if not isinstance(pending, dict):
+        reporter.error("phase5-checkpoint-pending", path, "pending-ids必须是object")
+        pending = {}
+    else:
+        exact_fields(
+            pending,
+            CHECKPOINT_PENDING_FIELDS,
+            path,
+            reporter,
+            "phase5-checkpoint-pending-fields",
+            "pending-ids",
+        )
+    pending_capabilities = _validate_identifier_array(
+        pending.get("capability-reviews"), path, reporter, "phase5-checkpoint-pending-capabilities", "pending capability reviews",
+    )
+    pending_changes = _validate_identifier_array(
+        pending.get("change-reviews"), path, reporter, "phase5-checkpoint-pending-changes", "pending change reviews",
+    )
+    pending_unassigned = _validate_identifier_array(
+        pending.get("unassigned-and-gap-reviews"),
+        path,
+        reporter,
+        "phase5-checkpoint-pending-unassigned",
+        "pending unassigned/gap reviews",
+        global_atoms=True,
+    )
+    pending_mappings = _validate_identifier_array(
+        pending.get("atom-plan-mappings"), path, reporter, "phase5-checkpoint-pending-mappings", "pending atom mappings",
+        global_atoms=True,
+    )
+    if set(pending_capabilities).intersection(completed_by_kind["capability-reviews"]):
+        reporter.error("phase5-checkpoint-pending-completed-overlap", path, "pending capability不得已有completed review")
+    if set(pending_changes).intersection(completed_by_kind["change-reviews"]):
+        reporter.error("phase5-checkpoint-pending-completed-overlap", path, "pending change不得已有completed review")
+    if set(pending_unassigned).intersection(completed_by_kind["unassigned-and-gap-reviews"]):
+        reporter.error("phase5-checkpoint-pending-completed-overlap", path, "pending unassigned/gap review不得已有同类completed row")
+    if set(pending_mappings).intersection(completed_by_kind["atom-plan-mappings"]):
+        reporter.error("phase5-checkpoint-pending-completed-overlap", path, "pending atom mapping不得已有completed mapping row")
+
+    if verify_current_surfaces:
+        initial_changes, initial_capabilities = phase1_framework_ids(orchestrate_dir)
+    else:
+        initial_changes = set(expected_initial_change_order)
+        initial_capabilities = set(expected_initial_capability_order)
+    if set(completed_by_kind["capability-reviews"]) | set(pending_capabilities) != initial_capabilities:
+        reporter.error("phase5-checkpoint-capability-partition", path, "completed与pending capability reviews必须恰好划分全部initial Capability")
+    if set(completed_by_kind["change-reviews"]) | set(pending_changes) != initial_changes:
+        reporter.error("phase5-checkpoint-change-partition", path, "completed与pending change reviews必须恰好划分全部initial Change")
+
+    try:
+        request = read_json(request_path) if request_path.exists() else {}
+    except Exception:  # noqa: BLE001
+        request = {}
+    request_targets = request.get("targets") if isinstance(request.get("targets"), list) else []
+    target_ga_ids = {
+        normalize_code(target.get("global-atom-id"))
+        for target in request_targets
+        if isinstance(target, dict) and target.get("global-atom-id") is not None
+    }
+    protected_global = (
+        request.get("protected-rows", {}).get("global-atoms", [])
+        if isinstance(request.get("protected-rows"), dict)
+        else []
+    )
+    base_ga_ids = {
+        normalize_code(row.get("global-atom-id"))
+        for row in protected_global
+        if isinstance(row, dict) and normalize_code(row.get("global-atom-id"))
+    } | target_ga_ids
+    if set(ga_lineage_by_id) != base_ga_ids:
+        reporter.error(
+            "phase5-checkpoint-ga-lineage-coverage",
+            path,
+            "ga-lineage必须恰好覆盖patch前全部existing GA，不包含预分配new GA",
+        )
+    max_base_ga = max(
+        (int(item.split("-")[1]) for item in base_ga_ids if GLOBAL_ATOM_ID_RE.fullmatch(item)),
+        default=0,
+    )
+    anticipated_new_rows: List[Tuple[str, Dict[str, object]]] = []
+    next_ga_number = max_base_ga + 1
+    for target in request_targets:
+        if not isinstance(target, dict):
+            continue
+        new_ids = target.get("new-source-atom-ids")
+        for _new_id in new_ids if isinstance(new_ids, list) else []:
+            anticipated_new_rows.append((f"GA-{next_ga_number:04d}", target))
+            next_ga_number += 1
+    anticipated_new_ga_ids = {ga_id for ga_id, _target in anticipated_new_rows}
+    expected_unassigned_ga = (
+        set(completed_by_kind["unassigned-and-gap-reviews"])
+        | set(pending_unassigned)
+    )
+
+    collection_by_ga: Dict[str, Dict[str, object]] = {}
+    if verify_current_surfaces:
+        collection_path = orchestrate_dir / "phase-works/phase-4/source-evidence-collections/evidence-collection-index.json"
+        try:
+            collection = read_json(collection_path) if collection_path.exists() else {}
+        except Exception:  # noqa: BLE001
+            collection = {}
+        collection_rows = collection.get("rows") if isinstance(collection.get("rows"), list) else []
+        all_collection_ga = {
+            normalize_code(row.get("global-atom-id"))
+            for row in collection_rows
+            if isinstance(row, dict) and normalize_code(row.get("global-atom-id"))
+        }
+        unassigned_ga = {
+            normalize_code(row.get("global-atom-id"))
+            for row in collection_rows
+            if isinstance(row, dict) and normalize_code(row.get("change-bucket")) == "unassigned-and-gap"
+        }
+        collection_by_ga = {
+            normalize_code(row.get("global-atom-id")): row
+            for row in collection_rows
+            if isinstance(row, dict) and normalize_code(row.get("global-atom-id"))
+        }
+        anticipated_unassigned_ga = {
+            ga_id
+            for ga_id, target in anticipated_new_rows
+            if normalize_code(target.get("defect")) == "missing-occurrence"
+            or normalize_code(
+                collection_by_ga.get(normalize_code(target.get("global-atom-id")), {}).get("change-bucket")
+            ) == "unassigned-and-gap"
+        }
+        expected_unassigned_ga = unassigned_ga | anticipated_unassigned_ga
+        expected_mapping_ga = all_collection_ga | anticipated_new_ga_ids
+        if set(completed_by_kind["unassigned-and-gap-reviews"]) | set(pending_unassigned) != expected_unassigned_ga:
+            reporter.error("phase5-checkpoint-unassigned-partition", path, "completed与pending unassigned/gap reviews必须恰好划分Phase 4 unassigned GA")
+        if set(completed_by_kind["atom-plan-mappings"]) | set(pending_mappings) != expected_mapping_ga:
+            reporter.error("phase5-checkpoint-mapping-partition", path, "completed与pending atom mappings必须恰好划分全部GA")
+
+    scope = data.get("allowed-update-scope")
+    if not isinstance(scope, dict):
+        reporter.error("phase5-checkpoint-scope", path, "allowed-update-scope必须是object")
+        scope = {}
+    else:
+        exact_fields(
+            scope,
+            {
+                "global-atom-ids", "initial-changes", "initial-capabilities", "final-changes",
+                "final-capabilities", "allow-roadmap-reorder",
+            },
+            path,
+            reporter,
+            "phase5-checkpoint-scope-fields",
+            "allowed-update-scope",
+        )
+    scope_ga = _validate_identifier_array(
+        scope.get("global-atom-ids"), path, reporter, "phase5-checkpoint-scope-ga", "scope global-atom-ids",
+        global_atoms=True,
+    )
+    scope_initial_changes = _validate_identifier_array(
+        scope.get("initial-changes"), path, reporter, "phase5-checkpoint-scope-initial-changes", "scope initial-changes",
+    )
+    scope_initial_capabilities = _validate_identifier_array(
+        scope.get("initial-capabilities"), path, reporter, "phase5-checkpoint-scope-initial-capabilities", "scope initial-capabilities",
+    )
+    scope_final_changes = _validate_identifier_array(
+        scope.get("final-changes"), path, reporter, "phase5-checkpoint-scope-final-changes", "scope final-changes",
+    )
+    scope_final_capabilities = _validate_identifier_array(
+        scope.get("final-capabilities"), path, reporter, "phase5-checkpoint-scope-final-capabilities", "scope final-capabilities",
+    )
+    if scope.get("allow-roadmap-reorder") is not False:
+        reporter.error("phase5-checkpoint-scope-reorder", path, "allow-roadmap-reorder必须严格为false")
+    invalid_initial_changes = set(scope_initial_changes) - initial_changes
+    invalid_initial_capabilities = set(scope_initial_capabilities) - initial_capabilities
+    if invalid_initial_changes or invalid_initial_capabilities:
+        reporter.error(
+            "phase5-checkpoint-scope-initial-id",
+            path,
+            f"scope initial IDs不属于Phase 1 framework：changes={sorted(invalid_initial_changes)} capabilities={sorted(invalid_initial_capabilities)}",
+        )
+    scope_lineage_specs = (
+        (
+            "change-lineage", "input-change", "provisional-final-changes",
+            set(scope_initial_changes), set(scope_final_changes),
+            set(provisional_changes), "phase5-checkpoint-final-change-lineage",
+        ),
+        (
+            "capability-lineage", "input-capability", "provisional-final-capabilities",
+            set(scope_initial_capabilities), set(scope_final_capabilities),
+            set(provisional_capabilities), "phase5-checkpoint-final-capability-lineage",
+        ),
+    )
+    provisional_origins: Dict[str, Dict[str, Set[str]]] = {
+        "change": {},
+        "capability": {},
+    }
+    provisional_ga_origins: Dict[str, Dict[str, Set[str]]] = {
+        "change": {},
+        "capability": {},
+    }
+    for ga_id, row in ga_lineage_by_id.items():
+        change_id = normalize_code(row.get("provisional-final-change"))
+        capability_ids = {
+            normalize_code(row.get("provisional-final-capability")),
+            *(
+                normalize_code(item)
+                for item in row.get("provisional-related-capabilities", [])
+                if isinstance(item, str)
+            ),
+        } - {"", "none", "null"}
+        if change_id not in {"", "none", "null"}:
+            provisional_ga_origins["change"].setdefault(change_id, set()).add(ga_id)
+        for capability_id in capability_ids:
+            provisional_ga_origins["capability"].setdefault(capability_id, set()).add(ga_id)
+    scoped_ga_ids = set(scope_ga)
+    for lineage_field, input_field, final_field, scoped_initials, scoped_finals, existing_finals, rule in scope_lineage_specs:
+        kind = "change" if lineage_field == "change-lineage" else "capability"
+        origins = provisional_origins[kind]
+        for row in framework.get(lineage_field, []) if isinstance(framework.get(lineage_field), list) else []:
+            if not isinstance(row, dict):
+                continue
+            origin = normalize_code(row.get(input_field))
+            for final_id in row.get(final_field, []) if isinstance(row.get(final_field), list) else []:
+                origins.setdefault(normalize_code(final_id), set()).add(origin)
+        hijacked: List[str] = []
+        for final_id in sorted(scoped_finals & existing_finals):
+            initial_origins = origins.get(final_id, set())
+            evidence_origins = provisional_ga_origins[kind].get(final_id, set())
+            if initial_origins:
+                authorized = initial_origins.issubset(scoped_initials)
+            else:
+                authorized = bool(evidence_origins) and evidence_origins.issubset(scoped_ga_ids)
+            if not authorized:
+                hijacked.append(final_id)
+        if hijacked:
+            reporter.error(
+                rule,
+                path,
+                "scope final IDs不得包含scope外或无lineage provenance的provisional ID："
+                f"{hijacked}",
+            )
+
+    if verify_current_surfaces:
+        phase2_trace_path = orchestrate_dir / "trace/phase-2.trace.json"
+        try:
+            phase2_trace = read_json(phase2_trace_path) if phase2_trace_path.exists() else {}
+        except Exception:  # noqa: BLE001
+            phase2_trace = {}
+        if normalize_code(phase2_trace.get("mode")) == "initial":
+            candidate_roots: Set[Tuple[str, str]] = set()
+            for ga_id in target_ga_ids:
+                row = collection_by_ga.get(ga_id, {})
+                change_bucket = normalize_code(row.get("change-bucket"))
+                capability_bucket = normalize_code(row.get("capability-bucket"))
+                if change_bucket in initial_changes:
+                    candidate_roots.add(("change", change_bucket))
+                if capability_bucket in initial_capabilities:
+                    candidate_roots.add(("capability", capability_bucket))
+
+            selected_nodes = {
+                *(("change", item) for item in scope_initial_changes),
+                *(("capability", item) for item in scope_initial_capabilities),
+            }
+            selected_roots = selected_nodes & candidate_roots
+            expected_nodes: Set[Tuple[str, str]] = set()
+            if selected_nodes and not selected_roots:
+                reporter.error(
+                    "phase5-checkpoint-framework-closure",
+                    path,
+                    "framework review scope必须由request target的Phase 4 initial bucket发起；不得加入无关review unit",
+                )
+            elif selected_roots:
+                graph: Dict[Tuple[str, str], Set[Tuple[str, str]]] = {}
+
+                def connect(left: Tuple[str, str], right: Tuple[str, str]) -> None:
+                    graph.setdefault(left, set()).add(right)
+                    graph.setdefault(right, set()).add(left)
+
+                for change_id, capability_id in _phase1_overlay(orchestrate_dir):
+                    if change_id in initial_changes and capability_id in initial_capabilities:
+                        connect(("change", change_id), ("capability", capability_id))
+                change_semantics = _phase1_change_semantics(orchestrate_dir)
+                for change_id, semantics in change_semantics.items():
+                    dependency_text = semantics[9] if len(semantics) > 9 else ""
+                    for dependency_id in parse_dependencies(dependency_text):
+                        if change_id in initial_changes and dependency_id in initial_changes:
+                            connect(("change", change_id), ("change", dependency_id))
+
+                for overlay_row in framework.get("overlay", []) if isinstance(framework.get("overlay"), list) else []:
+                    if not isinstance(overlay_row, dict):
+                        continue
+                    change_origins = provisional_origins["change"].get(
+                        normalize_code(overlay_row.get("change")),
+                        set(),
+                    )
+                    capability_origins = provisional_origins["capability"].get(
+                        normalize_code(overlay_row.get("capability")),
+                        set(),
+                    )
+                    for change_origin in change_origins:
+                        for capability_origin in capability_origins:
+                            connect(("change", change_origin), ("capability", capability_origin))
+                for dependency_row in framework.get("dependency-edges", []) if isinstance(framework.get("dependency-edges"), list) else []:
+                    if not isinstance(dependency_row, dict):
+                        continue
+                    change_origins = provisional_origins["change"].get(
+                        normalize_code(dependency_row.get("change")),
+                        set(),
+                    )
+                    dependency_origins = provisional_origins["change"].get(
+                        normalize_code(dependency_row.get("depends-on")),
+                        set(),
+                    )
+                    for change_origin in change_origins:
+                        for dependency_origin in dependency_origins:
+                            connect(("change", change_origin), ("change", dependency_origin))
+
+                pending_nodes = list(selected_roots)
+                while pending_nodes:
+                    node = pending_nodes.pop()
+                    if node in expected_nodes:
+                        continue
+                    expected_nodes.add(node)
+                    pending_nodes.extend(graph.get(node, set()) - expected_nodes)
+                if selected_nodes != expected_nodes:
+                    reporter.error(
+                        "phase5-checkpoint-framework-closure",
+                        path,
+                        "framework review scope必须恰好等于所选target bucket的最小dependency/overlay连通闭包；"
+                        f"expected={sorted(expected_nodes)} actual={sorted(selected_nodes)}",
+                    )
+
+    expected_scope_ga = target_ga_ids | anticipated_new_ga_ids
+    if set(scope_ga) != expected_scope_ga:
+        reporter.error(
+            "phase5-checkpoint-scope-target-ga",
+            path,
+            "allowed update scope的GA必须恰好等于target GA与确定性预分配的新GA，不得夹带无关GA",
+        )
+    invalid_scope_ga = set(scope_ga) - (base_ga_ids | anticipated_new_ga_ids)
+    if invalid_scope_ga:
+        reporter.error(
+            "phase5-checkpoint-scope-unknown-ga",
+            path,
+            f"allowed update scope包含未知GA：{sorted(invalid_scope_ga)}",
+        )
+
+    pending_scope_checks = (
+        (
+            set(pending_capabilities),
+            set(scope_initial_capabilities),
+            "phase5-checkpoint-pending-capability-scope",
+            "pending capability reviews必须恰好等于scope.initial-capabilities",
+        ),
+        (
+            set(pending_changes),
+            set(scope_initial_changes),
+            "phase5-checkpoint-pending-change-scope",
+            "pending change reviews必须恰好等于scope.initial-changes",
+        ),
+        (
+            set(pending_mappings),
+            set(scope_ga),
+            "phase5-checkpoint-pending-mapping-scope",
+            "pending atom mappings必须恰好等于scope.global-atom-ids",
+        ),
+        (
+            set(pending_unassigned),
+            set(scope_ga) & expected_unassigned_ga,
+            "phase5-checkpoint-pending-unassigned-scope",
+            "pending unassigned/gap reviews必须恰好等于scope GA与unassigned/gap GA的交集",
+        ),
+    )
+    for actual_pending, expected_pending, rule, message in pending_scope_checks:
+        if actual_pending != expected_pending:
+            reporter.error(
+                rule,
+                path,
+                f"{message}；期望={sorted(expected_pending)}，实际={sorted(actual_pending)}",
+            )
+
+    if (
+        _scope_covers_full_typed_framework(
+            initial_changes,
+            set(provisional_changes),
+            set(scope_initial_changes),
+            set(scope_final_changes),
+        )
+        or _scope_covers_full_typed_framework(
+            initial_capabilities,
+            set(provisional_capabilities),
+            set(scope_initial_capabilities),
+            set(scope_final_capabilities),
+        )
+    ):
+        reporter.error(
+            "phase5-checkpoint-global-framework-scope",
+            path,
+            "allowed update scope已覆盖全部initial或全部provisional Change/Capability typed universe，必须blocked而不是继续patch",
+        )
+
+    preserved = data.get("preserved-row-digests")
+    digest_rows: Dict[Tuple[str, str], str] = {}
+    if not isinstance(preserved, list):
+        reporter.error("phase5-checkpoint-preserved", path, "preserved-row-digests必须是array")
+        preserved = []
+    for index, row in enumerate(preserved):
+        if not isinstance(row, dict):
+            reporter.error("phase5-checkpoint-preserved-row", path, f"preserved-row-digests[{index}]必须是object")
+            continue
+        exact_fields(
+            row,
+            {"row-kind", "row-key", "sha256"},
+            path,
+            reporter,
+            "phase5-checkpoint-preserved-row-fields",
+            f"preserved-row-digests[{index}]",
+        )
+        kind = normalize_code(row.get("row-kind"))
+        key = normalize_code(row.get("row-key"))
+        pair = (kind, key)
+        if kind not in CHECKPOINT_COMPLETED_ROW_FIELDS or not key or pair in digest_rows:
+            reporter.error("phase5-checkpoint-preserved-row-key", path, f"preserved row kind/key非法或重复：{kind}/{key}")
+            continue
+        digest = normalize_code(row.get("sha256"))
+        digest_rows[pair] = digest
+        completed_row = completed_by_kind[kind].get(key)
+        if completed_row is None:
+            reporter.error("phase5-checkpoint-preserved-row-missing", path, f"preserved row没有对应completed row：{kind}/{key}")
+        elif not _is_sha256(digest) or digest != canonical_json_sha256(completed_row):
+            reporter.error("phase5-checkpoint-preserved-row-drift", path, f"preserved row digest失效：{kind}/{key}")
+    expected_digest_keys = {
+        (kind, key)
+        for kind, rows in completed_by_kind.items()
+        for key in rows
+    }
+    if set(digest_rows) != expected_digest_keys:
+        reporter.error(
+            "phase5-checkpoint-preserved-coverage",
+            path,
+            "preserved-row-digests必须恰好覆盖全部completed rows",
+        )
+
+    patch_attempt = data.get("patch-attempt")
+    if not isinstance(patch_attempt, dict):
+        reporter.error("phase5-checkpoint-patch-attempt", path, "patch-attempt必须是object")
+    else:
+        exact_fields(
+            patch_attempt,
+            {"attempt", "finding-fingerprint", "authority-digest"},
+            path,
+            reporter,
+            "phase5-checkpoint-patch-attempt-fields",
+            "patch-attempt",
+        )
+        if patch_attempt.get("attempt") != 1:
+            reporter.error("phase5-checkpoint-patch-attempt-number", path, "patch-attempt.attempt必须严格为1")
+        for field in ("finding-fingerprint", "authority-digest"):
+            if not _is_sha256(patch_attempt.get(field)):
+                reporter.error("phase5-checkpoint-patch-attempt-digest", path, f"patch-attempt.{field}必须是SHA-256")
+        expected_finding_fingerprint = evidence_patch_finding_fingerprint(request_targets)
+        if patch_attempt.get("finding-fingerprint") != expected_finding_fingerprint:
+            reporter.error(
+                "phase5-checkpoint-finding-fingerprint",
+                path,
+                "patch-attempt.finding-fingerprint必须由request targets的规范化defect locator机械计算",
+            )
+        expected_authority_digest = canonical_json_sha256({
+            "input-fingerprints": data.get("input-fingerprints"),
+            "patch-request-ref": data.get("patch-request-ref"),
+            "provisional-framework": data.get("provisional-framework"),
+        })
+        if patch_attempt.get("authority-digest") != expected_authority_digest:
+            reporter.error(
+                "phase5-checkpoint-authority-digest",
+                path,
+                "patch-attempt.authority-digest必须绑定immutable input fingerprints、request ref与provisional framework",
+            )
+    return data
+
+
+def _validate_patch_issuance_base_modes(
+    orchestrate_dir: Path,
+    reporter: IssueReporter,
+) -> None:
+    """requested patch只能从首次initial Phase 2–4快照发起。"""
+    specs = (
+        ("phase-2", "mode", "initial", "status", "source-atoms-written"),
+        ("phase-3", "update-mode", "initial", "decision", "coverage-complete"),
+        ("phase-4", "update-mode", "initial", "status", "assembled"),
+    )
+    for phase, mode_field, expected_mode, status_field, expected_status in specs:
+        path = orchestrate_dir / f"trace/{phase}.trace.json"
+        try:
+            trace = read_json(path) if path.exists() else {}
+        except Exception:  # noqa: BLE001
+            trace = {}
+        if (
+            normalize_code(trace.get(mode_field)) != expected_mode
+            or normalize_code(trace.get(status_field)) != expected_status
+        ):
+            reporter.error(
+                "phase5-patch-budget-replay",
+                path,
+                "needs-targeted-evidence-patch只能从未执行patch的initial success Phase 2–4快照发起；"
+                f"{phase}.{mode_field}={trace.get(mode_field)!r}, "
+                f"{status_field}={trace.get(status_field)!r}",
+            )
+
+
 def iter_nested_keys(value: object) -> Iterable[str]:
     if isinstance(value, dict):
         for key, child in value.items():
@@ -1198,6 +3515,80 @@ def validate_phase_3(orchestrate_dir: Path, repo_root: Path, reporter: IssueRepo
     coverage_path = orchestrate_dir / "phase-works/phase-3/coverage-review.json"
     index_path = orchestrate_dir / "change-capability-anchors/obligation-atom-index.json"
     trace = json_obj(trace_path, reporter, PHASE_TRACE_SCHEMAS["phase-3"])
+    update_mode = ""
+    patch_request: Dict[str, object] = {}
+    checkpoint: Dict[str, object] = {}
+    trace_new_ga_ids: List[str] = []
+    trace_decision = validate_trace_status(trace, trace_path, reporter, "phase-3", "phase3-status") if trace else ""
+    if trace_decision == "blocked":
+        exact_fields(
+            trace,
+            {
+                "trace-schema", "trace-contract-version", "decision", "update-mode",
+                "patch-request-ref", "checkpoint-ref", "base-global-atom-index-sha256",
+                "base-coverage-review-sha256", "affected-source-documents", "new-global-atom-ids", "issues",
+            },
+            trace_path,
+            reporter,
+            "phase3-trace-fields",
+            "blocked Phase 3 trace",
+        )
+        update_mode = normalize_code(trace.get("update-mode"))
+        affected_sources = trace.get("affected-source-documents")
+        new_ga_ids = trace.get("new-global-atom-ids")
+        if update_mode not in {"initial", "incremental-patch"}:
+            reporter.error("phase3-update-mode", trace_path, "blocked update-mode只允许initial|incremental-patch")
+        if (
+            not isinstance(affected_sources, list)
+            or any(not isinstance(item, str) for item in affected_sources)
+            or len(affected_sources) != len(set(affected_sources))
+        ):
+            reporter.error("phase3-affected-sources", trace_path, "affected-source-documents必须是唯一string array")
+            affected_sources = []
+        if (
+            not isinstance(new_ga_ids, list)
+            or any(not isinstance(item, str) or not GLOBAL_ATOM_ID_RE.fullmatch(normalize_code(item)) for item in new_ga_ids)
+            or len(new_ga_ids) != len(set(new_ga_ids))
+        ):
+            reporter.error("phase3-new-global-atoms", trace_path, "new-global-atom-ids必须是唯一合法GA array")
+            new_ga_ids = []
+        if not isinstance(trace.get("issues"), list) or not trace.get("issues"):
+            reporter.error("phase3-trace-issues", trace_path, "blocked要求非空issues[]")
+        if update_mode == "initial":
+            if (
+                trace.get("patch-request-ref") is not None
+                or trace.get("checkpoint-ref") is not None
+                or trace.get("base-global-atom-index-sha256") is not None
+                or trace.get("base-coverage-review-sha256") is not None
+                or affected_sources
+                or new_ga_ids
+            ):
+                reporter.error("phase3-blocked-initial-fields", trace_path, "initial blocked要求patch/base为null且affected/new arrays为空")
+        elif update_mode == "incremental-patch":
+            request_path = _patch_request_path(orchestrate_dir)
+            checkpoint_path = _checkpoint_path(orchestrate_dir)
+            _validate_artifact_ref(
+                trace.get("patch-request-ref"), request_path, trace_path, repo_root, reporter, "phase3-patch-request-ref",
+            )
+            _validate_artifact_ref(
+                trace.get("checkpoint-ref"), checkpoint_path, trace_path, repo_root, reporter, "phase3-checkpoint-ref",
+            )
+            patch_request = _validate_aborted_patch_request_snapshot(orchestrate_dir, reporter)
+            _validate_checkpoint(orchestrate_dir, repo_root, reporter, verify_current_surfaces=False)
+            base = patch_request.get("base-artifacts") if isinstance(patch_request.get("base-artifacts"), dict) else {}
+            if trace.get("base-global-atom-index-sha256") != base.get("global-atom-index-sha256"):
+                reporter.error("phase3-base-global-index", trace_path, "blocked base global index digest与request不一致")
+            if trace.get("base-coverage-review-sha256") != base.get("coverage-review-sha256"):
+                reporter.error("phase3-base-coverage", trace_path, "blocked base coverage digest与request不一致")
+            expected_sources: List[str] = []
+            for target in patch_request.get("targets", []) if isinstance(patch_request.get("targets"), list) else []:
+                if isinstance(target, dict):
+                    source = normalize_code(target.get("source-document"))
+                    if source and source not in expected_sources:
+                        expected_sources.append(source)
+            if affected_sources != expected_sources:
+                reporter.error("phase3-affected-sources", trace_path, "blocked affected-source-documents必须按request顺序恰好覆盖")
+        return
     if trace:
         exact_fields(
             trace,
@@ -1209,39 +3600,71 @@ def validate_phase_3(orchestrate_dir: Path, repo_root: Path, reporter: IssueRepo
                 "global-atom-index-sha256",
                 "coverage-review-path",
                 "coverage-review-sha256",
-                "reviewer-loop",
+                "update-mode",
+                "patch-request-ref",
+                "checkpoint-ref",
+                "base-global-atom-index-sha256",
+                "base-coverage-review-sha256",
+                "affected-source-documents",
+                "new-global-atom-ids",
             },
             trace_path,
             reporter,
             "phase3-trace-fields",
             "Phase 3 trace",
         )
-        if not isinstance(trace.get("reviewer-loop"), dict):
-            reporter.error("phase3-reviewer-loop", trace_path, "reviewer-loop 必须是 object")
-        else:
-            reviewer_loop = trace["reviewer-loop"]
-            exact_fields(
-                reviewer_loop,
-                {"status", "writer-id", "reviewer-id", "validator-status", "findings", "repairs"},
-                trace_path,
-                reporter,
-                "phase3-reviewer-loop-fields",
-                "reviewer-loop",
+        update_mode = normalize_code(trace.get("update-mode"))
+        if update_mode not in {"initial", "incremental-patch"}:
+            reporter.error("phase3-update-mode", trace_path, "update-mode只允许initial|incremental-patch")
+        affected_sources = trace.get("affected-source-documents")
+        new_ga_ids = trace.get("new-global-atom-ids")
+        affected_valid = isinstance(affected_sources, list) and all(isinstance(item, str) for item in affected_sources)
+        new_valid = isinstance(new_ga_ids, list) and all(isinstance(item, str) for item in new_ga_ids)
+        if not affected_valid or len(affected_sources) != len(set(affected_sources)):
+            reporter.error("phase3-affected-sources", trace_path, "affected-source-documents必须是唯一string array")
+            affected_sources = []
+        if (
+            not new_valid
+            or len(new_ga_ids) != len(set(new_ga_ids))
+            or any(not GLOBAL_ATOM_ID_RE.fullmatch(normalize_code(item)) for item in new_ga_ids)
+        ):
+            reporter.error("phase3-new-global-atoms", trace_path, "new-global-atom-ids必须是唯一合法GA array")
+            new_ga_ids = []
+        trace_new_ga_ids = [normalize_code(item) for item in new_ga_ids]
+        if update_mode == "initial":
+            if (
+                trace.get("patch-request-ref") is not None
+                or trace.get("checkpoint-ref") is not None
+                or trace.get("base-global-atom-index-sha256") is not None
+                or trace.get("base-coverage-review-sha256") is not None
+                or affected_sources != []
+                or new_ga_ids != []
+            ):
+                reporter.error("phase3-initial-incremental-fields", trace_path, "initial mode要求patch/base为null且affected/new arrays为空")
+        elif update_mode == "incremental-patch":
+            request_path = _patch_request_path(orchestrate_dir)
+            checkpoint_path = _checkpoint_path(orchestrate_dir)
+            _validate_artifact_ref(
+                trace.get("patch-request-ref"), request_path, trace_path, repo_root, reporter, "phase3-patch-request-ref",
             )
-            loop_status = normalize_code(reviewer_loop.get("status"))
-            if loop_status not in {"pending", "passed", "blocked"}:
-                reporter.error("phase3-reviewer-loop-status", trace_path, f"reviewer-loop status非法：{loop_status}")
-            if not isinstance(reviewer_loop.get("findings"), list) or not isinstance(reviewer_loop.get("repairs"), list):
-                reporter.error("phase3-reviewer-loop-evidence", trace_path, "findings与repairs必须是 array")
-            if loop_status == "passed":
-                writer_id = squash(reviewer_loop.get("writer-id"))
-                reviewer_id = squash(reviewer_loop.get("reviewer-id"))
-                if not writer_id or not reviewer_id:
-                    reporter.error("phase3-reviewer-loop-identity", trace_path, "passed reviewer-loop必须记录 writer/reviewer identity")
-                elif writer_id == reviewer_id:
-                    reporter.error("phase3-reviewer-loop-independence", trace_path, "Phase 3 reviewer identity必须不同于 writer identity")
-                if normalize_code(reviewer_loop.get("validator-status")) != "passed":
-                    reporter.error("phase3-reviewer-loop-validator", trace_path, "passed reviewer-loop必须记录 validator-status=passed")
+            _validate_artifact_ref(
+                trace.get("checkpoint-ref"), checkpoint_path, trace_path, repo_root, reporter, "phase3-checkpoint-ref",
+            )
+            patch_request = _validate_patch_request(orchestrate_dir, repo_root, reporter)
+            checkpoint = _validate_checkpoint(orchestrate_dir, repo_root, reporter)
+            request_base = patch_request.get("base-artifacts") if isinstance(patch_request.get("base-artifacts"), dict) else {}
+            if trace.get("base-global-atom-index-sha256") != request_base.get("global-atom-index-sha256"):
+                reporter.error("phase3-base-global-index", trace_path, "base global index digest与request不一致")
+            if trace.get("base-coverage-review-sha256") != request_base.get("coverage-review-sha256"):
+                reporter.error("phase3-base-coverage", trace_path, "base coverage digest与request不一致")
+            expected_sources: List[str] = []
+            for target in patch_request.get("targets", []) if isinstance(patch_request.get("targets"), list) else []:
+                if isinstance(target, dict):
+                    source = normalize_code(target.get("source-document"))
+                    if source and source not in expected_sources:
+                        expected_sources.append(source)
+            if affected_sources != expected_sources:
+                reporter.error("phase3-affected-sources", trace_path, "affected-source-documents必须按request顺序恰好覆盖")
     trace_decision = validate_trace_status(trace, trace_path, reporter, "phase-3", "phase3-status") if trace else ""
     coverage = json_obj(coverage_path, reporter, PHASE3_COVERAGE_REVIEW_SCHEMA)
     if coverage:
@@ -1254,7 +3677,7 @@ def validate_phase_3(orchestrate_dir: Path, repo_root: Path, reporter: IssueRepo
                 "documents",
                 "gap-atoms",
                 "remainder-dispositions",
-                "recheck-sources",
+                "mapping-ambiguities",
                 "summary",
                 "decision",
                 "language-self-check",
@@ -1430,29 +3853,6 @@ def validate_phase_3(orchestrate_dir: Path, repo_root: Path, reporter: IssueRepo
         if count != 1:
             reporter.error("phase3-gap-link-cardinality", coverage_path, f"{gap_id} 必须恰好由一个 missing-obligation disposition链接，实际 {count}")
 
-    rechecks = coverage.get("recheck-sources")
-    if not isinstance(rechecks, list):
-        reporter.error("phase3-recheck-sources", coverage_path, "recheck-sources 必须是 array")
-        rechecks = []
-    recheck_fields = {"source-document", "source-atom-ids", "line-ranges", "reason"}
-    phase2_keys = set(phase2_atoms)
-    for row in rechecks:
-        if not isinstance(row, dict):
-            reporter.error("phase3-recheck-row", coverage_path, "recheck-sources item 必须是 object")
-            continue
-        source_document = normalize_code(row.get("source-document"))
-        exact_fields(row, recheck_fields, coverage_path, reporter, "phase3-recheck-fields", source_document or "recheck")
-        ids = row.get("source-atom-ids")
-        if not isinstance(ids, list) or not ids or len(ids) != len(set(ids)):
-            reporter.error("phase3-recheck-atom-ids", coverage_path, f"{source_document} recheck必须提供非空唯一 source-atom-ids")
-            ids = []
-        for atom_id in ids:
-            if f"{source_document}::{atom_id}" not in phase2_keys:
-                reporter.error("phase3-recheck-unknown-atom", coverage_path, f"recheck引用未知 Phase 2 atom：{source_document}::{atom_id}")
-        check_ranges(coverage_path, reporter, row.get("line-ranges"), source_document, repo_root, f"recheck::{source_document}")
-        if not squash(row.get("reason")):
-            reporter.error("phase3-recheck-reason", coverage_path, f"{source_document} recheck缺少中文 reason")
-
     global_atoms = load_global_atoms(orchestrate_dir, reporter)
     seen_refs: Set[str] = set()
     referenced_phase2: Set[str] = set()
@@ -1489,6 +3889,104 @@ def validate_phase_3(orchestrate_dir: Path, repo_root: Path, reporter: IssueRepo
     if referenced_gaps != set(gap_atoms):
         reporter.error("phase3-gap-ga-cardinality", index_path, f"gap occurrence必须一对一分配 GA；缺少={sorted(set(gap_atoms)-referenced_gaps)}，多余={sorted(referenced_gaps-set(gap_atoms))}")
 
+    ambiguities = coverage.get("mapping-ambiguities")
+    ambiguity_rows: Dict[str, Dict[str, object]] = {}
+    if not isinstance(ambiguities, list):
+        reporter.error("phase3-mapping-ambiguities", coverage_path, "mapping-ambiguities必须是array")
+        ambiguities = []
+    for index, row in enumerate(ambiguities):
+        if not isinstance(row, dict):
+            reporter.error("phase3-mapping-ambiguity-row", coverage_path, f"mapping-ambiguities[{index}]必须是object")
+            continue
+        exact_fields(
+            row,
+            {"global-atom-id", "evidence-ref", "dimensions", "reason"},
+            coverage_path,
+            reporter,
+            "phase3-mapping-ambiguity-fields",
+            f"mapping-ambiguities[{index}]",
+        )
+        ga_id = normalize_code(row.get("global-atom-id"))
+        if not GLOBAL_ATOM_ID_RE.fullmatch(ga_id) or ga_id in ambiguity_rows or ga_id not in global_atoms:
+            reporter.error("phase3-mapping-ambiguity-ga", coverage_path, f"mapping ambiguity GA非法、重复或未知：{ga_id}")
+        else:
+            ambiguity_rows[ga_id] = row
+        if ga_id in global_atoms and row.get("evidence-ref") != global_atoms[ga_id].get("evidence-ref"):
+            reporter.error("phase3-mapping-ambiguity-ref", coverage_path, f"{ga_id} evidence-ref与global index不一致")
+        dimensions = row.get("dimensions")
+        if (
+            not isinstance(dimensions, list)
+            or not dimensions
+            or any(not isinstance(item, str) for item in dimensions)
+            or len(dimensions) != len(set(dimensions))
+            or any(normalize_code(item) not in MAPPING_AMBIGUITY_DIMENSIONS for item in dimensions)
+        ):
+            reporter.error(
+                "phase3-mapping-ambiguity-dimensions",
+                coverage_path,
+                f"{ga_id} dimensions必须是非空唯一允许值array",
+            )
+        reason = str(row.get("reason", ""))
+        if not squash(reason) or not re.search(r"[\u4e00-\u9fff]", reason):
+            reporter.error("phase3-mapping-ambiguity-reason", coverage_path, f"{ga_id} reason必须使用简体中文")
+
+    if update_mode == "incremental-patch" and patch_request:
+        protected_rows = patch_request.get("protected-rows")
+        protected_global_rows = protected_rows.get("global-atoms") if isinstance(protected_rows, dict) else []
+        base_ga_ids = {
+            normalize_code(row.get("global-atom-id"))
+            for row in protected_global_rows if isinstance(row, dict)
+        }
+        request_targets = patch_request.get("targets") if isinstance(patch_request.get("targets"), list) else []
+        target_ga_ids = {
+            normalize_code(target.get("global-atom-id"))
+            for target in request_targets
+            if isinstance(target, dict) and target.get("global-atom-id") is not None
+        }
+        base_ga_ids.update(target_ga_ids)
+        actual_new_ga_ids = sorted(
+            set(global_atoms) - base_ga_ids,
+            key=lambda item: int(item.split("-")[1]) if GLOBAL_ATOM_ID_RE.fullmatch(item) else 0,
+        )
+        if trace_new_ga_ids != actual_new_ga_ids:
+            reporter.error("phase3-incremental-new-ga-coverage", trace_path, "new-global-atom-ids必须恰好覆盖增量追加GA")
+        if set(global_atoms) != base_ga_ids | set(actual_new_ga_ids):
+            reporter.error("phase3-incremental-ga-identity", index_path, "incremental global index丢失或重编号base GA")
+        max_base_number = max(
+            (int(item.split("-")[1]) for item in base_ga_ids if GLOBAL_ATOM_ID_RE.fullmatch(item)),
+            default=0,
+        )
+        expected_new_ga_ids = [
+            f"GA-{number:04d}"
+            for number in range(max_base_number + 1, max_base_number + len(actual_new_ga_ids) + 1)
+        ]
+        if actual_new_ga_ids != expected_new_ga_ids:
+            reporter.error("phase3-incremental-ga-append", index_path, "新GA必须从base最大ID之后单调连续追加")
+        expected_new_refs = [
+            (
+                normalize_code(target.get("source-document")),
+                normalize_code(new_id),
+            )
+            for target in request_targets
+            if isinstance(target, dict)
+            for new_id in (
+                target.get("new-source-atom-ids", [])
+                if isinstance(target.get("new-source-atom-ids"), list)
+                else []
+            )
+        ]
+        actual_new_refs = [
+            (
+                normalize_code(global_atoms[ga_id].get("evidence-ref", {}).get("source-document")),
+                normalize_code(global_atoms[ga_id].get("evidence-ref", {}).get("source-atom-id")),
+            )
+            for ga_id in actual_new_ga_ids
+            if isinstance(global_atoms[ga_id].get("evidence-ref"), dict)
+            and normalize_code(global_atoms[ga_id].get("evidence-ref", {}).get("kind")) == "phase-2-source-atom"
+        ]
+        if actual_new_refs != expected_new_refs:
+            reporter.error("phase3-incremental-new-ga-ref", index_path, "新增GA必须按request target/new-ID顺序恰好引用patch新增source atoms")
+
     summary = coverage.get("summary") if isinstance(coverage.get("summary"), dict) else {}
     disposition_counts = {name: classifications.count(name) for name in sorted(PHASE3_DISPOSITIONS)}
     expected_summary = {
@@ -1496,18 +3994,15 @@ def validate_phase_3(orchestrate_dir: Path, repo_root: Path, reporter: IssueRepo
         "phase-2-atoms": len(phase2_atoms),
         "gap-atoms": len(gap_atoms),
         "global-atoms": len(global_atoms),
+        "mapping-ambiguities": len(ambiguity_rows),
         "candidate-uncovered-ranges": sum(len(items) for items in uncovered_by_source.values()),
         "remainder-dispositions": disposition_counts,
     }
     if summary != expected_summary:
         reporter.error("phase3-summary-drift", coverage_path, f"summary 与机械重算不一致；期望 {expected_summary}")
 
-    if decision == "coverage-complete" and (rechecks or "requires-reextract" in classifications or "blocked" in classifications):
-        reporter.error("phase3-decision-consistency", coverage_path, "coverage-complete不得包含 recheck或 blocker")
-    if decision == "needs-extraction-recheck" and not (rechecks or "requires-reextract" in classifications):
-        reporter.error("phase3-decision-consistency", coverage_path, "needs-extraction-recheck要求 targeted recheck evidence")
-    if decision == "needs-extraction-recheck" and "blocked" in classifications:
-        reporter.error("phase3-decision-consistency", coverage_path, "存在 blocked disposition时 decision必须是 blocked")
+    if decision == "coverage-complete" and "blocked" in classifications:
+        reporter.error("phase3-decision-consistency", coverage_path, "coverage-complete不得包含blocked disposition")
     if decision == "blocked" and "blocked" not in classifications:
         reporter.error("phase3-decision-consistency", coverage_path, "blocked decision要求至少一个 blocked disposition作为正向证据")
     validate_global_index_mirror(orchestrate_dir, reporter)
@@ -1569,6 +4064,9 @@ def validate_phase_4(orchestrate_dir: Path, repo_root: Path, reporter: IssueRepo
     phase4_trace_path = orchestrate_dir / "trace/phase-4.trace.json"
     phase4_trace = json_obj(phase4_trace_path, reporter, PHASE_TRACE_SCHEMAS["phase-4"])
     status = validate_trace_status(phase4_trace, phase4_trace_path, reporter, "phase-4", "phase4-status") if phase4_trace else ""
+    update_mode = normalize_code(phase4_trace.get("update-mode")) if phase4_trace else ""
+    if phase4_trace and update_mode not in {"initial", "incremental-patch"}:
+        reporter.error("phase4-update-mode", phase4_trace_path, "update-mode只允许initial|incremental-patch")
     phase1_plan_path = orchestrate_dir / "phase-works/phase-1/initial-change-plan.md"
     require_file(phase1_plan_path, reporter, "phase4-interface-input", "缺少 Phase 4 输入：Phase 1 initial-change-plan.md")
     require_file(orchestrate_dir / "phase-works/phase-4/phase-4-agent-report.md", reporter, "phase4-interface-artifact", "缺少 Phase 4 agent 报告")
@@ -1586,7 +4084,11 @@ def validate_phase_4(orchestrate_dir: Path, repo_root: Path, reporter: IssueRepo
     if status in NON_FINAL_PHASE4_STATUSES:
         exact_fields(
             phase4_trace,
-            {"trace-schema", "trace-contract-version", "status", "issues"},
+            {
+                "trace-schema", "trace-contract-version", "status", "update-mode",
+                "patch-request-ref", "checkpoint-ref", "base-evidence-collection-index-sha256",
+                "affected-closure", "issues",
+            },
             phase4_trace_path,
             reporter,
             "phase4-trace-fields",
@@ -1594,6 +4096,60 @@ def validate_phase_4(orchestrate_dir: Path, repo_root: Path, reporter: IssueRepo
         )
         if not isinstance(phase4_trace.get("issues"), list) or not phase4_trace.get("issues"):
             reporter.error("phase4-trace-issues", phase4_trace_path, f"{status}状态要求非空issues[]")
+        blocked_closure = phase4_trace.get("affected-closure")
+        if not isinstance(blocked_closure, dict):
+            reporter.error("phase4-affected-closure", phase4_trace_path, "blocked affected-closure必须是object")
+            blocked_closure = {}
+        else:
+            exact_fields(
+                blocked_closure,
+                {"global-atom-ids", "change-buckets", "capability-buckets", "rendered-artifact-paths"},
+                phase4_trace_path,
+                reporter,
+                "phase4-affected-closure-fields",
+                "blocked affected-closure",
+            )
+        blocked_closure_values: Dict[str, List[str]] = {}
+        for field in ("global-atom-ids", "change-buckets", "capability-buckets", "rendered-artifact-paths"):
+            value = blocked_closure.get(field)
+            if (
+                not isinstance(value, list)
+                or any(not isinstance(item, str) or not normalize_code(item) for item in value)
+                or len(value) != len(set(value))
+            ):
+                reporter.error("phase4-affected-closure-value", phase4_trace_path, f"blocked affected-closure.{field}必须是唯一string array")
+                blocked_closure_values[field] = []
+            else:
+                blocked_closure_values[field] = [normalize_code(item) for item in value]
+        if update_mode == "initial":
+            if (
+                phase4_trace.get("patch-request-ref") is not None
+                or phase4_trace.get("checkpoint-ref") is not None
+                or phase4_trace.get("base-evidence-collection-index-sha256") is not None
+                or any(blocked_closure_values.values())
+            ):
+                reporter.error("phase4-blocked-initial-fields", phase4_trace_path, "initial blocked要求patch/base为null且affected closure为空")
+        elif update_mode == "incremental-patch":
+            request_path = _patch_request_path(orchestrate_dir)
+            checkpoint_path = _checkpoint_path(orchestrate_dir)
+            _validate_artifact_ref(
+                phase4_trace.get("patch-request-ref"), request_path, phase4_trace_path, repo_root, reporter, "phase4-patch-request-ref",
+            )
+            _validate_artifact_ref(
+                phase4_trace.get("checkpoint-ref"), checkpoint_path, phase4_trace_path, repo_root, reporter, "phase4-checkpoint-ref",
+            )
+            request = _validate_aborted_patch_request_snapshot(orchestrate_dir, reporter)
+            _validate_checkpoint(orchestrate_dir, repo_root, reporter, verify_current_surfaces=False)
+            base = request.get("base-artifacts") if isinstance(request.get("base-artifacts"), dict) else {}
+            if phase4_trace.get("base-evidence-collection-index-sha256") != base.get("phase-4-index-sha256"):
+                reporter.error("phase4-base-index", phase4_trace_path, "blocked base evidence collection index digest与request不一致")
+            target_ga_ids = {
+                normalize_code(target.get("global-atom-id"))
+                for target in request.get("targets", []) if isinstance(request.get("targets"), list)
+                if isinstance(target, dict) and target.get("global-atom-id") is not None
+            }
+            if not target_ga_ids.issubset(set(blocked_closure_values["global-atom-ids"])):
+                reporter.error("phase4-blocked-affected-ga", phase4_trace_path, "blocked affected closure必须至少包含全部target GA")
         if index_path.exists():
             reporter.error("phase4-nonfinal-terminal-artifact", index_path, f"{status}状态不得保留terminal index")
         if collection_root.exists():
@@ -1604,12 +4160,64 @@ def validate_phase_4(orchestrate_dir: Path, repo_root: Path, reporter: IssueRepo
         return
     exact_fields(
         phase4_trace,
-        {"trace-schema", "trace-contract-version", "status", "assembled"},
+        {
+            "trace-schema", "trace-contract-version", "status", "update-mode", "patch-request-ref",
+            "checkpoint-ref", "base-evidence-collection-index-sha256", "affected-closure", "assembled",
+        },
         phase4_trace_path,
         reporter,
         "phase4-trace-fields",
         "assembled phase-4 trace",
     )
+    affected_closure = phase4_trace.get("affected-closure")
+    if not isinstance(affected_closure, dict):
+        reporter.error("phase4-affected-closure", phase4_trace_path, "affected-closure必须是object")
+        affected_closure = {}
+    else:
+        exact_fields(
+            affected_closure,
+            {"global-atom-ids", "change-buckets", "capability-buckets", "rendered-artifact-paths"},
+            phase4_trace_path,
+            reporter,
+            "phase4-affected-closure-fields",
+            "affected-closure",
+        )
+    closure_values: Dict[str, List[str]] = {}
+    for field in ("global-atom-ids", "change-buckets", "capability-buckets", "rendered-artifact-paths"):
+        value = affected_closure.get(field)
+        if (
+            not isinstance(value, list)
+            or any(not isinstance(item, str) or not normalize_code(item) for item in value)
+            or len(value) != len(set(value))
+        ):
+            reporter.error("phase4-affected-closure-value", phase4_trace_path, f"affected-closure.{field}必须是唯一string array")
+            closure_values[field] = []
+        else:
+            closure_values[field] = [normalize_code(item) for item in value]
+    patch_request: Dict[str, object] = {}
+    checkpoint: Dict[str, object] = {}
+    if update_mode == "initial":
+        if (
+            phase4_trace.get("patch-request-ref") is not None
+            or phase4_trace.get("checkpoint-ref") is not None
+            or phase4_trace.get("base-evidence-collection-index-sha256") is not None
+            or any(closure_values.values())
+        ):
+            reporter.error("phase4-initial-incremental-fields", phase4_trace_path, "initial mode要求patch/base为null且affected closure为空")
+    elif update_mode == "incremental-patch":
+        request_path = _patch_request_path(orchestrate_dir)
+        checkpoint_path = _checkpoint_path(orchestrate_dir)
+        _validate_artifact_ref(
+            phase4_trace.get("patch-request-ref"), request_path, phase4_trace_path, repo_root, reporter, "phase4-patch-request-ref",
+        )
+        _validate_artifact_ref(
+            phase4_trace.get("checkpoint-ref"), checkpoint_path, phase4_trace_path, repo_root, reporter, "phase4-checkpoint-ref",
+        )
+        patch_request = _validate_patch_request(orchestrate_dir, repo_root, reporter)
+        checkpoint = _validate_checkpoint(orchestrate_dir, repo_root, reporter)
+        request_base = patch_request.get("base-artifacts") if isinstance(patch_request.get("base-artifacts"), dict) else {}
+        if phase4_trace.get("base-evidence-collection-index-sha256") != request_base.get("phase-4-index-sha256"):
+            reporter.error("phase4-base-index", phase4_trace_path, "base evidence collection index digest与request不一致")
     assembled = phase4_trace.get("assembled")
     if not isinstance(assembled, dict):
         reporter.error("phase4-trace-assembled", phase4_trace_path, "assembled必须是object")
@@ -1633,6 +4241,91 @@ def validate_phase_4(orchestrate_dir: Path, repo_root: Path, reporter: IssueRepo
             "phase4-index-fields",
             "derived evidence collection index",
         )
+    if update_mode == "incremental-patch" and patch_request and data:
+        request_targets = patch_request.get("targets") if isinstance(patch_request.get("targets"), list) else []
+        target_ga_ids = {
+            normalize_code(target.get("global-atom-id"))
+            for target in request_targets
+            if isinstance(target, dict) and target.get("global-atom-id") is not None
+        }
+        phase3_trace_path = orchestrate_dir / "trace/phase-3.trace.json"
+        try:
+            phase3_trace = read_json(phase3_trace_path) if phase3_trace_path.exists() else {}
+        except Exception:  # noqa: BLE001
+            phase3_trace = {}
+        new_ga_ids = {
+            normalize_code(item)
+            for item in phase3_trace.get("new-global-atom-ids", [])
+            if isinstance(item, str)
+        }
+        expected_affected_ga = target_ga_ids | new_ga_ids
+        if set(closure_values["global-atom-ids"]) != expected_affected_ga:
+            reporter.error("phase4-affected-ga-closure", phase4_trace_path, "affected closure GA必须恰好覆盖target与新增GA")
+
+        rendered_rows = data.get("rendered-artifacts") if isinstance(data.get("rendered-artifacts"), list) else []
+        rendered_by_path = {
+            normalize_code(row.get("artifact-path")): row
+            for row in rendered_rows
+            if isinstance(row, dict) and normalize_code(row.get("artifact-path"))
+        }
+        protected_rows = patch_request.get("protected-rows")
+        protected_rendered = protected_rows.get("phase-4-rendered-artifacts") if isinstance(protected_rows, dict) else []
+        protected_rendered_paths = {
+            normalize_code(row.get("artifact-path"))
+            for row in protected_rendered
+            if isinstance(row, dict)
+        }
+        expected_affected_paths = set(rendered_by_path) - protected_rendered_paths
+        if set(closure_values["rendered-artifact-paths"]) != expected_affected_paths:
+            reporter.error(
+                "phase4-affected-rendered-closure",
+                phase4_trace_path,
+                "affected rendered paths必须恰好是全部rendered artifacts减request protected rows",
+            )
+        expected_change_buckets = {
+            normalize_code(rendered_by_path[item].get("owner-id"))
+            for item in expected_affected_paths
+            if normalize_code(rendered_by_path[item].get("collection-kind")) == "input-change"
+        }
+        expected_capability_buckets = {
+            normalize_code(rendered_by_path[item].get("owner-id"))
+            for item in expected_affected_paths
+            if normalize_code(rendered_by_path[item].get("collection-kind")) == "input-capability"
+        }
+        if set(closure_values["change-buckets"]) != expected_change_buckets:
+            reporter.error("phase4-affected-change-closure", phase4_trace_path, "change-buckets与affected rendered artifacts不一致")
+        if set(closure_values["capability-buckets"]) != expected_capability_buckets:
+            reporter.error("phase4-affected-capability-closure", phase4_trace_path, "capability-buckets与affected rendered artifacts不一致")
+        scope = checkpoint.get("allowed-update-scope") if isinstance(checkpoint.get("allowed-update-scope"), dict) else {}
+        scope_ga = {
+            normalize_code(item)
+            for item in scope.get("global-atom-ids", [])
+            if isinstance(item, str)
+        }
+        if not expected_affected_ga.issubset(scope_ga):
+            reporter.error("phase4-checkpoint-scope-ga", phase4_trace_path, "affected GA closure超出checkpoint allowed scope")
+        scope_changes = {
+            normalize_code(item)
+            for item in (
+                scope.get("initial-changes", [])
+                if isinstance(scope.get("initial-changes"), list)
+                else []
+            )
+            if isinstance(item, str)
+        }
+        scope_capabilities = {
+            normalize_code(item)
+            for item in (
+                scope.get("initial-capabilities", [])
+                if isinstance(scope.get("initial-capabilities"), list)
+                else []
+            )
+            if isinstance(item, str)
+        }
+        if not expected_change_buckets.issubset(scope_changes):
+            reporter.error("phase4-checkpoint-scope-change", phase4_trace_path, "affected Change bucket超出checkpoint allowed scope")
+        if not expected_capability_buckets.issubset(scope_capabilities):
+            reporter.error("phase4-checkpoint-scope-capability", phase4_trace_path, "affected Capability bucket超出checkpoint allowed scope")
     try:
         expected_outputs = render_evidence_collections(orchestrate_dir)
         expected_index = build_evidence_collection_index(orchestrate_dir, expected_outputs)
@@ -1792,10 +4485,42 @@ def _validate_phase5_refit(
     if not data:
         return ""
     status = normalize_code(data.get("status"))
+    patch_history = data.get("patch-history")
+    patch_lifecycle_blocked = (
+        status == "blocked"
+        and isinstance(patch_history, list)
+        and len(patch_history) == 1
+        and isinstance(patch_history[0], dict)
+        and normalize_code(patch_history[0].get("status")) == "blocked"
+    )
     try:
-        validate_framework_refit(orchestrate_dir, data, final_changes, final_capabilities, final_overlay)
+        validate_framework_refit(
+            orchestrate_dir,
+            data,
+            final_changes,
+            final_capabilities,
+            final_overlay,
+            verify_current_inputs=not patch_lifecycle_blocked,
+        )
     except (OSError, ValueError, json.JSONDecodeError) as exc:
         reporter.error("phase5-refit-contract", refit_path, str(exc))
+    if isinstance(patch_history, list):
+        checkpoint_path = _checkpoint_path(orchestrate_dir)
+        try:
+            checkpoint = read_json(checkpoint_path) if checkpoint_path.exists() else {}
+        except Exception:  # noqa: BLE001
+            checkpoint = {}
+        patch_attempt = checkpoint.get("patch-attempt") if isinstance(checkpoint.get("patch-attempt"), dict) else {}
+        for index, row in enumerate(patch_history):
+            if not isinstance(row, dict):
+                continue
+            if row.get("request-id") != PATCH_REQUEST_ID:
+                reporter.error("phase5-patch-history-request-id", refit_path, f"patch-history[{index}] request-id必须为{PATCH_REQUEST_ID}")
+            fingerprint = row.get("finding-fingerprint")
+            if not _is_sha256(fingerprint):
+                reporter.error("phase5-patch-history-fingerprint", refit_path, f"patch-history[{index}] finding-fingerprint非法")
+            elif fingerprint != patch_attempt.get("finding-fingerprint"):
+                reporter.error("phase5-patch-history-fingerprint", refit_path, f"patch-history[{index}] fingerprint与checkpoint不一致")
     require_file(review_path, reporter, "phase5-review", "缺少由framework-refit-trace.json渲染的plan-refit-review.md")
     if review_path.exists():
         try:
@@ -1831,6 +4556,264 @@ def _validate_phase5_refit(
         if status == "adjusted" and same_framework:
             reporter.error("phase5-refit-status-consistency", refit_path, "adjusted要求至少一项source-backed framework调整")
     return status
+
+
+def _validate_checkpoint_pending_existing_output_scope(
+    orchestrate_dir: Path,
+    checkpoint: Dict[str, object],
+    refit: Dict[str, object],
+    reporter: IssueReporter,
+) -> None:
+    """pending review不得静默改指向scope外既有provisional final ID。"""
+    path = _checkpoint_path(orchestrate_dir)
+    pending = checkpoint.get("pending-ids")
+    scope = checkpoint.get("allowed-update-scope")
+    provisional = checkpoint.get("provisional-framework")
+    if not isinstance(pending, dict) or not isinstance(scope, dict) or not isinstance(provisional, dict):
+        return
+    specs = (
+        (
+            "change-reviews", "input-change", "final-changes",
+            "change-lineage", "provisional-final-changes",
+            "final-changes", "change-order",
+            "phase5-checkpoint-existing-change-output-scope",
+        ),
+        (
+            "capability-reviews", "input-capability", "final-capabilities",
+            "capability-lineage", "provisional-final-capabilities",
+            "final-capabilities", "capabilities",
+            "phase5-checkpoint-existing-capability-output-scope",
+        ),
+    )
+    for review_field, input_field, terminal_final_field, lineage_field, lineage_final_field, scope_field, provisional_ids_field, rule in specs:
+        pending_inputs = {
+            normalize_code(item) for item in pending.get(review_field, []) if isinstance(item, str)
+        }
+        scoped_finals = {
+            normalize_code(item) for item in scope.get(scope_field, []) if isinstance(item, str)
+        }
+        provisional_ids = {
+            normalize_code(item)
+            for item in provisional.get(provisional_ids_field, [])
+            if isinstance(item, str)
+        }
+        frozen_by_input = {
+            normalize_code(row.get(input_field)): {
+                normalize_code(item)
+                for item in row.get(lineage_final_field, [])
+                if isinstance(item, str)
+            }
+            for row in provisional.get(lineage_field, [])
+            if isinstance(row, dict) and isinstance(row.get(lineage_final_field), list)
+        }
+        for row in refit.get(review_field, []):
+            if not isinstance(row, dict):
+                continue
+            input_id = normalize_code(row.get(input_field))
+            if input_id not in pending_inputs:
+                continue
+            terminal_existing = {
+                normalize_code(item)
+                for item in row.get(terminal_final_field, [])
+                if isinstance(item, str) and normalize_code(item) in provisional_ids
+            }
+            added_existing = terminal_existing - frozen_by_input.get(input_id, set())
+            unauthorized = sorted(added_existing - scoped_finals)
+            if unauthorized:
+                reporter.error(
+                    rule,
+                    path,
+                    f"pending {review_field}/{input_id}新增scope外既有provisional final ID：{unauthorized}",
+                )
+
+
+def _validate_checkpoint_resume_preservation(
+    orchestrate_dir: Path,
+    checkpoint: Dict[str, object],
+    refit: Dict[str, object],
+    parsed_changes: List[object],
+    parsed_capabilities: List[object],
+    reporter: IssueReporter,
+) -> None:
+    path = _checkpoint_path(orchestrate_dir)
+    completed = checkpoint.get("completed-rows")
+    scope = checkpoint.get("allowed-update-scope")
+    if not isinstance(completed, dict) or not isinstance(scope, dict):
+        return
+    mapping_path = orchestrate_dir / "phase-works/phase-5/atom-plan-mapping.json"
+    try:
+        mapping = read_json(mapping_path) if mapping_path.exists() else {}
+    except Exception:  # noqa: BLE001
+        mapping = {}
+    final_rows_by_kind = {
+        "capability-reviews": refit.get("capability-reviews"),
+        "change-reviews": refit.get("change-reviews"),
+        "unassigned-and-gap-reviews": refit.get("unassigned-and-gap-reviews"),
+        "atom-plan-mappings": mapping.get("rows"),
+    }
+    allowed_keys = {
+        "capability-reviews": {
+            normalize_code(item) for item in scope.get("initial-capabilities", []) if isinstance(item, str)
+        },
+        "change-reviews": {
+            normalize_code(item) for item in scope.get("initial-changes", []) if isinstance(item, str)
+        },
+        "unassigned-and-gap-reviews": {
+            normalize_code(item) for item in scope.get("global-atom-ids", []) if isinstance(item, str)
+        },
+        "atom-plan-mappings": {
+            normalize_code(item) for item in scope.get("global-atom-ids", []) if isinstance(item, str)
+        },
+    }
+    for kind, key_field in CHECKPOINT_ROW_KEY_FIELDS.items():
+        final_rows = final_rows_by_kind.get(kind)
+        checkpoint_rows = completed.get(kind)
+        if not isinstance(final_rows, list) or not isinstance(checkpoint_rows, list):
+            continue
+        final_by_key = {
+            normalize_code(row.get(key_field)): row
+            for row in final_rows
+            if isinstance(row, dict) and normalize_code(row.get(key_field))
+        }
+        for row in checkpoint_rows:
+            if not isinstance(row, dict):
+                continue
+            key = normalize_code(row.get(key_field))
+            if key in allowed_keys[kind]:
+                continue
+            final_row = final_by_key.get(key)
+            if final_row is None or canonical_json_sha256(final_row) != canonical_json_sha256(row):
+                reporter.error(
+                    "phase5-checkpoint-resume-row-drift",
+                    path,
+                    f"scope外completed row未逐项复用：{kind}/{key}",
+                )
+
+    provisional = checkpoint.get("provisional-framework")
+    final_framework = refit.get("final-framework")
+    if not isinstance(provisional, dict) or not isinstance(final_framework, dict):
+        return
+    scope_initial_changes = {
+        normalize_code(item) for item in scope.get("initial-changes", []) if isinstance(item, str)
+    }
+    scope_final_changes = {
+        normalize_code(item) for item in scope.get("final-changes", []) if isinstance(item, str)
+    }
+    scope_initial_capabilities = {
+        normalize_code(item) for item in scope.get("initial-capabilities", []) if isinstance(item, str)
+    }
+    scope_final_capabilities = {
+        normalize_code(item) for item in scope.get("final-capabilities", []) if isinstance(item, str)
+    }
+    provisional_structure = {
+        "change-order": provisional.get("change-order"),
+        "capabilities": provisional.get("capabilities"),
+        "overlay": provisional.get("overlay"),
+    }
+    if not scope_final_changes and not scope_final_capabilities:
+        if final_framework != provisional_structure:
+            reporter.error("phase5-checkpoint-framework-drift", path, "scope未授权final framework变化")
+    # initial scope只授权重新生成对应review row；final framework mutation必须显式列入final scope。
+    mutable_changes = scope_final_changes
+    mutable_capabilities = scope_final_capabilities
+    provisional_changes = [normalize_code(item) for item in provisional.get("change-order", []) if isinstance(item, str)]
+    final_change_ids = [normalize_code(item) for item in final_framework.get("change-order", []) if isinstance(item, str)]
+    shared_changes = set(provisional_changes).intersection(final_change_ids)
+    if [item for item in provisional_changes if item in shared_changes] != [
+        item for item in final_change_ids if item in shared_changes
+    ]:
+        reporter.error("phase5-checkpoint-roadmap-reorder", path, "checkpoint resume禁止重排既有Change的相对顺序")
+    if any(
+        normalize_code(row.get("decision")) == "reorder"
+        for row in refit.get("change-reviews", [])
+        if isinstance(row, dict)
+    ):
+        reporter.error("phase5-checkpoint-roadmap-reorder", path, "checkpoint resume不允许reorder decision")
+    if [item for item in provisional_changes if item not in mutable_changes] != [
+        item for item in final_change_ids if item not in mutable_changes
+    ]:
+        reporter.error("phase5-checkpoint-framework-order-drift", path, "scope外Change identity或相对顺序发生变化")
+    provisional_capabilities = [normalize_code(item) for item in provisional.get("capabilities", []) if isinstance(item, str)]
+    final_capability_ids = [normalize_code(item) for item in final_framework.get("capabilities", []) if isinstance(item, str)]
+    if [item for item in provisional_capabilities if item not in mutable_capabilities] != [
+        item for item in final_capability_ids if item not in mutable_capabilities
+    ]:
+        reporter.error("phase5-checkpoint-framework-capability-drift", path, "scope外Capability集合发生变化")
+
+    def preserved_overlay(framework: Dict[str, object]) -> List[Dict[str, object]]:
+        rows = framework.get("overlay")
+        return [
+            row
+            for row in rows if isinstance(rows, list) and isinstance(row, dict)
+            if normalize_code(row.get("change")) not in mutable_changes
+            or normalize_code(row.get("capability")) not in mutable_capabilities
+        ] if isinstance(rows, list) else []
+
+    if preserved_overlay(provisional) != preserved_overlay(final_framework):
+        reporter.error(
+            "phase5-checkpoint-framework-overlay-drift",
+            path,
+            "只有Change与Capability两个endpoint都在mutable closure内的overlay row才允许变化",
+        )
+
+    def preserved_dependency_edges(rows: object) -> List[Dict[str, str]]:
+        return [
+            row
+            for row in rows if isinstance(rows, list) and isinstance(row, dict)
+            if normalize_code(row.get("change")) not in mutable_changes
+            or normalize_code(row.get("depends-on")) not in mutable_changes
+        ] if isinstance(rows, list) else []
+
+    final_dependency_edges = framework_dependency_edges(parsed_changes)
+    if preserved_dependency_edges(provisional.get("dependency-edges")) != preserved_dependency_edges(final_dependency_edges):
+        reporter.error(
+            "phase5-checkpoint-framework-dependency-drift",
+            path,
+            "只有两个endpoint都在mutable Change closure内的dependency edge才允许变化",
+        )
+
+    actual_change_rows, actual_capability_rows = framework_semantic_digest_rows(
+        parsed_changes,
+        parsed_capabilities,
+    )
+    semantic_specs = (
+        (
+            provisional.get("change-semantic-digests"),
+            actual_change_rows,
+            "final-change",
+            mutable_changes,
+            "phase5-checkpoint-framework-change-semantic-drift",
+            "Change",
+        ),
+        (
+            provisional.get("capability-semantic-digests"),
+            actual_capability_rows,
+            "final-capability",
+            mutable_capabilities,
+            "phase5-checkpoint-framework-capability-semantic-drift",
+            "Capability",
+        ),
+    )
+    for frozen_rows, actual_rows, key_field, mutable_ids, rule, label in semantic_specs:
+        frozen_map = {
+            normalize_code(row.get(key_field)): normalize_code(row.get("sha256"))
+            for row in (frozen_rows if isinstance(frozen_rows, list) else [])
+            if isinstance(row, dict)
+        }
+        actual_map = {
+            normalize_code(row.get(key_field)): normalize_code(row.get("sha256"))
+            for row in actual_rows
+            if isinstance(row, dict)
+        }
+        for row_id, digest in frozen_map.items():
+            if row_id in mutable_ids:
+                continue
+            if actual_map.get(row_id) != digest:
+                reporter.error(
+                    rule,
+                    path,
+                    f"scope外{label}语义row未原样复用：{row_id}",
+                )
 
 
 def _validate_phase5_derived_outputs(
@@ -1987,20 +4970,74 @@ def validate_phase_5(orchestrate_dir: Path, repo_root: Path, reporter: IssueRepo
         reporter.error("phase5-status-drift", trace_path, f"phase trace status {trace_status}与framework refit status {refit_status}不一致")
 
     if trace_status in NON_FINAL_PHASE5_STATUSES:
-        exact_fields(
-            trace,
-            {
-                "trace-schema", "trace-contract-version", "status",
-                "framework-refit-trace-path", "framework-refit-trace-sha256",
-                "plan-refit-review-path", "plan-refit-review-sha256", "issues",
-            },
-            trace_path,
-            reporter,
-            "phase5-trace-fields",
-            "nonterminal phase-5 trace",
-        )
-        review_path = work / "plan-refit-review.md"
         refit_path = work / "framework-refit-trace.json"
+        try:
+            refit_data = read_json(refit_path) if refit_path.exists() else {}
+        except Exception:  # noqa: BLE001
+            refit_data = {}
+        refit_history = refit_data.get("patch-history") if isinstance(refit_data.get("patch-history"), list) else []
+        patch_lifecycle = trace_status == "needs-targeted-evidence-patch" or bool(refit_history)
+        if patch_lifecycle:
+            exact_fields(
+                trace,
+                {
+                    "trace-schema", "trace-contract-version", "status", "execution-mode",
+                    "framework-refit-trace-path", "framework-refit-trace-sha256",
+                    "plan-refit-review-path", "plan-refit-review-sha256",
+                    "evidence-patch-request-path", "evidence-patch-request-sha256",
+                    "phase-5-checkpoint-path", "phase-5-checkpoint-sha256", "patch-history", "issues",
+                },
+                trace_path,
+                reporter,
+                "phase5-trace-fields",
+                "patch lifecycle phase-5 trace",
+            )
+            expected_execution_mode = "initial" if trace_status == "needs-targeted-evidence-patch" else "checkpoint-resume"
+            if normalize_code(trace.get("execution-mode")) != expected_execution_mode:
+                reporter.error("phase5-execution-mode", trace_path, f"{trace_status}要求execution-mode={expected_execution_mode}")
+            if trace.get("patch-history") != refit_history:
+                reporter.error("phase5-trace-patch-history", trace_path, "trace patch-history必须与framework refit逐字一致")
+            expected_history_status = "requested" if trace_status == "needs-targeted-evidence-patch" else "blocked"
+            history_statuses = [normalize_code(row.get("status")) for row in refit_history if isinstance(row, dict)]
+            if history_statuses != [expected_history_status]:
+                reporter.error("phase5-trace-patch-history-status", trace_path, f"patch-history必须恰好一条{expected_history_status}")
+            request_path = _patch_request_path(orchestrate_dir)
+            checkpoint_path = _checkpoint_path(orchestrate_dir)
+            trace_patch_specs = (
+                ("evidence-patch-request", request_path),
+                ("phase-5-checkpoint", checkpoint_path),
+            )
+            for prefix, artifact_path in trace_patch_specs:
+                if trace.get(f"{prefix}-path") != rel(artifact_path, repo_root):
+                    reporter.error("phase5-trace-patch-path", trace_path, f"{prefix}-path与canonical path不一致")
+                if artifact_path.exists() and trace.get(f"{prefix}-sha256") != sha256_file(artifact_path):
+                    reporter.error("phase5-trace-patch-sha", trace_path, f"{prefix} digest与当前artifact不一致")
+            if trace_status == "blocked":
+                _validate_aborted_patch_request_snapshot(orchestrate_dir, reporter)
+                _validate_checkpoint(
+                    orchestrate_dir,
+                    repo_root,
+                    reporter,
+                    verify_current_surfaces=False,
+                )
+            else:
+                _validate_patch_issuance_base_modes(orchestrate_dir, reporter)
+                _validate_patch_request(orchestrate_dir, repo_root, reporter)
+                _validate_checkpoint(orchestrate_dir, repo_root, reporter)
+        else:
+            exact_fields(
+                trace,
+                {
+                    "trace-schema", "trace-contract-version", "status",
+                    "framework-refit-trace-path", "framework-refit-trace-sha256",
+                    "plan-refit-review-path", "plan-refit-review-sha256", "issues",
+                },
+                trace_path,
+                reporter,
+                "phase5-trace-fields",
+                "initial blocked phase-5 trace",
+            )
+        review_path = work / "plan-refit-review.md"
         expected_refit_path = rel(refit_path, repo_root)
         if trace.get("framework-refit-trace-path") != expected_refit_path:
             reporter.error("phase5-trace-path", trace_path, f"framework-refit-trace-path应为{expected_refit_path}")
@@ -2014,7 +5051,6 @@ def validate_phase_5(orchestrate_dir: Path, repo_root: Path, reporter: IssueRepo
         if not isinstance(trace.get("issues"), list) or not trace.get("issues"):
             reporter.error("phase5-trace-issues", trace_path, f"{trace_status}状态要求非空issues[]")
         if refit_path.exists():
-            refit_data = read_json(refit_path)
             if trace.get("issues") != refit_data.get("issues"):
                 reporter.error("phase5-trace-issues", trace_path, "nonterminal trace issues必须与framework refit issues一致")
         terminal_paths = [
@@ -2046,7 +5082,9 @@ def validate_phase_5(orchestrate_dir: Path, repo_root: Path, reporter: IssueRepo
     exact_fields(
         trace,
         {
-            "trace-schema", "trace-contract-version", "status",
+            "trace-schema", "trace-contract-version", "status", "execution-mode", "patch-history",
+            "evidence-patch-request-path", "evidence-patch-request-sha256",
+            "phase-5-checkpoint-path", "phase-5-checkpoint-sha256",
             "final-change-plan-path", "final-change-plan-sha256",
             "framework-refit-trace-path", "framework-refit-trace-sha256",
             "plan-refit-review-path", "plan-refit-review-sha256",
@@ -2059,6 +5097,200 @@ def validate_phase_5(orchestrate_dir: Path, repo_root: Path, reporter: IssueRepo
         "phase5-trace-fields",
         "phase-5 trace",
     )
+    try:
+        terminal_refit = read_json(work / "framework-refit-trace.json")
+    except Exception:  # noqa: BLE001
+        terminal_refit = {}
+    refit_history = terminal_refit.get("patch-history") if isinstance(terminal_refit.get("patch-history"), list) else []
+    if trace.get("patch-history") != refit_history:
+        reporter.error("phase5-trace-patch-history", trace_path, "terminal trace patch-history必须与framework refit逐字一致")
+    execution_mode = normalize_code(trace.get("execution-mode"))
+    if refit_history:
+        history_statuses = [normalize_code(row.get("status")) for row in refit_history if isinstance(row, dict)]
+        if execution_mode != "checkpoint-resume" or history_statuses != ["closed"]:
+            reporter.error("phase5-terminal-patch-history", trace_path, "patch terminal要求checkpoint-resume及恰一closed history")
+        checkpoint = _validate_checkpoint(orchestrate_dir, repo_root, reporter)
+        _validate_patch_request(orchestrate_dir, repo_root, reporter)
+        request_path = _patch_request_path(orchestrate_dir)
+        checkpoint_path = _checkpoint_path(orchestrate_dir)
+        terminal_patch_specs = (
+            ("evidence-patch-request", request_path),
+            ("phase-5-checkpoint", checkpoint_path),
+        )
+        for prefix, artifact_path in terminal_patch_specs:
+            if trace.get(f"{prefix}-path") != rel(artifact_path, repo_root):
+                reporter.error("phase5-terminal-patch-path", trace_path, f"{prefix}-path与canonical path不一致")
+            if artifact_path.exists() and trace.get(f"{prefix}-sha256") != sha256_file(artifact_path):
+                reporter.error("phase5-terminal-patch-sha", trace_path, f"{prefix} digest与immutable artifact不一致")
+        pending = checkpoint.get("pending-ids") if isinstance(checkpoint.get("pending-ids"), dict) else {}
+        try:
+            terminal_mapping = read_json(work / "atom-plan-mapping.json")
+        except Exception:  # noqa: BLE001
+            terminal_mapping = {}
+        mapped_ga_ids = {
+            normalize_code(row.get("global-atom-id"))
+            for row in terminal_mapping.get("rows", [])
+            if isinstance(row, dict)
+        }
+        pending_ga_ids = {
+            normalize_code(item)
+            for item in pending.get("atom-plan-mappings", [])
+            if isinstance(item, str)
+        }
+        if not pending_ga_ids.issubset(mapped_ga_ids):
+            reporter.error("phase5-checkpoint-pending-ga", _checkpoint_path(orchestrate_dir), "checkpoint pending GA未全部进入terminal mapping")
+        reviewed_unassigned = {
+            normalize_code(row.get("global-atom-id"))
+            for row in terminal_refit.get("unassigned-and-gap-reviews", [])
+            if isinstance(row, dict)
+        }
+        pending_unassigned = {
+            normalize_code(item)
+            for item in pending.get("unassigned-and-gap-reviews", [])
+            if isinstance(item, str)
+        }
+        if not pending_unassigned.issubset(reviewed_unassigned):
+            reporter.error(
+                "phase5-checkpoint-pending-unassigned",
+                _checkpoint_path(orchestrate_dir),
+                "checkpoint pending unassigned/gap GA未全部进入terminal review",
+            )
+        final_framework = terminal_refit.get("final-framework") if isinstance(terminal_refit.get("final-framework"), dict) else {}
+        final_change_ids = {
+            normalize_code(item) for item in final_framework.get("change-order", []) if isinstance(item, str)
+        }
+        reviewed_changes = {
+            normalize_code(row.get("input-change"))
+            for row in terminal_refit.get("change-reviews", [])
+            if isinstance(row, dict)
+        }
+        pending_changes = {
+            normalize_code(item) for item in pending.get("change-reviews", []) if isinstance(item, str)
+        }
+        if not pending_changes.issubset(final_change_ids | reviewed_changes):
+            reporter.error("phase5-checkpoint-pending-change", _checkpoint_path(orchestrate_dir), "checkpoint pending Change未在terminal framework/review中裁决")
+        final_capability_ids = {
+            normalize_code(item) for item in final_framework.get("capabilities", []) if isinstance(item, str)
+        }
+        reviewed_capabilities = {
+            normalize_code(row.get("input-capability"))
+            for row in terminal_refit.get("capability-reviews", [])
+            if isinstance(row, dict)
+        }
+        pending_capabilities = {
+            normalize_code(item) for item in pending.get("capability-reviews", []) if isinstance(item, str)
+        }
+        if not pending_capabilities.issubset(final_capability_ids | reviewed_capabilities):
+            reporter.error("phase5-checkpoint-pending-capability", _checkpoint_path(orchestrate_dir), "checkpoint pending Capability未在terminal framework/review中裁决")
+        scope = checkpoint.get("allowed-update-scope") if isinstance(checkpoint.get("allowed-update-scope"), dict) else {}
+        scoped_terminal_changes = {
+            normalize_code(item)
+            for row in terminal_refit.get("change-reviews", [])
+            if isinstance(row, dict) and normalize_code(row.get("input-change")) in pending_changes
+            for item in row.get("final-changes", [])
+            if isinstance(item, str)
+        }
+        scoped_terminal_capabilities = {
+            normalize_code(item)
+            for row in terminal_refit.get("capability-reviews", [])
+            if isinstance(row, dict) and normalize_code(row.get("input-capability")) in pending_capabilities
+            for item in row.get("final-capabilities", [])
+            if isinstance(item, str)
+        }
+        scoped_unassigned_changes = {
+            normalize_code(row.get("final-change"))
+            for row in terminal_refit.get("unassigned-and-gap-reviews", [])
+            if isinstance(row, dict)
+            and normalize_code(row.get("global-atom-id")) in pending_unassigned
+            and normalize_code(row.get("final-change")) not in {"", "none", "null"}
+        }
+        scoped_unassigned_capabilities = {
+            normalize_code(row.get("final-capability"))
+            for row in terminal_refit.get("unassigned-and-gap-reviews", [])
+            if isinstance(row, dict)
+            and normalize_code(row.get("global-atom-id")) in pending_unassigned
+            and normalize_code(row.get("final-capability")) not in {"", "none", "null"}
+        }
+        scoped_mapping_changes = {
+            normalize_code(row.get("final-owner-change"))
+            for row in terminal_mapping.get("rows", [])
+            if isinstance(row, dict)
+            and normalize_code(row.get("global-atom-id")) in pending_ga_ids
+            and normalize_code(row.get("final-owner-change")) not in {"", "none", "null"}
+        }
+        scoped_mapping_capabilities = {
+            normalize_code(row.get("final-target-capability"))
+            for row in terminal_mapping.get("rows", [])
+            if isinstance(row, dict)
+            and normalize_code(row.get("global-atom-id")) in pending_ga_ids
+            and normalize_code(row.get("final-target-capability")) not in {"", "none", "null"}
+        }
+        expected_scoped_changes = {
+            normalize_code(item) for item in scope.get("final-changes", []) if isinstance(item, str)
+        }
+        expected_scoped_capabilities = {
+            normalize_code(item) for item in scope.get("final-capabilities", []) if isinstance(item, str)
+        }
+        provisional_framework = (
+            checkpoint.get("provisional-framework")
+            if isinstance(checkpoint.get("provisional-framework"), dict)
+            else {}
+        )
+        provisional_change_ids = {
+            normalize_code(item)
+            for item in provisional_framework.get("change-order", [])
+            if isinstance(item, str)
+        }
+        provisional_capability_ids = {
+            normalize_code(item)
+            for item in provisional_framework.get("capabilities", [])
+            if isinstance(item, str)
+        }
+        actual_new_changes = (
+            scoped_terminal_changes | scoped_unassigned_changes | scoped_mapping_changes
+        ) - provisional_change_ids
+        actual_new_capabilities = (
+            scoped_terminal_capabilities | scoped_unassigned_capabilities | scoped_mapping_capabilities
+        ) - provisional_capability_ids
+        expected_new_changes = expected_scoped_changes - provisional_change_ids
+        expected_new_capabilities = expected_scoped_capabilities - provisional_capability_ids
+        if actual_new_changes != expected_new_changes:
+            reporter.error(
+                "phase5-checkpoint-final-change-scope",
+                _checkpoint_path(orchestrate_dir),
+                "scope中新Change必须且只能由pending Change/unassigned/mapping row实际产生或引用；"
+                f"expected-new={sorted(expected_new_changes)} actual-new={sorted(actual_new_changes)}",
+            )
+        if actual_new_capabilities != expected_new_capabilities:
+            reporter.error(
+                "phase5-checkpoint-final-capability-scope",
+                _checkpoint_path(orchestrate_dir),
+                "scope中新Capability必须且只能由pending Capability/unassigned/mapping row实际产生或引用；"
+                f"expected-new={sorted(expected_new_capabilities)} actual-new={sorted(actual_new_capabilities)}",
+            )
+        _validate_checkpoint_pending_existing_output_scope(
+            orchestrate_dir,
+            checkpoint,
+            terminal_refit,
+            reporter,
+        )
+        _validate_checkpoint_resume_preservation(
+            orchestrate_dir,
+            checkpoint,
+            terminal_refit,
+            final_changes or [],
+            final_capabilities or [],
+            reporter,
+        )
+    else:
+        if execution_mode != "initial":
+            reporter.error("phase5-terminal-execution-mode", trace_path, "normal terminal要求execution-mode=initial且patch-history为空")
+        for field in (
+            "evidence-patch-request-path", "evidence-patch-request-sha256",
+            "phase-5-checkpoint-path", "phase-5-checkpoint-sha256",
+        ):
+            if trace.get(field) is not None:
+                reporter.error("phase5-terminal-stale-patch-ref", trace_path, f"normal terminal要求{field}=null")
 
     required = [
         final_plan_path,

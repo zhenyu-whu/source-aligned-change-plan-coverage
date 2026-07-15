@@ -1,6 +1,6 @@
-# Phase 3：纯覆盖审计与遗漏补提取
+# Phase 3：覆盖闭合、GA identity 与 mapping ambiguity
 
-Phase 3 只检查 Phase 2 extraction 对 source 行范围的覆盖情况，并从 uncovered range 补提取遗漏 obligation。它不规范化语义、不规划 Change/Capability，也不处理 semantic duplicate。
+Phase 3 检查 Phase 2 extraction 对 source 行范围的覆盖情况，从 uncovered range 补提取遗漏 obligation，为每个 evidence occurrence 分配稳定 GA，并以 GA 为键记录 mapping ambiguity。它不规范化语义、不规划 Change/Capability、不裁决 mapping，也不处理 semantic duplicate。
 
 writer 必须直接完整读取 `references/cross-phase-contract.md`、本文件和 `references/trace-sidecar-contract.md`。
 
@@ -10,6 +10,7 @@ writer 必须直接完整读取 `references/cross-phase-contract.md`、本文件
 - `phase-works/phase-2/source-obligation-atoms/<source>.atoms.json`
 - 用户指定的 source document
 - `scripts/phase3_line_range_audit.py`（必须用于合并 covered range 和计算 complement）
+- `update-mode: incremental-patch` 时还必须读取唯一 `source-aligned-evidence-patch-request-v1`、`source-aligned-phase-5-checkpoint-v1` 和 `source-aligned-phase-2-trace-v4` 的 targeted-patch evidence。
 
 Phase 2 Markdown mirror 只用于 review；canonical extraction evidence 是 `.atoms.json`。
 
@@ -44,9 +45,10 @@ Phase 3 只保留以下五个 artifact：
 4. 按稳定顺序为每个 Phase 2 source atom 一对一分配 `GA-####`。
 5. 只阅读 candidate uncovered range及理解该 range 所需的最小局部上下文。
 6. 对 uncovered range 中遗漏的 production obligation 创建 `P3-GAP-####`，再为每个 gap atom分配一个独立 GA。
-7. 将其余 uncovered range分类为 `safe-non-obligation`、`requires-reextract` 或 `blocked`；遗漏 obligation 使用 `missing-obligation` 并链接 gap atom。
-8. 如果上游 reviewer、validator 或当前机械证据指出 Phase 2 atom broad，记录 targeted recheck source/atom/range，返回 `needs-extraction-recheck`。Phase 3 不读取该 covered range做拆分。
-9. 写入coverage decision和`language-self-check`，并用v6 renderer生成两个Markdown mirror。
+7. 将其余 uncovered range分类为 `safe-non-obligation` 或 `blocked`；遗漏 obligation 使用 `missing-obligation` 并链接 gap atom。
+8. 为每个GA检查 extraction-time hint 是否存在 mapping ambiguity；只记录 ambiguity dimensions 和 reason，不填写 final mapping。若观察到一个冻结atom可能承载多个独立responsibility：单一tuple无法无损表达时只按实际维度记录ambiguity；仍共享唯一tuple时不得为传递finding伪造ambiguity row。两种情况都不得在本Phase定性evidence defect、发起patch或仅因此`blocked`，最终分类留给Phase 5的全GA检查。
+9. `update-mode: incremental-patch` 时验证 request/checkpoint、Phase 2 before/after row及全部protected row，只更新request影响的document/gap/disposition/ambiguity/global index row；未受影响GA和ambiguity row必须保持identity与row digest。
+10. 写入coverage decision和`language-self-check`，并用v7 renderer生成两个Markdown mirror。validator失败时返回`blocked`，不得自动重启writer或重复Phase 3。
 
 ## 明确禁止
 
@@ -55,10 +57,11 @@ Phase 3 不得：
 - 比较两个 atom 的语义是否相同；
 - 选择 canonical atom；
 - 判断 duplicate/refinement/preserve/dependency relation；
-- 拆分 broad Phase 2 atom或修改 frozen Phase 2 artifact；
+- 拆分或修改 frozen Phase 2 atom；只有 Phase 2 targeted patch writer 可以执行 request 明确允许的操作；
+- 把疑似mixed occurrence定性为patch defect、发起patch，或为传递该finding伪造mapping ambiguity；
 - 判断 owner Change、artifact projection、Capability impact/target/related Capability；
 - 把 Phase 2 `source-fact` 复制到任何 Phase 3 artifact；
-- 因 GA 数量或重复 evidence 数量触发 complexity、split、merge 或 recheck。
+- 因 GA 数量或重复 evidence 数量触发 complexity、split、merge 或回补。
 
 ## Global atom index v3
 
@@ -95,9 +98,9 @@ Phase 3 gap evidence ref：
 
 每个 Phase 2 atom和 gap atom恰好被一个 GA 引用。语义相同、原文相同或范围重叠都不改变这一 identity rule。Markdown 只显示 GA 与 evidence reference。
 
-## Coverage review v1
+## Coverage review v2
 
-`source-aligned-phase-3-coverage-review-v1` 顶层字段：
+`source-aligned-phase-3-coverage-review-v2` 顶层字段：
 
 - `trace-schema`
 - `trace-contract-version`
@@ -105,7 +108,7 @@ Phase 3 gap evidence ref：
 - `documents[]`
 - `gap-atoms[]`
 - `remainder-dispositions[]`
-- `recheck-sources[]`
+- `mapping-ambiguities[]`
 - `summary`
 - `decision`
 - `language-self-check`
@@ -145,40 +148,48 @@ classification 只允许：
 
 - `missing-obligation`：必须链接至少一个位于该 range 内的 gap atom；
 - `safe-non-obligation`：不得链接 gap atom；
-- `requires-reextract`：当前 uncovered range表明 Phase 2 extraction 需要重做；
 - `blocked`：缺少 source、范围不可信或无法在授权边界内判断。
 
 每个 candidate uncovered range 必须被 disposition range 完整覆盖；每个 gap atom必须由且只由一个 `missing-obligation` disposition 链接。
 
-`recheck-sources[]` 用于 targeted broad/re-extraction finding，每行包含：
+`mapping-ambiguities[]` 以 `global-atom-id` 为唯一键，每行必须且只能包含：
 
-- `source-document`
-- `source-atom-ids[]`
-- `line-ranges[]`
+- `global-atom-id`
+- `evidence-ref`
+- `dimensions[]`
 - 简体中文 `reason`
 
-`summary` 必须包含 `source-documents`、`phase-2-atoms`、`gap-atoms`、`global-atoms`、`candidate-uncovered-ranges`，以及 `remainder-dispositions` object；后者必须给出四种 classification 的计数。所有计数由 validator重算，GA count仅是 trace volume。
+`dimensions[]` 为非空唯一数组，只允许 `owner-change`、`relation`、`artifact-projection`、`target-capability`。row不得包含候选值、final value、Change/Capability建议或resolution。
+
+只有当一个evidence occurrence无法由唯一mapping tuple（owner-change、relation、artifact-projection、target-capability）无损表达，或该tuple的至少一个维度存在多个合理取值时才记录。`unassigned`、gap、source-fact长度、GA数量或candidate hint缺失都不是自动判据。一个GA最多一行；`evidence-ref`必须与global index逐字一致。source语义本身冲突不是mapping ambiguity，必须`blocked`。
+
+`summary` 必须包含 `source-documents`、`phase-2-atoms`、`gap-atoms`、`global-atoms`、`mapping-ambiguities`、`candidate-uncovered-ranges`，以及 `remainder-dispositions` object；后者必须给出三种 classification 的计数。所有计数由 validator重算，GA count仅是 trace volume。
 
 ## Decision
 
 只允许：
 
-- `coverage-complete`：所有 source/artifact/digest 有效；每个 uncovered range 已补提取或安全分类；没有 recheck 或 blocker。
-- `needs-extraction-recheck`：存在 `requires-reextract` 或 `recheck-sources[]`，且没有 blocker。main agent 必须 targeted 重跑对应 Phase 2 extraction，然后重新执行 Phase 3。
+- `coverage-complete`：所有 source/artifact/digest 有效；每个 uncovered range 已补提取或安全分类；没有 blocker。mapping ambiguity可以非空。
 - `blocked`：存在 `blocked` disposition、source/artifact 缺失、digest/range 无法验证，或需要用户决定。
 
 semantic duplicate 的存在与数量不影响 decision。
 
 ## Trace 与 renderer
 
-`source-aligned-phase-3-trace-v2` 必须包含：
+`source-aligned-phase-3-trace-v3` 必须包含：
 
 - `decision`
 - `global-atom-index-path` / `global-atom-index-sha256`
 - `coverage-review-path` / `coverage-review-sha256`
-- `reviewer-loop`：保存 reviewer identity、validator status、finding、repair和 pass/block摘要；Phase 3 不另建 reviewer/repair report文件。
+- `update-mode: initial|incremental-patch`
+- `patch-request-ref` / `checkpoint-ref`：initial时为`null`；incremental-patch时各只包含artifact path与SHA。
+- `base-global-atom-index-sha256` / `base-coverage-review-sha256`：initial时为`null`。
+- `affected-source-documents[]`
+- `new-global-atom-ids[]`
 
-`reviewer-loop` 必须且只能包含 `status`、`writer-id`、`reviewer-id`、`validator-status`、`findings[]` 和 `repairs[]`。writer初次发布时使用 `status: pending`；reviewer保持只读并通过最终回复返回 evidence，由 main agent机械转录。只有 identity完整、validator通过且 independent reviewer通过时才改为 `passed`。
+Phase 3不创建reviewer/repair report，不写reviewer identity。initial mode的两个array为空；`update-mode: incremental-patch`必须保留所有未列入request影响范围的GA与mapping ambiguity row，新occurrence按request target及其new-ID顺序在当前最大GA之后连续追加，禁止全量重编号。validator只能pass或使Phase 3 `blocked`。
+
+`blocked` trace不伪装成功产物，必须且只能包含schema/version、`decision: blocked`、`update-mode`、request/checkpoint ref、两个base digest、`affected-source-documents[]`、`new-global-atom-ids[]`和非空`issues[]`。incremental blocked必须保留immutable引用与已知affected/new identity，然后由main agent调用`phase5_plan_refit.py --abort-patch-chain --issue ...`机械关闭Phase 5同一patch history；不得手写semantic refit或重跑Phase 3。
 
 渲染命令：
 
@@ -191,6 +202,6 @@ python3 .codex/skills/source-aligned-change-plan-coverage/scripts/render_source_
   --artifact phase3-coverage-review --write
 ```
 
-writer 最终只向 main agent 简要报告 decision、gap atom数量、recheck source和 blocker；不额外创建报告文件。
+writer 最终只向 main agent 简要报告 decision、gap atom数量、mapping ambiguity数量、incremental affected source和 blocker；不额外创建报告文件。
 
-coverage mirror必须把`covered-ranges[]`、`candidate-uncovered-ranges[]`和`recheck-sources[].line-ranges[]`中的每个`{start,end}`机械显示为`Lx-Ly`，并呈现`language-self-check`。validator对global index和coverage review两个mirror逐字重渲染比较。
+coverage mirror必须把`covered-ranges[]`和`candidate-uncovered-ranges[]`中的每个`{start,end}`机械显示为`Lx-Ly`，并呈现逐GA mapping ambiguity与`language-self-check`。validator对global index和coverage review两个mirror逐字重渲染比较。

@@ -32,7 +32,7 @@ from source_aligned_trace_lib import (
 )
 
 
-RENDER_CONTRACT_VERSION = "source-aligned-render-v6"
+RENDER_CONTRACT_VERSION = "source-aligned-render-v7"
 SUPPORTED_ARTIFACTS = {
     "phase2-source-atoms",
     "phase2-index",
@@ -446,18 +446,18 @@ def render_coverage_review(orchestrate_dir: Path, json_path: Path) -> str:
             ),
         ).rstrip()
     )
-    body.extend(["", "## 重新提取来源", ""])
+    body.extend(["", "## Mapping Ambiguities", ""])
     body.append(
         render_table(
-            ["Source Document", "Source Atom IDs", "Lines", "Reason"],
+            ["Global Atom ID", "Evidence Reference", "Ambiguous Dimensions", "Reason"],
             (
                 [
-                    code(row.get("source-document")),
-                    code_list(row.get("source-atom-ids")),
-                    md("; ".join(range_label(item) for item in row.get("line-ranges", []) if isinstance(item, dict))),
+                    code(row.get("global-atom-id")),
+                    code(json.dumps(row.get("evidence-ref"), ensure_ascii=False, sort_keys=True)),
+                    code_list(row.get("dimensions")),
                     md(row.get("reason")),
                 ]
-                for row in data.get("recheck-sources", [])
+                for row in data.get("mapping-ambiguities", [])
                 if isinstance(row, dict)
             ),
         ).rstrip()
@@ -527,6 +527,33 @@ def _gate_results_text(value: object) -> str:
     return "；".join(parts) or "None"
 
 
+def _artifact_ref_text(value: object) -> str:
+    """以确定性文本呈现 artifact ref，不把 ref 当作第二份语义权威。"""
+    if not isinstance(value, dict):
+        return "None"
+    return json.dumps(value, ensure_ascii=False, sort_keys=True)
+
+
+def _mapping_ambiguities(
+    orchestrate_dir: Path,
+    *,
+    tolerate_invalid: bool = False,
+) -> List[Dict[str, object]]:
+    """加载 Phase 3 冻结的 mapping ambiguity，供 Phase 5 review mirror 只读展示。"""
+    coverage_path = orchestrate_dir / "phase-works/phase-3/coverage-review.json"
+    if not coverage_path.exists():
+        return []
+    try:
+        coverage = read_json(coverage_path)
+        require_trace_contract(coverage, coverage_path, PHASE3_COVERAGE_REVIEW_SCHEMA)
+    except (OSError, ValueError, json.JSONDecodeError):
+        if tolerate_invalid:
+            return []
+        raise
+    rows = coverage.get("mapping-ambiguities")
+    return [dict(row) for row in rows if isinstance(row, dict)] if isinstance(rows, list) else []
+
+
 def render_framework_refit_review(orchestrate_dir: Path, json_path: Path) -> str:
     """从 framework refit trace 渲染 Phase 5 人工复审文档。"""
     repo_root = repo_root_for(orchestrate_dir)
@@ -568,6 +595,34 @@ def render_framework_refit_review(orchestrate_dir: Path, json_path: Path) -> str
         for row in data.get("unassigned-and-gap-reviews", [])
         if isinstance(row, dict)
     )
+    patch_lifecycle_blocked = (
+        normalize_code(data.get("status")) == "blocked"
+        and isinstance(data.get("patch-history"), list)
+        and bool(data.get("patch-history"))
+    )
+    ambiguity_rows = (
+        [
+            code(row.get("global-atom-id")),
+            code(json.dumps(row.get("evidence-ref"), ensure_ascii=False, sort_keys=True)),
+            code_list(row.get("dimensions")),
+            md(row.get("reason")),
+        ]
+        for row in _mapping_ambiguities(
+            orchestrate_dir,
+            tolerate_invalid=patch_lifecycle_blocked,
+        )
+    )
+    patch_rows = (
+        [
+            code(row.get("request-id")),
+            code(_artifact_ref_text(row.get("patch-request-ref"))),
+            code(_artifact_ref_text(row.get("checkpoint-ref"))),
+            code(row.get("finding-fingerprint")),
+            code(row.get("status")),
+        ]
+        for row in data.get("patch-history", [])
+        if isinstance(row, dict)
+    )
     final_framework = data.get("final-framework") if isinstance(data.get("final-framework"), dict) else None
     summary = "无（非终态）"
     if final_framework is not None:
@@ -599,6 +654,20 @@ def render_framework_refit_review(orchestrate_dir: Path, json_path: Path) -> str
         render_table(
             ["GA", "Evidence Reference", "Disposition", "Final Change", "Final Capability", "Reason"],
             gap_rows,
+        ).rstrip(),
+        "",
+        "## Mapping Ambiguities",
+        "",
+        render_table(
+            ["GA", "Evidence Reference", "Ambiguous Dimensions", "Reason"],
+            ambiguity_rows,
+        ).rstrip(),
+        "",
+        "## Patch History",
+        "",
+        render_table(
+            ["Request ID", "Patch Request", "Checkpoint", "Finding Fingerprint", "Status"],
+            patch_rows,
         ).rstrip(),
         "",
         "## Final Decision",

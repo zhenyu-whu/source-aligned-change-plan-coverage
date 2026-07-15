@@ -46,14 +46,15 @@ phase-works/phase-1/
 ├── initial-change-plan.md
 ├── source-doc-manifest.md
 ├── phase-1-agent-report.md
-└── phase-1-reviewer-report.md
+├── phase-1-reviewer-report.md
+└── phase-1-repair-report.md  # 仅发生 repair 时
 
 trace/phase-1.trace.json
 ```
 
 Phase 1不得创建或更新根`change-plan.md`。
 
-`initial-change-plan.md`是Phase 1内容权威。`source-doc-manifest.md`是人工阅读界面；其逐行数据、source digest和initial plan digest由`phase-1.trace.json`提供机器校验。agent/reviewer/repair report是非canonical流程证据，不进入manifest。
+`initial-change-plan.md`是Phase 1内容权威。`source-doc-manifest.md`是人工阅读界面；其逐行数据、source digest、initial plan digest和machine-readable bounded review gate由`phase-1.trace.json`提供机器校验。agent/reviewer/repair report是非canonical流程证据，不进入manifest。
 
 ## 规划方法
 
@@ -168,6 +169,23 @@ coarse source hint只使用source path、heading、section、decision ID、route
 
 确认固定heading、field、enum、ID、path、代码符号和精确source quote之外的agent解释均为简体中文。
 
+## Bounded review gate
+
+writer发布可校验plan/trace后，main agent先运行Phase 1 validator，再按`references/review-gates.md`把validator结果与plan一起交给initial review；有finding时最多执行两轮定向repair，并在每轮repair后重跑validator。只有最后一次validator与review均通过才算Phase 1成功。`phase-1.trace.json`使用`source-aligned-phase-1-trace-v3`，其中`review-gate`必须且只能包含：
+
+- `status: passed|blocked`
+- `writer-id`
+- `reviews[]`
+- `repairs[]`
+
+`reviews[]` 最多三行，每行只包含 `round`、`reviewer-id`、`validator-status`、`plan-sha256` 和 `finding-fingerprints[]`。`repairs[]` 最多两行，每行只包含 `round`、`repair-writer-id`、`finding-fingerprints[]`、`before-plan-sha256` 和 `after-plan-sha256`。finding fingerprint必须绑定稳定rule/subject及相关input digest，不受finding措辞或repair方案影响；相同fingerprint在后续任一轮review重现时，即使整份plan digest不同也立即`blocked`。
+
+- review与repair round分别从1连续递增；通常`len(reviews) = len(repairs) + 1`。若repair未产生有效差异，必须在该repair后立即`blocked`，此时允许terminal trace使用`len(reviews) = len(repairs)`，不得再启动reviewer。
+- terminal success要求`review-gate.status: passed`、最后一个review的findings为空且validator为`passed`，并且reviewer/writer/repair-writer身份相互独立。
+- 同一 finding fingerprint 在后续任一轮 review 再次出现时，即使整份 plan digest 已变化，也必须立即 `blocked`。
+- 任一 repair 的 before/after plan digest 相同，必须 `blocked`。
+- 第二轮 repair 后的 final review 仍不通过，必须 `blocked`；不得启动第三轮 repair。
+
 ## Phase报告与完成条件
 
 `phase-1-agent-report.md` 简要列出已读source、artifact path、assumption/conflict、candidate Capability/Change/edge数量、Phase边界确认、语言门禁和blocker。
@@ -176,6 +194,8 @@ coarse source hint只使用source path、heading、section、decision ID、route
 
 - source set完整读取；
 - initial plan符合固定模板和共享原则；
-- trace使用`source-aligned-phase-1-trace-v2`且source manifest数据、plan/source digest有效；
+- trace使用`source-aligned-phase-1-trace-v3`且source manifest数据、plan/source digest与bounded review gate有效；
 - agent report blocker为`无`；
-- validator和fresh independent reviewer通过。
+- validator通过，bounded review gate为`passed`。
+
+若在initial plan与review gate可建立之前即无法完整读取source，只记录非canonical orchestration stop并停止，不得伪造缺少plan/review gate的canonical `blocked` trace。已有可校验initial plan后，共享gate无法满足或bounded review耗尽时才使用canonical `blocked`并停止；两种情况都不得发布成功态plan/trace或进入Phase 2。

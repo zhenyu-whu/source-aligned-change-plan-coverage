@@ -23,13 +23,12 @@ phase-works/phase-4/
 │   ├── by-input-change/<change>.md
 │   ├── by-input-capability/<capability>.md
 │   └── unassigned-and-gap.md
-├── phase-4-agent-report.md
-└── phase-4-reviewer-report.md
+└── phase-4-agent-report.md
 
 trace/phase-4.trace.json
 ```
 
-evidence collection Markdown是Phase 4内容权威，但必须由确定性assembler直接从Phase 1–3生成，不允许人工补写。`evidence-collection-index.json`在Markdown全部生成后创建，只是用于检索、digest和映射校验的派生机器索引。agent/reviewer/repair report是非canonical流程证据，不进入manifest。
+evidence collection Markdown是Phase 4内容权威，但必须由确定性assembler直接从Phase 1–3生成，不允许人工补写。`evidence-collection-index.json`在Markdown全部生成后创建，只是用于检索、digest和映射校验的派生机器索引。agent report是非canonical流程证据，不进入manifest。Phase 4不创建reviewer/repair report。
 
 禁止创建或保留：`input-change-plan.md`、`source-window-dossiers/`、`source-window-semantic-profile-review.md`、`source-window-grounding-issues.md`。
 
@@ -40,7 +39,7 @@ evidence collection Markdown是Phase 4内容权威，但必须由确定性assemb
 - `phase-2-source-atom`：从对应Phase 2 JSON加载source document、唯一range、`source-fact`、atom type、normativity、candidate status/projection/owner/target。
 - `phase-3-gap-atom`：从Phase 3 coverage review加载source document、唯一range、`source-fact`、atom type、normativity和review judgment。
 
-Phase 4信任经过Phase 2/3 validator/reviewer冻结的`source-fact`，不按range重新读取source。resolver ref不存在、重复或类型不匹配时不得猜测或重新提取。
+Phase 4信任经过Phase 2/3 validator冻结的`source-fact`，不按range重新读取source。resolver ref不存在、重复或类型不匹配时不得猜测或重新提取；记录issue并`blocked`。
 
 ## Assembler固定顺序
 
@@ -121,15 +120,25 @@ python3 .codex/skills/source-aligned-change-plan-coverage/scripts/render_source_
 
 每个GA恰好一行，`evidence-ref`与global index完全相同。index不得复制source fact、path、range、type、normativity或candidate metadata。
 
-## Status与trace v3
+## Incremental deterministic refresh
+
+`update-mode: incremental-patch`只在唯一targeted patch链中使用：
+
+- 输入必须包含有效`EPR-0001`、`P5CP-0001`和Phase 3 incremental result；
+- assembler仍从当前Phase 1–3 authority确定性生成内容，不读取checkpoint取得语义；
+- 未受影响`phase-4-index-rows`与`phase-4-rendered-artifacts`必须通过request的protected row digest；
+- 只有changed/new GA所进入的collection及其index digest允许变化；不得修改bucket规则或解读mapping ambiguity；
+- Phase 4 bucket只使用Phase 1 identity；受影响Change/Capability bucket必须分别属于checkpoint的`initial-changes[]`、`initial-capabilities[]`，不得用同名final scope绕过initial review scope；
+- 可为实现确定性一致性重写文件，但语义变化必须严格落在受影响collection集合。
+
+## Status与trace v4
 
 - `assembled`：resolver成功，全部Markdown和派生index已生成且无drift。
-- `needs-coverage-recheck`：evidence ref缺失、冻结evidence不完整，或发现broad/missing extraction。
 - `blocked`：Phase 2/3 artifact或digest冲突，无法建立可信resolver结果。
 
-terminal trace使用`source-aligned-phase-4-trace-v3`，顶层只包含schema/version、`status: assembled`和`assembled` object；该object记录index path/SHA及`renderer-result-summary`，summary固定包含`source-aligned-render-v6`、rendered file数量和global atom数量。
+terminal trace使用`source-aligned-phase-4-trace-v4`，顶层包含schema/version、`status: assembled`、`update-mode: initial|incremental-patch`、`patch-request-ref`、`checkpoint-ref`、`base-evidence-collection-index-sha256`、`affected-closure`和`assembled` object；assembled记录index path/SHA及`renderer-result-summary`。`affected-closure`只包含`global-atom-ids[]`、`change-buckets[]`、`capability-buckets[]`、`rendered-artifact-paths[]`。initial mode的ref/base为null且closure各array为空；incremental-patch时必须记录有效base与受影响closure。
 
-非终态trace只包含schema/version、status和非空`issues[]`，记录affected GA/evidence ref、影响和最小下一步；不得保留terminal index或collection Markdown。
+blocked trace包含schema/version、status、update-mode、request/checkpoint ref、base index digest、已知`affected-closure`和非空`issues[]`。initial blocked的ref/base为null且closure为空；incremental blocked必须保留immutable ref与已知影响范围、清理未完成的terminal index/collection，再由main agent调用`phase5_plan_refit.py --abort-patch-chain --issue ...`机械关闭Phase 5唯一history。该control transform不得改写semantic row；abort validation不得依赖已清理的Phase 4 surface，也不得自动重跑assembler或回到其他Phase。
 
 Phase 4不得记录split、merge、rename、reorder、boundary、owner、projection、relation或Capability impact判断。
 
@@ -138,4 +147,5 @@ Phase 4不得记录split、merge、rename、reorder、boundary、owner、project
 - collection Markdown、派生index、trace和非canonical agent report存在；
 - validator从Phase 1–3重算全部Markdown和index且无drift；
 - validator拒绝缺失、篡改、stale文件、GA基数错误、上游digest drift及`source-fact`变化；
-- fresh independent reviewer确认冻结原文逐字呈现、empty initial unit collection存在、bucket机械正确且没有refit判断。
+- empty initial unit collection存在，bucket机械正确且没有refit判断；
+- validator通过；失败即`blocked`，不得启动reviewer/repair、自动重启assembler或重复Phase 4。
