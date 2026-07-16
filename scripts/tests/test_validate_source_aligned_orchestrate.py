@@ -1480,7 +1480,10 @@ class SourceAlignedPhase45Test(unittest.TestCase):
             "global-atom-id": "GA-0004",
             "evidence-ref": self._ref("SA-0004"),
             "dimensions": ["owner-change", "relation", "artifact-projection", "target-capability"],
-            "reason": "该证据的最终归属与投影需要在Phase 5结合完整集合裁决。",
+            "reason": (
+                "原文中的 unresolved fact 与 HTTP、Notify、Function、API Key 轮换等领域名称"
+                "可以用于解释潜在歧义，最终归属与投影仍由Phase 5结合完整集合裁决。"
+            ),
         }]
         coverage["summary"]["mapping-ambiguities"] = 1
         write_json(coverage_path, coverage)
@@ -1505,6 +1508,30 @@ class SourceAlignedPhase45Test(unittest.TestCase):
         phase5_review = (refit_path.parent / "plan-refit-review.md").read_text(encoding="utf-8")
         self.assertIn("## Potential Mapping Ambiguities (Input)", phase5_review)
         self.assertIn("GA-0004", phase5_review)
+
+    def test_phase3_mapping_ambiguity_rejects_source_fact_field(self) -> None:
+        coverage_path = self.orchestrate / "phase-works/phase-3/coverage-review.json"
+        coverage = self._data("openspec/orchestrate/phase-works/phase-3/coverage-review.json")
+        coverage["mapping-ambiguities"] = [{
+            "global-atom-id": "GA-0004",
+            "evidence-ref": self._ref("SA-0004"),
+            "dimensions": ["owner-change"],
+            "reason": "该证据存在多个合理归属，需要在Phase 5裁决。",
+            "source-fact": "unresolved fact",
+        }]
+        coverage["summary"]["mapping-ambiguities"] = 1
+        write_json(coverage_path, coverage)
+        render_orchestrate(self.orchestrate, "phase3-coverage-review", write=True)
+
+        trace_relative = "openspec/orchestrate/trace/phase-3.trace.json"
+        trace = self._data(trace_relative)
+        trace["coverage-review-sha256"] = sha256_file(coverage_path)
+        self._write_data(trace_relative, trace)
+        self._write_manifest()
+
+        result = self._result("phase-3")
+        self.assertFalse(result["ok"])
+        self._assert_rule(result, "phase3-mapping-ambiguity-fields")
 
     def test_phase3_mirror_drift_is_rejected(self) -> None:
         path = self.orchestrate / "phase-works/phase-3/coverage-review.md"

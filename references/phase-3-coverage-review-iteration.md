@@ -60,7 +60,7 @@ Phase 3 不得：
 - 拆分或修改 frozen Phase 2 atom；只有 Phase 2 targeted patch writer 可以执行 request 明确允许的操作；
 - 把疑似mixed occurrence定性为patch defect、发起patch，或为传递该finding伪造mapping ambiguity；
 - 判断 owner Change、artifact projection、Capability impact/target/related Capability；
-- 把 Phase 2 `source-fact` 复制到任何 Phase 3 artifact；
+- 在`gap-atoms[]`合法extraction之外新增或发布独立的`source-fact` authority，或把解释文本当作独立evidence authority；解释字段可以使用必要的领域名称或引用性文字，但证据解析仍必须通过`evidence-ref`；
 - 因 GA 数量或重复 evidence 数量触发 complexity、split、merge 或回补。
 
 ## Global atom identity

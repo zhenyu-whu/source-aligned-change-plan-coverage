@@ -4218,16 +4218,6 @@ def iter_nested_keys(value: object) -> Iterable[str]:
             yield from iter_nested_keys(child)
 
 
-def contains_source_fact(value: object, candidates: Set[str]) -> bool:
-    if isinstance(value, str):
-        return any(candidate in value for candidate in candidates)
-    if isinstance(value, dict):
-        return any(contains_source_fact(child, candidates) for child in value.values())
-    if isinstance(value, list):
-        return any(contains_source_fact(child, candidates) for child in value)
-    return False
-
-
 def load_phase3_gap_atoms(orchestrate_dir: Path, reporter: IssueReporter) -> Dict[str, Dict[str, object]]:
     path = orchestrate_dir / "phase-works/phase-3/coverage-review.json"
     data = json_obj(path, reporter, PHASE3_COVERAGE_REVIEW_SCHEMA)
@@ -4488,19 +4478,6 @@ def validate_phase_3(orchestrate_dir: Path, repo_root: Path, reporter: IssueRepo
                 reporter.error("phase3-unexpected-artifact", path, "Phase 3 固定五产物契约不允许此文件")
 
     phase2_atoms = load_phase2_atoms(orchestrate_dir, reporter)
-    phase2_source_facts = {
-        str(row.get("source-fact"))
-        for row in phase2_atoms.values()
-        if isinstance(row.get("source-fact"), str) and str(row.get("source-fact"))
-    }
-    coverage_without_gaps = dict(coverage)
-    coverage_without_gaps["gap-atoms"] = []
-    if contains_source_fact(trace, phase2_source_facts) or contains_source_fact(coverage_without_gaps, phase2_source_facts):
-        reporter.error(
-            "phase3-phase2-source-fact-copy",
-            trace_path,
-            "Phase 3 gap-atoms之外的 artifact不得复制 Phase 2 source-fact原文",
-        )
     read_full = read_full_sources(orchestrate_dir, repo_root)
     documents = coverage.get("documents")
     document_rows: Dict[str, Dict[str, object]] = {}
