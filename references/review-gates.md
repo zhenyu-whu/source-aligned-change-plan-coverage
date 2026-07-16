@@ -2,7 +2,7 @@
 
 本文件只定义 Phase 1 bounded review/repair 和 workflow terminal integration gate。Phase 2–5 不存在独立 Phase reviewer 或 repair loop。
 
-Phase 1 reviewer/repair-writer 必须直接完整读取 `references/cross-phase-contract.md`、`references/change-capability-framework-principles.md` 和 `references/phase-1-initial-change-plan.md`。final integration reviewer 必须读取 cross-phase contract、共享 framework 原则及 Phase 3–5 reference。prompt 摘要不能替代原文件。
+Phase 1 reviewer/repair-writer必须直接完整读取`references/cross-phase-contract.md`、`references/change-capability-framework-principles.md`和`references/phase-1-initial-change-plan.md`。Final integration reviewer必须读取cross-phase contract、共享framework原则及Phase 3–5 reference；执行过patch时还必须读取`references/targeted-evidence-patch-contract.md`。Prompt摘要不能替代原文件。
 
 ## Phase 1 bounded review
 
@@ -59,8 +59,8 @@ Phase 1 只有 validator 通过且 reviewer report 中最后一个 run 为 `pass
 
 - Phase 2–5 仅执行 renderer/helper 与 Phase validator；不创建 `phase-<n>-reviewer-report.md` 或 `phase-<n>-repair-report.md`，不启动 reviewer/repair-writer。
 - validator 只检查结构、trace、digest、schema、ID、coverage、mirror drift 和跨 artifact 一致性，不作独立语义 reviewer。
-- validator 只能 pass 或使当前 Phase blocked；失败后不得自动重启 producer、就地修正后重验或重复当前 Phase。唯一例外是 Phase 5 已合法生成 request/checkpoint 后进入的一次 targeted patch 状态机。
-- 唯一 evidence 回补只可在Phase 2–4均为initial success snapshot、canonical Phase 5 trace尚未发布的首次Phase 5执行中，通过有效checkpoint和`source-aligned-evidence-patch-request-v1`启动；不得由Phase 2–4自行发起，也不得把accepted、adjusted、blocked、closed或incremental状态重放为requested。
+- Validator只能pass或使当前Phase blocked；失败后不得自动重启producer、就地修正后重验或重复当前Phase。唯一例外是patch contract合法提交的一次targeted patch状态机。
+- Patch eligibility、request/checkpoint与Phase 5 trace commit marker、增量链和abort只以`references/targeted-evidence-patch-contract.md`为准；孤立request/checkpoint不得授权Phase 2–4。
 
 ## Workflow terminal integration gate
 
@@ -73,8 +73,9 @@ main agent 运行 all-phase complete validator
 ```
 
 - final integration reviewer 是 workflow-level 只读 gate，不是 Phase 5 reviewer，只运行一次，不得修改 artifact、执行 repair、生成第二次 evidence patch 或重新启动 refit。
-- reviewer 必须核对 Phase 3 global atom index 与 mapping ambiguities、Phase 4 collections/index、framework refit、作为唯一ambiguity resolution的terminal atom mapping、baseline、final packets、Capability views、anchor index和根 `change-plan.md`。
+- Reviewer必须核对Phase 3 global atom index与potential mapping ambiguities、Phase 4 collections/index、framework refit、作为唯一ambiguity resolution的terminal atom mapping、baseline、final packets、Capability views、anchor index和根`change-plan.md`。
+- Reviewer必须直接使用共享framework原则确认每个final Capability通过全部8项标准、每个final Change通过全部6项标准，并确认roadmap dependency、minimality和overlay成立；不得要求refit JSON复制第二套final gate数组。
 - Phase 3 `mapping-ambiguities[]`是冻结的pre-refit observation，不是terminal completeness authority；不得要求把Phase 5 late-discovered ambiguity回填Phase 3。完整性以每个GA恰好一个有效terminal mapping row、且已记录ambiguity均由同GA row裁决为准。
 - 每个 evidence occurrence 从 frozen source fact 到 GA、collection、final mapping 和 packet 必须保持一对一 identity；语义相同 occurrence 不得丢失或合并。
-- 若执行过 targeted patch，必须检查未受影响 GA/ambiguity identity 稳定、patch generation 仅一次、checkpoint resume 只重算 invalidated unit 及最小影响闭包。
+- 若执行过targeted patch，必须检查单次generation、request/checkpoint字节稳定、未受影响GA/ambiguity identity、commit marker闭包，以及resume只重算invalidated unit与最小影响闭包。
 - complete validator 或 final integration reviewer 未通过时不得 handoff；workflow 返回 `blocked` 并报告最小用户决定，不进入自动 repair loop。

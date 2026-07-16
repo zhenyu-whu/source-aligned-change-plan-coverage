@@ -18,9 +18,12 @@ SKILL_DIR = SCRIPT_DIR.parent
 sys.path.insert(0, str(SCRIPT_DIR))
 
 from phase5_plan_refit import (  # noqa: E402
+    CAPABILITY_INITIAL_GATE_NAMES,
+    CHANGE_INITIAL_GATE_NAMES,
     Evidence,
     Mapping,
     abort_patch_lifecycle,
+    derive_advancement,
     framework_dependency_edges,
     framework_ga_lineage,
     framework_review_lineage,
@@ -58,6 +61,7 @@ from source_aligned_trace_lib import (  # noqa: E402
     IssueReporter,
 )
 from validate_source_aligned_orchestrate import (  # noqa: E402
+    _validate_checkpoint,
     _validate_checkpoint_pending_existing_output_scope,
     _validate_checkpoint_resume_preservation,
     _scope_covers_full_typed_framework,
@@ -94,6 +98,28 @@ class SourceAlignedPhase45Test(unittest.TestCase):
             "source-document": "docs/source.md",
             "source-atom-id": atom_id,
         }
+
+    @staticmethod
+    def _capability_gate_results(*, failed: str | None = None) -> list[dict]:
+        return [
+            {
+                "gate": gate,
+                "result": "failed" if gate == failed else "passed",
+                "note": f"初始Capability的{gate}检查{'未通过' if gate == failed else '通过'}。",
+            }
+            for gate in CAPABILITY_INITIAL_GATE_NAMES
+        ]
+
+    @staticmethod
+    def _change_gate_results(*, failed: str | None = None) -> list[dict]:
+        return [
+            {
+                "gate": gate,
+                "result": "failed" if gate == failed else "passed",
+                "note": f"初始Change的{gate}检查{'未通过' if gate == failed else '通过'}。",
+            }
+            for gate in CHANGE_INITIAL_GATE_NAMES
+        ]
 
     @staticmethod
     def _phase1_plan() -> str:
@@ -259,7 +285,8 @@ class SourceAlignedPhase45Test(unittest.TestCase):
                 "evidence-collection-path": "openspec/orchestrate/phase-works/phase-4/source-evidence-collections/by-input-capability/cap-a.md",
                 "decision": "keep",
                 "final-capabilities": ["cap-a"],
-                "gate-results": [{"gate": "capability-boundary", "result": "passed", "note": "稳定行为边界成立。"}],
+                "initial-gate-results": self._capability_gate_results(),
+                "supporting-global-atom-ids": [],
                 "reason": "原文集合支持稳定行为边界。",
             }],
             "change-reviews": [{
@@ -267,16 +294,15 @@ class SourceAlignedPhase45Test(unittest.TestCase):
                 "evidence-collection-path": "openspec/orchestrate/phase-works/phase-4/source-evidence-collections/by-input-change/change-a.md",
                 "decision": "keep",
                 "final-changes": ["change-a"],
-                "gate-results": [{"gate": "change-outcome", "result": "passed", "note": "单一可验收结果成立。"}],
+                "initial-gate-results": self._change_gate_results(),
+                "supporting-global-atom-ids": [],
                 "reason": "原文集合支持单一可验收结果。",
             }],
             "unassigned-and-gap-reviews": [
                 {
                     "global-atom-id": ga,
                     "evidence-ref": ref,
-                    "disposition": "mapped",
-                    "final-change": "change-a",
-                    "final-capability": "none",
+                    "framework-impact": "none",
                     "reason": "归入同一结果范围且不推进Capability。",
                 }
                 for ga, ref in gap_refs.items()
@@ -718,6 +744,40 @@ class SourceAlignedPhase45Test(unittest.TestCase):
     def _assert_rule(self, result: dict, rule: str) -> None:
         self.assertIn(rule, [issue["rule_id"] for issue in result["issues"]], result)
 
+    def _refresh_checkpoint_preserved_digest(
+        self,
+        checkpoint: dict,
+        row_kind: str,
+        row_key: str,
+    ) -> None:
+        key_fields = {
+            "capability-reviews": "input-capability",
+            "change-reviews": "input-change",
+            "unassigned-and-gap-reviews": "global-atom-id",
+            "atom-plan-mappings": "global-atom-id",
+        }
+        key_field = key_fields[row_kind]
+        row = next(
+            item
+            for item in checkpoint["completed-rows"][row_kind]
+            if item[key_field] == row_key
+        )
+        digest_row = next(
+            item
+            for item in checkpoint["preserved-row-digests"]
+            if item["row-kind"] == row_kind and item["row-key"] == row_key
+        )
+        digest_row["sha256"] = canonical_json_sha256(row)
+
+    def _checkpoint_validation_result(self, checkpoint: dict) -> dict:
+        checkpoint_path = (
+            self.orchestrate / "phase-works/phase-5/phase-5-checkpoint.json"
+        )
+        write_json(checkpoint_path, checkpoint)
+        reporter = IssueReporter()
+        _validate_checkpoint(self.orchestrate, self.root, reporter)
+        return reporter.result()
+
     def _set_phase1_review_gate(self, gate: dict, *, status: str) -> None:
         relative = "openspec/orchestrate/trace/phase-1.trace.json"
         trace = self._data(relative)
@@ -830,6 +890,8 @@ class SourceAlignedPhase45Test(unittest.TestCase):
         preserve_existing_phase5_trace: bool = False,
         scope_final_changes: list[str] | None = None,
         scope_final_capabilities: list[str] | None = None,
+        request_mutator=None,
+        checkpoint_mutator=None,
     ) -> dict:
         refit_relative = "openspec/orchestrate/phase-works/phase-5/framework-refit-trace.json"
         mapping_relative = "openspec/orchestrate/phase-works/phase-5/atom-plan-mapping.json"
@@ -946,6 +1008,8 @@ class SourceAlignedPhase45Test(unittest.TestCase):
                 "phase-4-rendered-artifacts": protected_rendered,
             },
         }
+        if request_mutator is not None:
+            request_mutator(request)
         write_json(request_path, request)
 
         principles_relative = (
@@ -1053,6 +1117,8 @@ class SourceAlignedPhase45Test(unittest.TestCase):
                     row["sha256"] = canonical_json_sha256(
                         checkpoint["completed-rows"]["atom-plan-mappings"][0]
                     )
+        if checkpoint_mutator is not None:
+            checkpoint_mutator(checkpoint)
         write_json(checkpoint_path, checkpoint)
 
         history = {
@@ -1081,6 +1147,60 @@ class SourceAlignedPhase45Test(unittest.TestCase):
             "split": split,
         })
         return state
+
+    def _apply_targeted_phase2_only(self) -> None:
+        request_path = (
+            self.orchestrate
+            / "phase-works/phase-5/evidence-patch-request.json"
+        )
+        checkpoint_path = (
+            self.orchestrate
+            / "phase-works/phase-5/phase-5-checkpoint.json"
+        )
+        request = self._data(
+            "openspec/orchestrate/phase-works/phase-5/evidence-patch-request.json"
+        )
+        atom_relative = (
+            "openspec/orchestrate/phase-works/phase-2/"
+            "source-obligation-atoms/docs--source.atoms.json"
+        )
+        atom_path = self.root / atom_relative
+        atom_data = self._data(atom_relative)
+        target_atom = next(
+            row for row in atom_data["source-atoms"]
+            if row["source-atom-id"] == "SA-0004"
+        )
+        target_atom["source-fact"] = "unresolved fact"
+        self._write_data(atom_relative, atom_data)
+
+        phase2_relative = "openspec/orchestrate/trace/phase-2.trace.json"
+        phase2 = self._data(phase2_relative)
+        phase2.update({
+            "mode": "targeted-patch",
+            "patch-request-ref": self._artifact_ref(request_path),
+            "checkpoint-ref": self._artifact_ref(checkpoint_path),
+            "patch-summary": {
+                "base-phase-2-trace-sha256": request["base-artifacts"][
+                    "phase-2-trace-sha256"
+                ],
+                "affected-sources": ["docs/source.md"],
+                "changed-atoms": [{
+                    "source-document": "docs/source.md",
+                    "source-atom-id": "SA-0004",
+                    "before-row-sha256": request["targets"][0][
+                        "base-row-sha256"
+                    ],
+                    "after-row-sha256": canonical_json_sha256(target_atom),
+                }],
+                "new-atoms": [],
+                "patch-writer-id": "phase-2-targeted-patch-writer",
+            },
+        })
+        phase2["sources"][0]["atom-json-sha256"] = sha256_file(atom_path)
+        self._write_data(phase2_relative, phase2)
+        render_orchestrate(self.orchestrate, "phase2-source-atoms", write=True)
+        render_orchestrate(self.orchestrate, "phase2-index", write=True)
+        self._write_manifest()
 
     def _apply_targeted_patch_and_resume(self, state: dict) -> None:
         request_path = self.orchestrate / "phase-works/phase-5/evidence-patch-request.json"
@@ -1382,7 +1502,9 @@ class SourceAlignedPhase45Test(unittest.TestCase):
         review = render_coverage_review(self.orchestrate, coverage_path)
         self.assertIn("## Mapping Ambiguities", review)
         render_orchestrate(self.orchestrate, "phase5-refit-review", write=True)
-        self.assertIn("GA-0004", (refit_path.parent / "plan-refit-review.md").read_text(encoding="utf-8"))
+        phase5_review = (refit_path.parent / "plan-refit-review.md").read_text(encoding="utf-8")
+        self.assertIn("## Potential Mapping Ambiguities (Input)", phase5_review)
+        self.assertIn("GA-0004", phase5_review)
 
     def test_phase3_mirror_drift_is_rejected(self) -> None:
         path = self.orchestrate / "phase-works/phase-3/coverage-review.md"
@@ -1558,7 +1680,149 @@ class SourceAlignedPhase45Test(unittest.TestCase):
                 reason=f"第{index}条证据保持独立映射，不按列表长度触发返工。",
             )
 
-        validate_mapping(evidence, mapping, changes, capabilities, overlay)
+        validate_mapping(
+            evidence,
+            mapping,
+            changes,
+            capabilities,
+            overlay,
+            repo_root=self.root,
+        )
+
+    def test_advancement_derivation_distinguishes_absent_and_existing_capability(self) -> None:
+        changes, capabilities, _ = parse_final_plan(
+            self.orchestrate / "phase-works/phase-5/change-plan.md"
+        )
+
+        def direct_mapping(impact: str) -> dict[str, Mapping]:
+            return {
+                "GA-0001": Mapping(
+                    ga="GA-0001",
+                    evidence_ref=self._ref("SA-0001"),
+                    owner_change="change-a",
+                    relation="direct",
+                    projection="spec-requirement",
+                    capability_impact=impact,
+                    target_capability="cap-a",
+                    related_capabilities=(),
+                    reason="用于核验repository baseline的确定性推进关系。",
+                )
+            }
+
+        absent_overlay, absent_baseline = derive_advancement(
+            self.root,
+            changes,
+            capabilities,
+            direct_mapping("new"),
+        )
+        self.assertEqual(absent_overlay, {("change-a", "cap-a"): "new"})
+        self.assertEqual(
+            absent_baseline["capabilities"][0]["baseline-status"],
+            "absent",
+        )
+
+        self._write("openspec/specs/cap-a/spec.md", "# Existing Capability\n")
+        existing_overlay, existing_baseline = derive_advancement(
+            self.root,
+            changes,
+            capabilities,
+            direct_mapping("modified"),
+        )
+        self.assertEqual(existing_overlay, {("change-a", "cap-a"): "modified"})
+        self.assertEqual(
+            existing_baseline["capabilities"][0]["baseline-status"],
+            "existing",
+        )
+
+    def test_absent_capability_is_new_only_for_first_advancing_change(self) -> None:
+        changes, capabilities, _ = parse_final_plan(
+            self.orchestrate / "phase-works/phase-5/change-plan.md"
+        )
+        change_b = replace(changes[0], slug="change-b")
+        mapping = {
+            "GA-0001": Mapping(
+                ga="GA-0001",
+                evidence_ref=self._ref("SA-0001"),
+                owner_change="change-a",
+                relation="direct",
+                projection="spec-requirement",
+                capability_impact="new",
+                target_capability="cap-a",
+                related_capabilities=(),
+                reason="第一个Change首次推进缺失Capability。",
+            ),
+            "GA-0002": Mapping(
+                ga="GA-0002",
+                evidence_ref=self._ref("SA-0002"),
+                owner_change="change-b",
+                relation="direct",
+                projection="spec-guard",
+                capability_impact="modified",
+                target_capability="cap-a",
+                related_capabilities=(),
+                reason="第二个Change只能继续修改已由roadmap建立的Capability。",
+            ),
+        }
+        overlay, _ = derive_advancement(
+            self.root,
+            [changes[0], change_b],
+            capabilities,
+            mapping,
+        )
+        self.assertEqual(overlay, {
+            ("change-a", "cap-a"): "new",
+            ("change-b", "cap-a"): "modified",
+        })
+
+    def test_phase5_mapping_impact_drift_is_rejected(self) -> None:
+        relative = "openspec/orchestrate/phase-works/phase-5/atom-plan-mapping.json"
+        mapping = self._data(relative)
+        mapping["rows"][0]["final-capability-impact"] = "modified"
+        self._write_data(relative, mapping)
+        self._write_manifest()
+        result = self._result("phase-5")
+        self.assertFalse(result["ok"])
+        self._assert_rule(result, "phase5-mapping-contract")
+
+    def test_phase5_refit_overlay_drift_is_rejected(self) -> None:
+        relative = (
+            "openspec/orchestrate/phase-works/phase-5/framework-refit-trace.json"
+        )
+        refit = self._data(relative)
+        refit["final-framework"]["overlay"][0]["capability-impact"] = "modified"
+        self._write_data(relative, refit)
+        render_orchestrate(self.orchestrate, "phase5-refit-review", write=True)
+        self._write_manifest()
+        result = self._result("phase-5")
+        self.assertFalse(result["ok"])
+        self._assert_rule(result, "phase5-refit-contract")
+
+    def test_phase5_final_plan_overlay_drift_is_rejected(self) -> None:
+        plan = self.orchestrate / "phase-works/phase-5/change-plan.md"
+        plan.write_text(
+            plan.read_text(encoding="utf-8").replace(
+                "| `change-a` | `cap-a` | `new` |",
+                "| `change-a` | `cap-a` | `modified` |",
+            ),
+            encoding="utf-8",
+        )
+        result = self._result("phase-5")
+        self.assertFalse(result["ok"])
+        self._assert_rule(result, "phase5-refit-contract")
+        self._assert_rule(result, "phase5-mapping-contract")
+
+    def test_phase5_baseline_drift_is_rejected(self) -> None:
+        relative = (
+            "openspec/orchestrate/phase-works/phase-5/"
+            "capability-baseline-reconciliation.json"
+        )
+        baseline = self._data(relative)
+        baseline["capabilities"][0]["required-first-relation"] = "modified"
+        self._write_data(relative, baseline)
+        self._write_manifest()
+        result = self._result("phase-5")
+        self.assertFalse(result["ok"])
+        self._assert_rule(result, "phase5-baseline-drift")
 
     def test_phase2_contract_uses_citation_and_lossless_mapping_not_subjective_size(self) -> None:
         contract = (
@@ -1596,7 +1860,7 @@ class SourceAlignedPhase45Test(unittest.TestCase):
         self._assert_rule(result, "phase5-anchor-index-drift")
         self._assert_rule(result, "phase5-capability-view-drift")
 
-    def test_phase5_refit_mapping_owner_crosscheck(self) -> None:
+    def test_phase5_gap_review_rejects_mapping_authority_fields(self) -> None:
         relative = "openspec/orchestrate/phase-works/phase-5/framework-refit-trace.json"
         data = self._data(relative)
         data["unassigned-and-gap-reviews"][0]["final-capability"] = "cap-a"
@@ -1604,7 +1868,100 @@ class SourceAlignedPhase45Test(unittest.TestCase):
         render_orchestrate(self.orchestrate, "phase5-refit-review", write=True)
         result = self._result("phase-5")
         self.assertFalse(result["ok"])
-        self._assert_rule(result, "phase5-mapping-contract")
+        self._assert_rule(result, "phase5-refit-contract")
+
+    def test_phase5_accepted_rejects_failed_initial_gate(self) -> None:
+        refit = self._refit_trace()
+        refit["capability-reviews"][0]["initial-gate-results"] = (
+            self._capability_gate_results(failed="cohesion")
+        )
+        with self.assertRaises(ValueError):
+            validate_framework_refit(self.orchestrate, refit)
+
+    def test_phase5_adjusted_allows_failed_initial_gate_after_split(self) -> None:
+        refit = self._refit_trace()
+        refit["status"] = "adjusted"
+        refit["capability-reviews"][0].update({
+            "decision": "split",
+            "final-capabilities": ["cap-a-one", "cap-a-two"],
+            "initial-gate-results": self._capability_gate_results(failed="cohesion"),
+            "supporting-global-atom-ids": ["GA-0001"],
+        })
+        refit["final-framework"]["capabilities"] = ["cap-a-one", "cap-a-two"]
+        refit["final-framework"]["overlay"] = [{
+            "change": "change-a",
+            "capability": "cap-a-one",
+            "capability-impact": "new",
+        }]
+        self.assertEqual(
+            validate_framework_refit(self.orchestrate, refit),
+            "adjusted",
+        )
+
+    def test_phase5_adjusted_rejects_failed_initial_gate_with_keep(self) -> None:
+        refit = self._refit_trace()
+        refit["status"] = "adjusted"
+        refit["change-reviews"][0]["initial-gate-results"] = (
+            self._change_gate_results(failed="scope-cohesion")
+        )
+        with self.assertRaises(ValueError):
+            validate_framework_refit(self.orchestrate, refit)
+
+    def test_phase5_non_keep_review_requires_supporting_ga(self) -> None:
+        refit = self._refit_trace()
+        refit["status"] = "adjusted"
+        refit["change-reviews"][0]["decision"] = "scope-adjusted"
+        with self.assertRaises(ValueError):
+            validate_framework_refit(self.orchestrate, refit)
+
+    def test_phase5_supporting_ga_must_belong_to_review_collection(self) -> None:
+        refit = self._refit_trace()
+        refit["status"] = "adjusted"
+        refit["change-reviews"][0].update({
+            "decision": "scope-adjusted",
+            "supporting-global-atom-ids": ["GA-0002"],
+        })
+        with self.assertRaises(ValueError):
+            validate_framework_refit(self.orchestrate, refit)
+
+    def test_phase5_supporting_ga_must_follow_global_index_order(self) -> None:
+        index_relative = (
+            "openspec/orchestrate/phase-works/phase-4/source-evidence-collections/"
+            "evidence-collection-index.json"
+        )
+        collection = self._data(index_relative)
+        ga2 = next(
+            row for row in collection["rows"]
+            if row["global-atom-id"] == "GA-0002"
+        )
+        ga2["change-bucket"] = "change-a"
+        self._write_data(index_relative, collection)
+
+        refit = self._refit_trace()
+        refit["status"] = "adjusted"
+        refit["change-reviews"][0].update({
+            "decision": "scope-adjusted",
+            "supporting-global-atom-ids": ["GA-0002", "GA-0001"],
+        })
+        with self.assertRaises(ValueError):
+            validate_framework_refit(self.orchestrate, refit)
+
+    def test_phase5_gap_supports_adjustment_requires_mechanical_link(self) -> None:
+        refit = self._refit_trace()
+        refit["status"] = "adjusted"
+        refit["change-reviews"][0].update({
+            "decision": "scope-adjusted",
+            "supporting-global-atom-ids": ["GA-0001"],
+        })
+        refit["unassigned-and-gap-reviews"][0]["framework-impact"] = (
+            "supports-adjustment"
+        )
+        self._write_data(
+            "openspec/orchestrate/phase-works/phase-5/framework-refit-trace.json",
+            refit,
+        )
+        with self.assertRaises(ValueError):
+            write_outputs(self.orchestrate)
 
     def test_phase5_adjusted_new_capability_from_gap(self) -> None:
         plan = self.orchestrate / "phase-works/phase-5/change-plan.md"
@@ -1627,8 +1984,7 @@ class SourceAlignedPhase45Test(unittest.TestCase):
             "change": "change-a", "capability": "cap-b", "capability-impact": "new",
         })
         refit["unassigned-and-gap-reviews"][3].update({
-            "disposition": "direct-advancement",
-            "final-capability": "cap-b",
+            "framework-impact": "supports-adjustment",
             "reason": "gap暴露新的稳定行为边界。",
         })
         write_json(refit_path, refit)
@@ -1651,6 +2007,7 @@ class SourceAlignedPhase45Test(unittest.TestCase):
         def split_capability(data: dict) -> None:
             data["capability-reviews"][0].update({
                 "decision": "split", "final-capabilities": ["cap-a-one", "cap-a-two"],
+                "supporting-global-atom-ids": ["GA-0001"],
             })
             data["final-framework"]["capabilities"] = ["cap-a-one", "cap-a-two"]
             data["final-framework"]["overlay"] = [{
@@ -1658,17 +2015,21 @@ class SourceAlignedPhase45Test(unittest.TestCase):
             }]
 
         def rename_change(data: dict) -> None:
-            data["change-reviews"][0].update({"decision": "rename", "final-changes": ["change-renamed"]})
+            data["change-reviews"][0].update({
+                "decision": "rename",
+                "final-changes": ["change-renamed"],
+                "supporting-global-atom-ids": ["GA-0001"],
+            })
             data["final-framework"]["change-order"] = ["change-renamed"]
             data["final-framework"]["overlay"][0]["change"] = "change-renamed"
-            for row in data["unassigned-and-gap-reviews"]:
-                row["final-change"] = "change-renamed"
 
         def scope_change(data: dict) -> None:
             data["change-reviews"][0]["decision"] = "scope-adjusted"
+            data["change-reviews"][0]["supporting-global-atom-ids"] = ["GA-0001"]
 
         def add_change(data: dict) -> None:
             data["final-framework"]["change-order"].append("change-new")
+            data["unassigned-and-gap-reviews"][0]["framework-impact"] = "supports-adjustment"
 
         for name, mutate in (
             ("split-capability", split_capability),
@@ -1698,25 +2059,102 @@ class SourceAlignedPhase45Test(unittest.TestCase):
             "evidence-collection-path": "openspec/orchestrate/phase-works/phase-4/source-evidence-collections/by-input-change/change-b.md",
             "decision": "keep",
             "final-changes": ["change-b"],
-            "gate-results": [{"gate": "change-outcome", "result": "passed", "note": "第二个结果边界成立。"}],
+            "initial-gate-results": self._change_gate_results(),
+            "supporting-global-atom-ids": [],
             "reason": "原文支持第二个独立结果。",
         })
 
         reordered = copy.deepcopy(base)
         reordered["change-reviews"][0]["decision"] = "reorder"
-        reordered["change-reviews"][1]["decision"] = "reorder"
+        reordered["change-reviews"][0]["supporting-global-atom-ids"] = ["GA-0001"]
         reordered["final-framework"]["change-order"] = ["change-b", "change-a"]
         self.assertEqual(validate_framework_refit(self.orchestrate, reordered), "adjusted")
 
         merged = copy.deepcopy(base)
-        for row in merged["change-reviews"]:
-            row["decision"] = "merge"
-            row["final-changes"] = ["change-merged"]
+        merged["change-reviews"][0].update({
+            "decision": "merge",
+            "final-changes": ["change-merged"],
+            "supporting-global-atom-ids": ["GA-0001"],
+        })
+        merged["change-reviews"][1].update({
+            "decision": "merge",
+            "final-changes": ["change-merged"],
+            "initial-gate-results": self._change_gate_results(failed="scope-cohesion"),
+        })
         merged["final-framework"]["change-order"] = ["change-merged"]
         merged["final-framework"]["overlay"][0]["change"] = "change-merged"
-        for row in merged["unassigned-and-gap-reviews"]:
-            row["final-change"] = "change-merged"
         self.assertEqual(validate_framework_refit(self.orchestrate, merged), "adjusted")
+
+    def test_phase5_zero_ga_collection_allows_failed_remove_without_support(self) -> None:
+        initial_plan = self.orchestrate / "phase-works/phase-1/initial-change-plan.md"
+        text = initial_plan.read_text(encoding="utf-8").replace(
+            "\n## Change-Capability Overlay",
+            "\n- Change 名称：`change-empty`\n"
+            "- 单一 intent：移除无证据支撑的初始结果。\n"
+            "- source-backed outcome：等待Phase 5复审。\n\n"
+            "## Change-Capability Overlay",
+        )
+        initial_plan.write_text(text, encoding="utf-8")
+        render_orchestrate(self.orchestrate, "phase4-evidence-collections", write=True)
+
+        refit = self._refit_trace()
+        refit["status"] = "adjusted"
+        refit["change-reviews"].append({
+            "input-change": "change-empty",
+            "evidence-collection-path": (
+                "openspec/orchestrate/phase-works/phase-4/"
+                "source-evidence-collections/by-input-change/change-empty.md"
+            ),
+            "decision": "remove",
+            "final-changes": [],
+            "initial-gate-results": self._change_gate_results(
+                failed="implementation-readiness"
+            ),
+            "supporting-global-atom-ids": [],
+            "reason": "初始Change没有关联GA且初始gate失败，因此移除。",
+        })
+        self.assertEqual(
+            validate_framework_refit(self.orchestrate, refit),
+            "adjusted",
+        )
+
+    def test_phase5_zero_ga_collections_allow_failed_merge_without_support(self) -> None:
+        initial_plan = self.orchestrate / "phase-works/phase-1/initial-change-plan.md"
+        text = initial_plan.read_text(encoding="utf-8").replace(
+            "\n## Change-Capability Overlay",
+            "\n- Change 名称：`change-empty-a`\n"
+            "- 单一 intent：复审第一个空初始结果。\n"
+            "- source-backed outcome：等待Phase 5复审。\n\n"
+            "- Change 名称：`change-empty-b`\n"
+            "- 单一 intent：复审第二个空初始结果。\n"
+            "- source-backed outcome：等待Phase 5复审。\n\n"
+            "## Change-Capability Overlay",
+        )
+        initial_plan.write_text(text, encoding="utf-8")
+        render_orchestrate(self.orchestrate, "phase4-evidence-collections", write=True)
+
+        refit = self._refit_trace()
+        refit["status"] = "adjusted"
+        for change in ("change-empty-a", "change-empty-b"):
+            refit["change-reviews"].append({
+                "input-change": change,
+                "evidence-collection-path": (
+                    "openspec/orchestrate/phase-works/phase-4/"
+                    f"source-evidence-collections/by-input-change/{change}.md"
+                ),
+                "decision": "merge",
+                "final-changes": ["change-merged"],
+                "initial-gate-results": self._change_gate_results(
+                    failed="scope-cohesion"
+                ),
+                "supporting-global-atom-ids": [],
+                "reason": "空集合对应的初始gate失败，合并后由一次final review裁决。",
+            })
+        refit["final-framework"]["change-order"] = ["change-a", "change-merged"]
+        self.assertEqual(
+            validate_framework_refit(self.orchestrate, refit),
+            "adjusted",
+        )
 
     def test_phase5_accepted_rejects_boundary_change(self) -> None:
         plan = self.orchestrate / "phase-works/phase-5/change-plan.md"
@@ -1730,6 +2168,7 @@ class SourceAlignedPhase45Test(unittest.TestCase):
         refit = json.loads(refit_path.read_text(encoding="utf-8"))
         refit["status"] = "adjusted"
         refit["change-reviews"][0]["decision"] = "scope-adjusted"
+        refit["change-reviews"][0]["supporting-global-atom-ids"] = ["GA-0001"]
         write_json(refit_path, refit)
         render_orchestrate(self.orchestrate, "phase5-refit-review", write=True)
         result = self._result("phase-5")
@@ -1759,11 +2198,172 @@ class SourceAlignedPhase45Test(unittest.TestCase):
         )["patch-history"]
         self.assertEqual([row["status"] for row in history], ["requested"])
 
+    def test_invalid_request_cannot_publish_marker_or_clean_terminal_surface(self) -> None:
+        work = self.orchestrate / "phase-works/phase-5"
+        plan_before = (work / "change-plan.md").read_bytes()
+        mapping_before = (work / "atom-plan-mapping.json").read_bytes()
+        root_plan_before = (self.orchestrate / "change-plan.md").read_bytes()
+
+        def corrupt_witness(request: dict) -> None:
+            request["targets"][0]["defect-witness"]["window-sha256"] = "0" * 64
+
+        with self.assertRaises(ValueError):
+            self._enter_targeted_patch_checkpoint(request_mutator=corrupt_witness)
+
+        self.assertFalse((self.orchestrate / "trace/phase-5.trace.json").exists())
+        self.assertEqual((work / "change-plan.md").read_bytes(), plan_before)
+        self.assertEqual((work / "atom-plan-mapping.json").read_bytes(), mapping_before)
+        self.assertEqual((self.orchestrate / "change-plan.md").read_bytes(), root_plan_before)
+        self.assertTrue((self.orchestrate / "change-capability-anchors/index.md").is_file())
+
+    def test_invalid_checkpoint_cannot_publish_marker_or_clean_terminal_surface(self) -> None:
+        work = self.orchestrate / "phase-works/phase-5"
+        plan_before = (work / "change-plan.md").read_bytes()
+        mapping_before = (work / "atom-plan-mapping.json").read_bytes()
+        root_plan_before = (self.orchestrate / "change-plan.md").read_bytes()
+
+        def corrupt_authority(checkpoint: dict) -> None:
+            checkpoint["patch-attempt"]["authority-digest"] = "0" * 64
+
+        with self.assertRaises(ValueError):
+            self._enter_targeted_patch_checkpoint(
+                checkpoint_mutator=corrupt_authority,
+            )
+
+        self.assertFalse((self.orchestrate / "trace/phase-5.trace.json").exists())
+        self.assertEqual((work / "change-plan.md").read_bytes(), plan_before)
+        self.assertEqual((work / "atom-plan-mapping.json").read_bytes(), mapping_before)
+        self.assertEqual((self.orchestrate / "change-plan.md").read_bytes(), root_plan_before)
+        self.assertTrue((self.orchestrate / "change-capability-anchors/index.md").is_file())
+
+    def test_request_only_cannot_authorize_targeted_phase2(self) -> None:
+        self._enter_targeted_patch_checkpoint()
+        self._apply_targeted_phase2_only()
+        (
+            self.orchestrate
+            / "phase-works/phase-5/phase-5-checkpoint.json"
+        ).unlink()
+        (self.orchestrate / "trace/phase-5.trace.json").unlink()
+
+        result = self._result("phase-2")
+        self.assertFalse(result["ok"])
+        self._assert_rule(result, "phase5-patch-commit-marker")
+
+    def test_request_and_checkpoint_without_phase5_marker_cannot_authorize_phase2(self) -> None:
+        self._enter_targeted_patch_checkpoint()
+        self._apply_targeted_phase2_only()
+        (self.orchestrate / "trace/phase-5.trace.json").unlink()
+
+        result = self._result("phase-2")
+        self.assertFalse(result["ok"])
+        self._assert_rule(result, "phase5-patch-commit-marker")
+
     def test_checkpoint_cannot_freeze_semantically_invalid_completed_mapping(self) -> None:
         with self.assertRaises(ValueError):
             self._enter_targeted_patch_checkpoint(
                 completed_mapping_owner_override="bogus-change",
             )
+
+    def test_checkpoint_validator_rejects_bogus_completed_change_decision(self) -> None:
+        self._enter_targeted_patch_checkpoint()
+        checkpoint = self._data(
+            "openspec/orchestrate/phase-works/phase-5/phase-5-checkpoint.json"
+        )
+        review = checkpoint["completed-rows"]["change-reviews"][0]
+        review["decision"] = "bogus-decision"
+        review["supporting-global-atom-ids"] = ["GA-0001"]
+        self._refresh_checkpoint_preserved_digest(
+            checkpoint,
+            "change-reviews",
+            review["input-change"],
+        )
+
+        result = self._checkpoint_validation_result(checkpoint)
+
+        self.assertFalse(result["ok"], result)
+        self._assert_rule(result, "phase5-checkpoint-review-decision")
+        self.assertNotIn(
+            "phase5-checkpoint-preserved-row-drift",
+            {issue["rule_id"] for issue in result["issues"]},
+            result,
+        )
+
+    def test_checkpoint_validator_rejects_bogus_completed_mapping_relation(self) -> None:
+        self._enter_targeted_patch_checkpoint()
+        checkpoint = self._data(
+            "openspec/orchestrate/phase-works/phase-5/phase-5-checkpoint.json"
+        )
+        mapping = checkpoint["completed-rows"]["atom-plan-mappings"][0]
+        mapping["final-relation"] = "bogus-relation"
+        self._refresh_checkpoint_preserved_digest(
+            checkpoint,
+            "atom-plan-mappings",
+            mapping["global-atom-id"],
+        )
+
+        result = self._checkpoint_validation_result(checkpoint)
+
+        self.assertFalse(result["ok"], result)
+        self._assert_rule(result, "phase5-checkpoint-mapping-relation")
+        self.assertNotIn(
+            "phase5-checkpoint-preserved-row-drift",
+            {issue["rule_id"] for issue in result["issues"]},
+            result,
+        )
+
+    def test_checkpoint_validator_rejects_completed_mapping_evidence_ref_drift(self) -> None:
+        self._enter_targeted_patch_checkpoint()
+        checkpoint = self._data(
+            "openspec/orchestrate/phase-works/phase-5/phase-5-checkpoint.json"
+        )
+        mapping = checkpoint["completed-rows"]["atom-plan-mappings"][0]
+        mapping["evidence-ref"] = self._ref("SA-9999")
+        self._refresh_checkpoint_preserved_digest(
+            checkpoint,
+            "atom-plan-mappings",
+            mapping["global-atom-id"],
+        )
+
+        result = self._checkpoint_validation_result(checkpoint)
+
+        self.assertFalse(result["ok"], result)
+        self._assert_rule(result, "phase5-checkpoint-mapping-evidence-ref")
+        self.assertNotIn(
+            "phase5-checkpoint-preserved-row-drift",
+            {issue["rule_id"] for issue in result["issues"]},
+            result,
+        )
+
+    def test_nonterminal_refit_scope_out_row_must_match_checkpoint_completed_row(self) -> None:
+        self._enter_targeted_patch_checkpoint()
+        refit_relative = (
+            "openspec/orchestrate/phase-works/phase-5/framework-refit-trace.json"
+        )
+        refit_path = self.root / refit_relative
+        refit = self._data(refit_relative)
+        refit["change-reviews"][0]["reason"] = (
+            "该scope外review row被错误改写，必须由checkpoint completed row拒绝。"
+        )
+        self._write_data(refit_relative, refit)
+        render_orchestrate(self.orchestrate, "phase5-refit-review", write=True)
+
+        review_path = (
+            self.orchestrate / "phase-works/phase-5/plan-refit-review.md"
+        )
+        trace_relative = "openspec/orchestrate/trace/phase-5.trace.json"
+        trace = self._data(trace_relative)
+        trace["framework-refit-trace-sha256"] = sha256_file(refit_path)
+        trace["plan-refit-review-sha256"] = sha256_file(review_path)
+        self._write_data(trace_relative, trace)
+        self._write_manifest()
+
+        result = self._result("phase-5")
+
+        self.assertFalse(result["ok"], result)
+        self._assert_rule(result, "phase5-patch-commit-scope-out-rows")
+        rules = {issue["rule_id"] for issue in result["issues"]}
+        self.assertNotIn("phase5-trace-sha", rules, result)
+        self.assertNotIn("phase5-patch-commit-sha", rules, result)
 
     def test_split_patch_appends_deterministic_atom_and_ga_without_renumbering(self) -> None:
         state = self._enter_targeted_patch_checkpoint(split=True)
@@ -1964,10 +2564,18 @@ class SourceAlignedPhase45Test(unittest.TestCase):
         self.assertTrue(result["ok"], result)
 
     def test_non_source_base_quote_cannot_be_laundered_by_patch_request(self) -> None:
-        self._enter_targeted_patch_checkpoint(base_quote="incorrect unresolved quote")
-        result = self._result("phase-5")
-        self.assertFalse(result["ok"])
-        self._assert_rule(result, "source-fact-quote")
+        with self.assertRaisesRegex(ValueError, "source-fact-quote"):
+            self._enter_targeted_patch_checkpoint(
+                base_quote="incorrect unresolved quote"
+            )
+        self.assertFalse((self.orchestrate / "trace/phase-5.trace.json").exists())
+        self.assertTrue(
+            (self.orchestrate / "phase-works/phase-5/change-plan.md").exists()
+        )
+        self.assertTrue(
+            (self.orchestrate / "phase-works/phase-5/atom-plan-mapping.json").exists()
+        )
+        self.assertTrue((self.orchestrate / "change-plan.md").exists())
 
     def test_mapping_or_framework_issue_cannot_authorize_phase2_patch(self) -> None:
         state = self._enter_targeted_patch_checkpoint()
@@ -2153,10 +2761,19 @@ class SourceAlignedPhase45Test(unittest.TestCase):
         self._write_data(coverage_relative, coverage)
         self._refresh_patch_base_derivations()
 
-        self._enter_targeted_patch_checkpoint(omit_ambiguity_ga="GA-0003")
-        result = self._result("phase-5")
-        self.assertFalse(result["ok"])
-        self._assert_rule(result, "evidence-patch-ambiguity-protection-coverage")
+        with self.assertRaisesRegex(
+            ValueError,
+            "evidence-patch-ambiguity-protection-coverage",
+        ):
+            self._enter_targeted_patch_checkpoint(omit_ambiguity_ga="GA-0003")
+        self.assertFalse((self.orchestrate / "trace/phase-5.trace.json").exists())
+        self.assertTrue(
+            (self.orchestrate / "phase-works/phase-5/change-plan.md").exists()
+        )
+        self.assertTrue(
+            (self.orchestrate / "phase-works/phase-5/atom-plan-mapping.json").exists()
+        )
+        self.assertTrue((self.orchestrate / "change-plan.md").exists())
 
     def test_patch_target_cannot_change_candidate_mapping_fields(self) -> None:
         self._enter_targeted_patch_checkpoint()
@@ -2331,6 +2948,7 @@ class SourceAlignedPhase45Test(unittest.TestCase):
         refit = self._data(refit_relative)
         refit["status"] = "adjusted"
         refit["change-reviews"][0]["decision"] = "scope-adjusted"
+        refit["change-reviews"][0]["supporting-global-atom-ids"] = ["GA-0001"]
         refit["change-reviews"][0]["reason"] = "已在回补前完成source-backed scope调整。"
         self._write_data(refit_relative, refit)
         write_outputs(self.orchestrate)
@@ -2649,11 +3267,23 @@ class SourceAlignedPhase45Test(unittest.TestCase):
     def test_patch_abort_helper_is_a_single_mechanical_control_transition(self) -> None:
         self._enter_targeted_patch_checkpoint()
         relative = "openspec/orchestrate/phase-works/phase-5/framework-refit-trace.json"
+        request_path = (
+            self.orchestrate
+            / "phase-works/phase-5/evidence-patch-request.json"
+        )
+        checkpoint_path = (
+            self.orchestrate
+            / "phase-works/phase-5/phase-5-checkpoint.json"
+        )
+        request_before = request_path.read_bytes()
+        checkpoint_before = checkpoint_path.read_bytes()
         before = self._data(relative)
 
         abort_patch_lifecycle(self.orchestrate, "局部回补失败，终止唯一patch链。")
         after = self._data(relative)
 
+        self.assertEqual(request_path.read_bytes(), request_before)
+        self.assertEqual(checkpoint_path.read_bytes(), checkpoint_before)
         for field in set(before) - {"status", "issues", "patch-history"}:
             self.assertEqual(after[field], before[field], field)
         expected_history = copy.deepcopy(before["patch-history"])
@@ -2713,6 +3343,53 @@ class SourceAlignedPhase45Test(unittest.TestCase):
         result = self._result("phase-5")
         self.assertFalse(result["ok"])
         self._assert_rule(result, "phase5-legacy-artifact")
+
+    def test_trace_contract_v3_is_rejected(self) -> None:
+        relative = "openspec/orchestrate/trace/phase-1.trace.json"
+        trace = self._data(relative)
+        trace["trace-contract-version"] = "source-aligned-trace-v3"
+        self._write_data(relative, trace)
+        self._write_manifest()
+        result = self._result("phase-1")
+        self.assertFalse(result["ok"])
+        self._assert_rule(result, "trace-contract-version")
+
+    def test_framework_refit_v2_is_rejected(self) -> None:
+        relative = (
+            "openspec/orchestrate/phase-works/phase-5/framework-refit-trace.json"
+        )
+        refit = self._data(relative)
+        refit["trace-schema"] = "source-aligned-framework-refit-trace-v2"
+        self._write_data(relative, refit)
+        self._write_manifest()
+        result = self._result("phase-5")
+        self.assertFalse(result["ok"])
+        self._assert_rule(result, "phase5-refit-contract")
+
+    def test_phase5_checkpoint_v1_is_rejected(self) -> None:
+        self._enter_targeted_patch_checkpoint()
+        relative = (
+            "openspec/orchestrate/phase-works/phase-5/phase-5-checkpoint.json"
+        )
+        checkpoint = self._data(relative)
+        checkpoint["trace-schema"] = "source-aligned-phase-5-checkpoint-v1"
+        self._write_data(relative, checkpoint)
+        self._write_manifest()
+        result = self._result("phase-5")
+        self.assertFalse(result["ok"])
+        self._assert_rule(result, "trace-schema")
+
+    def test_render_contract_v7_is_rejected(self) -> None:
+        relative = "openspec/orchestrate/trace/phase-4.trace.json"
+        trace = self._data(relative)
+        trace["assembled"]["renderer-result-summary"][
+            "render-contract-version"
+        ] = "source-aligned-render-v7"
+        self._write_data(relative, trace)
+        self._write_manifest()
+        result = self._result("phase-4")
+        self.assertFalse(result["ok"])
+        self._assert_rule(result, "phase4-renderer-summary")
 
     def test_old_phase4_and_phase5_trace_schemas_are_rejected(self) -> None:
         phase4 = self._data("openspec/orchestrate/trace/phase-4.trace.json")
@@ -2781,11 +3458,20 @@ class SourceAlignedPhase45Test(unittest.TestCase):
 
     def test_phase1_and_phase5_share_one_principles_document(self) -> None:
         shared = "references/change-capability-framework-principles.md"
-        for relative in ("references/phase-1-initial-change-plan.md", "references/phase-5-targeted-plan-adjustment.md"):
+        for relative in ("references/phase-1-initial-change-plan.md", "references/phase-5-framework-refit-and-mapping.md"):
             text = (SKILL_DIR / relative).read_text(encoding="utf-8")
             self.assertIn(shared, text)
             self.assertNotIn("## Capability gate", text)
             self.assertNotIn("## Change gate", text)
+
+    def test_phase5_reference_is_compact_and_old_alias_is_removed(self) -> None:
+        phase5 = SKILL_DIR / "references/phase-5-framework-refit-and-mapping.md"
+        old_alias = SKILL_DIR / "references/phase-5-targeted-plan-adjustment.md"
+        patch_contract = SKILL_DIR / "references/targeted-evidence-patch-contract.md"
+        self.assertTrue(phase5.is_file())
+        self.assertTrue(patch_contract.is_file())
+        self.assertFalse(old_alias.exists())
+        self.assertIn(len(phase5.read_text(encoding="utf-8").splitlines()), range(90, 121))
 
 
 if __name__ == "__main__":

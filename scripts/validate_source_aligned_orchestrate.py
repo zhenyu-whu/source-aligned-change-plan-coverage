@@ -58,6 +58,12 @@ from render_source_aligned_orchestrate import (
     render_evidence_collections,
 )
 from phase5_plan_refit import (
+    CAPABILITY_IMPACTS,
+    CAPABILITY_INITIAL_GATE_NAMES,
+    CAPABILITY_REVIEW_DECISIONS,
+    CHANGE_INITIAL_GATE_NAMES,
+    CHANGE_REVIEW_DECISIONS,
+    RELATIONS,
     build_baseline as build_phase5_baseline,
     framework_dependency_edges,
     framework_ga_lineage,
@@ -72,7 +78,7 @@ from phase5_plan_refit import (
     render_capability_view,
     render_packet,
     validate_framework_refit,
-    validate_refit_mapping_crosscheck,
+    validate_gap_framework_impacts,
     validate_mapping as validate_phase5_mapping,
 )
 
@@ -1093,6 +1099,7 @@ def validate_phase_2(orchestrate_dir: Path, repo_root: Path, reporter: IssueRepo
                 ):
                     reporter.error("phase2-blocked-patch-fields", trace_path, "initial blocked要求patch refs/base为null且affected-sources为空")
             elif mode == "targeted-patch":
+                _validate_phase5_patch_commit_marker(orchestrate_dir, repo_root, reporter)
                 _validate_artifact_ref(
                     trace.get("patch-request-ref"),
                     _patch_request_path(orchestrate_dir),
@@ -1145,6 +1152,7 @@ def validate_phase_2(orchestrate_dir: Path, repo_root: Path, reporter: IssueRepo
             if trace.get("patch-request-ref") is not None or trace.get("checkpoint-ref") is not None or trace.get("patch-summary") is not None:
                 reporter.error("phase2-initial-patch-fields", trace_path, "initial mode要求patch refs和patch-summary均为null")
         elif mode == "targeted-patch":
+            _validate_phase5_patch_commit_marker(orchestrate_dir, repo_root, reporter)
             request_path = _patch_request_path(orchestrate_dir)
             checkpoint_path = _checkpoint_path(orchestrate_dir)
             _validate_artifact_ref(
@@ -2433,14 +2441,14 @@ def _validate_aborted_patch_request_snapshot(
 CHECKPOINT_COMPLETED_ROW_FIELDS: Dict[str, Set[str]] = {
     "capability-reviews": {
         "input-capability", "evidence-collection-path", "decision", "final-capabilities",
-        "gate-results", "reason",
+        "initial-gate-results", "supporting-global-atom-ids", "reason",
     },
     "change-reviews": {
         "input-change", "evidence-collection-path", "decision", "final-changes",
-        "gate-results", "reason",
+        "initial-gate-results", "supporting-global-atom-ids", "reason",
     },
     "unassigned-and-gap-reviews": {
-        "global-atom-id", "evidence-ref", "disposition", "final-change", "final-capability", "reason",
+        "global-atom-id", "evidence-ref", "framework-impact", "reason",
     },
     "atom-plan-mappings": {
         "global-atom-id", "evidence-ref", "final-owner-change", "final-relation",
@@ -2460,6 +2468,429 @@ CHECKPOINT_PENDING_FIELDS = {
     "unassigned-and-gap-reviews",
     "atom-plan-mappings",
 }
+
+
+def _validate_checkpoint_initial_gate_results(
+    value: object,
+    expected_gates: Tuple[str, ...],
+    path: Path,
+    reporter: IssueReporter,
+    context: str,
+) -> bool:
+    """校验checkpoint中冻结的initial gate全集；返回是否存在failed gate。"""
+    if not isinstance(value, list):
+        reporter.error(
+            "phase5-checkpoint-initial-gates",
+            path,
+            f"{context}.initial-gate-results必须是array",
+        )
+        return False
+    actual_gates: List[str] = []
+    has_failed = False
+    for index, row in enumerate(value):
+        if not isinstance(row, dict):
+            reporter.error(
+                "phase5-checkpoint-initial-gates",
+                path,
+                f"{context}.initial-gate-results[{index}]必须是object",
+            )
+            continue
+        exact_fields(
+            row,
+            {"gate", "result", "note"},
+            path,
+            reporter,
+            "phase5-checkpoint-initial-gate-fields",
+            f"{context}.initial-gate-results[{index}]",
+        )
+        gate = normalize_code(row.get("gate"))
+        result = normalize_code(row.get("result"))
+        actual_gates.append(gate)
+        if result not in {"passed", "failed"}:
+            reporter.error(
+                "phase5-checkpoint-initial-gate-result",
+                path,
+                f"{context}/{gate or index} result只允许passed|failed",
+            )
+        has_failed = has_failed or result == "failed"
+        note = squash(row.get("note"))
+        if not note or not re.search(r"[\u4e00-\u9fff]", note):
+            reporter.error(
+                "phase5-checkpoint-initial-gate-note",
+                path,
+                f"{context}/{gate or index} note必须使用简体中文解释",
+            )
+    if actual_gates != list(expected_gates):
+        reporter.error(
+            "phase5-checkpoint-initial-gate-coverage",
+            path,
+            f"{context}.initial-gate-results必须按共享原则固定顺序完整覆盖；"
+            f"expected={list(expected_gates)} actual={actual_gates}",
+        )
+    return has_failed
+
+
+def _validate_checkpoint_completed_review_semantics(
+    completed_by_kind: Dict[str, Dict[str, Dict[str, object]]],
+    path: Path,
+    reporter: IssueReporter,
+) -> None:
+    review_specs = (
+        (
+            "capability-reviews", CAPABILITY_INITIAL_GATE_NAMES,
+            CAPABILITY_REVIEW_DECISIONS, "final-capabilities", "Capability",
+        ),
+        (
+            "change-reviews", CHANGE_INITIAL_GATE_NAMES,
+            CHANGE_REVIEW_DECISIONS, "final-changes", "Change",
+        ),
+    )
+    for kind, expected_gates, allowed_decisions, final_field, unit_label in review_specs:
+        for key, row in completed_by_kind[kind].items():
+            context = f"completed-rows.{kind}/{key}"
+            has_failed = _validate_checkpoint_initial_gate_results(
+                row.get("initial-gate-results"),
+                expected_gates,
+                path,
+                reporter,
+                context,
+            )
+            supporting = row.get("supporting-global-atom-ids")
+            if (
+                not isinstance(supporting, list)
+                or any(
+                    not isinstance(item, str)
+                    or not GLOBAL_ATOM_ID_RE.fullmatch(normalize_code(item))
+                    for item in supporting
+                )
+                or len(supporting) != len(set(supporting))
+            ):
+                reporter.error(
+                    "phase5-checkpoint-supporting-ga",
+                    path,
+                    f"{context}.supporting-global-atom-ids必须是唯一合法GA array",
+                )
+                supporting_ids: List[str] = []
+            else:
+                supporting_ids = [normalize_code(item) for item in supporting]
+            decision = normalize_code(row.get("decision"))
+            if decision not in allowed_decisions:
+                reporter.error(
+                    "phase5-checkpoint-review-decision",
+                    path,
+                    f"{context}.decision非法：{decision}",
+                )
+            finals_raw = row.get(final_field)
+            if (
+                not isinstance(finals_raw, list)
+                or any(
+                    not isinstance(item, str)
+                    or not KEBAB_CASE_RE.fullmatch(normalize_code(item))
+                    for item in finals_raw
+                )
+                or len(finals_raw) != len(set(finals_raw))
+            ):
+                reporter.error(
+                    "phase5-checkpoint-review-final-ids",
+                    path,
+                    f"{context}.{final_field}必须是唯一合法ID array",
+                )
+                finals: List[str] = []
+            else:
+                finals = [normalize_code(item) for item in finals_raw]
+            if decision == "remove" and finals:
+                reporter.error(
+                    "phase5-checkpoint-review-final-ids",
+                    path,
+                    f"{context} remove要求{final_field}为空",
+                )
+            if unit_label == "Capability":
+                identity_decisions = {"keep"}
+            else:
+                identity_decisions = {"keep", "reorder", "scope-adjusted"}
+            if decision in identity_decisions and finals != [key]:
+                reporter.error(
+                    "phase5-checkpoint-review-final-ids",
+                    path,
+                    f"{context} {decision}要求{final_field}仅包含自身",
+                )
+            if decision == "rename" and (len(finals) != 1 or finals[0] == key):
+                reporter.error(
+                    "phase5-checkpoint-review-final-ids",
+                    path,
+                    f"{context} rename要求一个不同的final {unit_label}",
+                )
+            if decision == "split" and len(finals) < 2:
+                reporter.error(
+                    "phase5-checkpoint-review-final-ids",
+                    path,
+                    f"{context} split要求至少两个final {unit_label}",
+                )
+            if decision == "merge" and len(finals) != 1:
+                reporter.error(
+                    "phase5-checkpoint-review-final-ids",
+                    path,
+                    f"{context} merge要求恰好一个final {unit_label}",
+                )
+            if decision == "keep":
+                if has_failed:
+                    reporter.error(
+                        "phase5-checkpoint-keep-failed-gate",
+                        path,
+                        f"{context} keep要求全部initial gate通过",
+                    )
+                if supporting_ids:
+                    reporter.error(
+                        "phase5-checkpoint-keep-supporting-ga",
+                        path,
+                        f"{context} keep要求supporting-global-atom-ids为空",
+                    )
+            elif not supporting_ids and not (decision in {"remove", "merge"} and has_failed):
+                reporter.error(
+                    "phase5-checkpoint-adjustment-supporting-ga",
+                    path,
+                    f"{context} 非keep decision必须引用source-backed supporting GA；"
+                    "仅零GA collection的remove|merge且存在failed initial gate可为空",
+                )
+            reason = squash(row.get("reason"))
+            if not reason or not re.search(r"[\u4e00-\u9fff]", reason):
+                reporter.error(
+                    "phase5-checkpoint-review-reason",
+                    path,
+                    f"{context}.reason必须使用简体中文解释",
+                )
+
+    for ga_id, row in completed_by_kind["unassigned-and-gap-reviews"].items():
+        impact = normalize_code(row.get("framework-impact"))
+        if impact not in {"none", "supports-adjustment"}:
+            reporter.error(
+                "phase5-checkpoint-gap-framework-impact",
+                path,
+                f"completed-rows.unassigned-and-gap-reviews/{ga_id} framework-impact只允许none|supports-adjustment",
+            )
+        reason = squash(row.get("reason"))
+        if not reason or not re.search(r"[\u4e00-\u9fff]", reason):
+            reporter.error(
+                "phase5-checkpoint-gap-reason",
+                path,
+                f"completed-rows.unassigned-and-gap-reviews/{ga_id}.reason必须使用简体中文解释",
+            )
+
+
+def _validate_checkpoint_completed_mapping_semantics(
+    completed_by_kind: Dict[str, Dict[str, Dict[str, object]]],
+    provisional_changes: List[str],
+    provisional_capabilities: List[str],
+    path: Path,
+    reporter: IssueReporter,
+) -> None:
+    """对checkpoint冻结的mapping v4子集执行完整tuple语义校验。"""
+    change_ids = set(provisional_changes)
+    capability_ids = set(provisional_capabilities)
+    for ga_id, row in completed_by_kind["atom-plan-mappings"].items():
+        context = f"completed-rows.atom-plan-mappings/{ga_id}"
+        if not GLOBAL_ATOM_ID_RE.fullmatch(ga_id):
+            reporter.error("phase5-checkpoint-mapping-ga", path, f"{context} GA非法")
+        if not isinstance(row.get("evidence-ref"), dict):
+            reporter.error(
+                "phase5-checkpoint-mapping-evidence-ref",
+                path,
+                f"{context}.evidence-ref必须是object",
+            )
+        owner = normalize_code(row.get("final-owner-change"))
+        relation = normalize_code(row.get("final-relation"))
+        projection = normalize_code(row.get("final-artifact-projection"))
+        impact = normalize_code(row.get("final-capability-impact"))
+        target = normalize_code(row.get("final-target-capability"))
+        if owner not in change_ids:
+            reporter.error(
+                "phase5-checkpoint-mapping-owner",
+                path,
+                f"{context} final owner Change不存在：{owner}",
+            )
+        if relation not in RELATIONS:
+            reporter.error(
+                "phase5-checkpoint-mapping-relation",
+                path,
+                f"{context} final relation非法：{relation}",
+            )
+        if impact not in CAPABILITY_IMPACTS:
+            reporter.error(
+                "phase5-checkpoint-mapping-impact",
+                path,
+                f"{context} Capability impact非法：{impact}",
+            )
+        related_raw = row.get("related-capabilities")
+        if (
+            not isinstance(related_raw, list)
+            or any(
+                not isinstance(item, str)
+                or normalize_code(item) not in capability_ids
+                for item in related_raw
+            )
+            or len(related_raw) != len(set(related_raw))
+        ):
+            reporter.error(
+                "phase5-checkpoint-mapping-related",
+                path,
+                f"{context}.related-capabilities必须是唯一且引用provisional Capability的array",
+            )
+            related: List[str] = []
+        else:
+            related = [normalize_code(item) for item in related_raw]
+        if target in related:
+            reporter.error(
+                "phase5-checkpoint-mapping-related",
+                path,
+                f"{context} related Capability不得等于target",
+            )
+        if relation == "direct":
+            if projection not in DIRECT_PROJECTIONS:
+                reporter.error(
+                    "phase5-checkpoint-mapping-projection",
+                    path,
+                    f"{context} direct projection非法：{projection}",
+                )
+            elif projection in SPEC_PROJECTIONS:
+                if impact not in {"new", "modified"} or target not in capability_ids:
+                    reporter.error(
+                        "phase5-checkpoint-mapping-tuple",
+                        path,
+                        f"{context} direct spec mapping缺少有效Capability impact/target",
+                    )
+            elif impact != "none" or target != "none":
+                reporter.error(
+                    "phase5-checkpoint-mapping-tuple",
+                    path,
+                    f"{context} design/verification mapping必须使用none/none",
+                )
+        elif relation in RELATIONS and (
+            projection != "contextual-only" or impact != "none" or target != "none"
+        ):
+            reporter.error(
+                "phase5-checkpoint-mapping-tuple",
+                path,
+                f"{context} non-direct mapping必须使用contextual-only和none/none",
+            )
+        reason = squash(row.get("reason"))
+        if not reason or not re.search(r"[\u4e00-\u9fff]", reason):
+            reporter.error(
+                "phase5-checkpoint-mapping-reason",
+                path,
+                f"{context}.reason必须使用简体中文解释",
+            )
+
+
+def _validate_checkpoint_completed_review_links(
+    orchestrate_dir: Path,
+    completed_by_kind: Dict[str, Dict[str, Dict[str, object]]],
+    collection_by_ga: Dict[str, Dict[str, object]],
+    provisional_changes: List[str],
+    provisional_capabilities: List[str],
+    provisional_overlay: Set[Tuple[str, str]],
+    initial_changes: Set[str],
+    initial_capabilities: Set[str],
+    global_positions: Dict[str, int],
+    path: Path,
+    reporter: IssueReporter,
+) -> None:
+    """用仍可读取的Phase 4 initial collection校验checkpoint review provenance。"""
+    review_specs = (
+        ("capability-reviews", "capability-bucket"),
+        ("change-reviews", "change-bucket"),
+    )
+    adjustment_supporting_ga: Set[str] = set()
+    for kind, bucket_field in review_specs:
+        for key, row in completed_by_kind[kind].items():
+            collection_ga = {
+                ga_id
+                for ga_id, collection_row in collection_by_ga.items()
+                if normalize_code(collection_row.get(bucket_field)) == key
+            }
+            supporting_ids = [
+                normalize_code(item)
+                for item in row.get("supporting-global-atom-ids", [])
+                if isinstance(item, str)
+            ]
+            supporting = set(supporting_ids)
+            if all(item in global_positions for item in supporting_ids):
+                positions = [global_positions[item] for item in supporting_ids]
+                if positions != sorted(positions):
+                    reporter.error(
+                        "phase5-checkpoint-supporting-ga-order",
+                        path,
+                        f"completed-rows.{kind}/{key} supporting GA必须按obligation-atom-index.json的实际顺序排列",
+                    )
+            outside = sorted(supporting - collection_ga)
+            if outside:
+                reporter.error(
+                    "phase5-checkpoint-supporting-ga-collection",
+                    path,
+                    f"completed-rows.{kind}/{key} supporting GA不属于对应Phase 4 collection：{outside}",
+                )
+            decision = normalize_code(row.get("decision"))
+            gates = row.get("initial-gate-results")
+            has_failed = any(
+                isinstance(gate, dict) and normalize_code(gate.get("result")) == "failed"
+                for gate in (gates if isinstance(gates, list) else [])
+            )
+            if decision != "keep":
+                adjustment_supporting_ga.update(supporting)
+                if (
+                    not supporting
+                    and not (
+                        decision in {"remove", "merge"}
+                        and has_failed
+                        and not collection_ga
+                    )
+                ):
+                    reporter.error(
+                        "phase5-checkpoint-adjustment-supporting-ga",
+                        path,
+                        f"completed-rows.{kind}/{key}缺少对应collection中的supporting GA；"
+                        "空引用仅允许零GA collection的remove|merge且initial gate存在failed",
+                    )
+
+    completed_mapping = completed_by_kind["atom-plan-mappings"]
+    for ga_id, mapping_row in completed_mapping.items():
+        collection_row = collection_by_ga.get(ga_id)
+        if collection_row is None or mapping_row.get("evidence-ref") != collection_row.get("evidence-ref"):
+            reporter.error(
+                "phase5-checkpoint-mapping-evidence-ref",
+                path,
+                f"completed atom mapping/{ga_id} evidence-ref必须与Phase 4 collection index一致",
+            )
+    new_change_ids = set(provisional_changes) - initial_changes
+    new_capability_ids = set(provisional_capabilities) - initial_capabilities
+    new_advancement_edges = provisional_overlay - _phase1_overlay(orchestrate_dir)
+    for ga_id, row in completed_by_kind["unassigned-and-gap-reviews"].items():
+        collection_row = collection_by_ga.get(ga_id)
+        if collection_row is not None and row.get("evidence-ref") != collection_row.get("evidence-ref"):
+            reporter.error(
+                "phase5-checkpoint-gap-evidence-ref",
+                path,
+                f"completed unassigned/gap review/{ga_id} evidence-ref与Phase 4 index不一致",
+            )
+        if normalize_code(row.get("framework-impact")) != "supports-adjustment":
+            continue
+        mapping_row = completed_mapping.get(ga_id, {})
+        owner = normalize_code(mapping_row.get("final-owner-change"))
+        target = normalize_code(mapping_row.get("final-target-capability"))
+        projection = normalize_code(mapping_row.get("final-artifact-projection"))
+        relation = normalize_code(mapping_row.get("final-relation"))
+        linked_to_new_id = owner in new_change_ids or target in new_capability_ids
+        linked_to_new_edge = (
+            relation == "direct"
+            and projection in SPEC_PROJECTIONS
+            and (owner, target) in new_advancement_edges
+        )
+        if ga_id not in adjustment_supporting_ga and not linked_to_new_id and not linked_to_new_edge:
+            reporter.error(
+                "phase5-checkpoint-gap-framework-impact-link",
+                path,
+                f"{ga_id} supports-adjustment必须关联非keep review supporting GA、"
+                "新增final ID或Phase 1不存在的advancement edge",
+            )
 
 
 def _validate_identifier_array(
@@ -2905,6 +3336,15 @@ def _validate_checkpoint(
                 continue
             completed_by_kind[kind][key] = row
 
+    _validate_checkpoint_completed_review_semantics(completed_by_kind, path, reporter)
+    _validate_checkpoint_completed_mapping_semantics(
+        completed_by_kind,
+        provisional_changes,
+        provisional_capabilities,
+        path,
+        reporter,
+    )
+
     completed_lineage_specs = (
         (
             "change-reviews", "change-lineage", "input-change",
@@ -3043,6 +3483,28 @@ def _validate_checkpoint(
 
     collection_by_ga: Dict[str, Dict[str, object]] = {}
     if verify_current_surfaces:
+        global_index_path = orchestrate_dir / "change-capability-anchors/obligation-atom-index.json"
+        try:
+            global_index = read_json(global_index_path) if global_index_path.exists() else {}
+        except Exception:  # noqa: BLE001
+            global_index = {}
+        global_rows = global_index.get("global-atoms") if isinstance(global_index.get("global-atoms"), list) else []
+        global_order = [
+            normalize_code(row.get("global-atom-id"))
+            for row in global_rows
+            if isinstance(row, dict)
+        ]
+        if (
+            len(global_order) != len(global_rows)
+            or len(global_order) != len(set(global_order))
+            or any(not GLOBAL_ATOM_ID_RE.fullmatch(ga_id) for ga_id in global_order)
+        ):
+            reporter.error(
+                "phase5-checkpoint-global-index-order",
+                global_index_path,
+                "无法从obligation-atom-index.json建立唯一实际GA顺序",
+            )
+        global_positions = {ga_id: index for index, ga_id in enumerate(global_order)}
         collection_path = orchestrate_dir / "phase-works/phase-4/source-evidence-collections/evidence-collection-index.json"
         try:
             collection = read_json(collection_path) if collection_path.exists() else {}
@@ -3078,6 +3540,19 @@ def _validate_checkpoint(
             reporter.error("phase5-checkpoint-unassigned-partition", path, "completed与pending unassigned/gap reviews必须恰好划分Phase 4 unassigned GA")
         if set(completed_by_kind["atom-plan-mappings"]) | set(pending_mappings) != expected_mapping_ga:
             reporter.error("phase5-checkpoint-mapping-partition", path, "completed与pending atom mappings必须恰好划分全部GA")
+        _validate_checkpoint_completed_review_links(
+            orchestrate_dir,
+            completed_by_kind,
+            collection_by_ga,
+            provisional_changes,
+            provisional_capabilities,
+            overlay_pairs,
+            initial_changes,
+            initial_capabilities,
+            global_positions,
+            path,
+            reporter,
+        )
 
     scope = data.get("allowed-update-scope")
     if not isinstance(scope, dict):
@@ -3451,6 +3926,288 @@ def _validate_patch_issuance_base_modes(
             )
 
 
+def validate_patch_authorization_group(
+    orchestrate_dir: Path,
+    repo_root: Path,
+) -> Dict[str, object]:
+    """在Phase 5 commit marker发布前完整校验request/checkpoint授权组。"""
+    reporter = IssueReporter()
+    _validate_patch_issuance_base_modes(orchestrate_dir, reporter)
+    _validate_patch_request(orchestrate_dir, repo_root, reporter)
+    _validate_checkpoint(orchestrate_dir, repo_root, reporter)
+    return reporter.result()
+
+
+def _validate_phase5_patch_scope_out_rows(
+    refit: Dict[str, object],
+    checkpoint: Dict[str, object],
+    refit_path: Path,
+    checkpoint_path: Path,
+    reporter: IssueReporter,
+) -> None:
+    """闭合非终态refit snapshot与checkpoint completed/pending精确分区。"""
+    completed = checkpoint.get("completed-rows")
+    pending = checkpoint.get("pending-ids")
+    provisional = checkpoint.get("provisional-framework")
+    if not isinstance(completed, dict) or not isinstance(pending, dict) or not isinstance(provisional, dict):
+        reporter.error(
+            "phase5-patch-commit-refit-partition",
+            checkpoint_path,
+            "checkpoint必须提供completed-rows、pending-ids与provisional-framework以闭合nonterminal refit",
+        )
+        return
+    base_ga_ids = {
+        normalize_code(row.get("global-atom-id"))
+        for row in provisional.get("ga-lineage", [])
+        if isinstance(row, dict) and normalize_code(row.get("global-atom-id"))
+    }
+    specs = (
+        ("capability-reviews", "input-capability", False),
+        ("change-reviews", "input-change", False),
+        ("unassigned-and-gap-reviews", "global-atom-id", True),
+    )
+    for kind, key_field, base_ga_only in specs:
+        refit_rows = refit.get(kind)
+        completed_rows = completed.get(kind)
+        pending_raw = pending.get(kind)
+        if not isinstance(refit_rows, list) or not isinstance(completed_rows, list) or not isinstance(pending_raw, list):
+            reporter.error(
+                "phase5-patch-commit-refit-partition",
+                refit_path,
+                f"{kind}必须在refit、checkpoint completed与pending中形成array分区",
+            )
+            continue
+        pending_ids = {
+            normalize_code(item)
+            for item in pending_raw
+            if isinstance(item, str) and normalize_code(item)
+        }
+        refit_keys: List[str] = []
+        malformed_refit_row = False
+        for row in refit_rows:
+            if not isinstance(row, dict):
+                malformed_refit_row = True
+                continue
+            refit_keys.append(normalize_code(row.get(key_field)))
+        completed_keys: List[str] = []
+        malformed_completed_row = False
+        for row in completed_rows:
+            if not isinstance(row, dict):
+                malformed_completed_row = True
+                continue
+            completed_keys.append(normalize_code(row.get(key_field)))
+        if (
+            malformed_refit_row
+            or malformed_completed_row
+            or any(not key for key in refit_keys)
+            or any(not key for key in completed_keys)
+            or len(refit_keys) != len(set(refit_keys))
+            or len(completed_keys) != len(set(completed_keys))
+        ):
+            reporter.error(
+                "phase5-patch-commit-refit-partition",
+                refit_path,
+                f"{kind} row key必须非空且唯一",
+            )
+            continue
+        existing_pending = pending_ids & base_ga_ids if base_ga_only else pending_ids
+        expected_refit_keys = set(completed_keys) | existing_pending
+        if set(refit_keys) != expected_refit_keys:
+            reporter.error(
+                "phase5-patch-commit-refit-partition",
+                refit_path,
+                f"nonterminal refit {kind}必须由completed keys与既有pending keys精确划分；"
+                f"expected={sorted(expected_refit_keys)} actual={sorted(set(refit_keys))}",
+            )
+        scope_out_rows = [
+            row
+            for row in refit_rows
+            if isinstance(row, dict) and normalize_code(row.get(key_field)) not in pending_ids
+        ]
+        if scope_out_rows != completed_rows:
+            reporter.error(
+                "phase5-patch-commit-scope-out-rows",
+                refit_path,
+                f"nonterminal refit {kind}的scope-out rows必须逐字复用checkpoint completed rows",
+            )
+
+
+def _validate_phase5_patch_commit_marker(
+    orchestrate_dir: Path,
+    repo_root: Path,
+    reporter: IssueReporter,
+) -> None:
+    """验证Phase 5 trace对request/checkpoint/refit发布组的闭合提交。
+
+    初次进入增量链时唯一合法marker是needs-targeted/requested；链完成或机械
+    abort后，closed/blocked history是同一marker的不可回退后继状态，便于all-phase
+    验证已推进的generation。
+    """
+    trace_path = orchestrate_dir / "trace/phase-5.trace.json"
+    refit_path = orchestrate_dir / "phase-works/phase-5/framework-refit-trace.json"
+    request_path = _patch_request_path(orchestrate_dir)
+    checkpoint_path = _checkpoint_path(orchestrate_dir)
+    review_path = orchestrate_dir / "phase-works/phase-5/plan-refit-review.md"
+
+    trace = json_obj(trace_path, reporter, PHASE_TRACE_SCHEMAS["phase-5"])
+    refit = json_obj(refit_path, reporter, FRAMEWORK_REFIT_TRACE_SCHEMA)
+    request = json_obj(request_path, reporter, EVIDENCE_PATCH_REQUEST_SCHEMA)
+    checkpoint = json_obj(checkpoint_path, reporter, PHASE5_CHECKPOINT_SCHEMA)
+    if not trace or not refit or not request or not checkpoint:
+        reporter.error(
+            "phase5-patch-commit-marker",
+            trace_path,
+            "targeted/incremental mode要求Phase 5 trace最后提交且request、checkpoint、refit四者齐全",
+        )
+        return
+
+    trace_status = normalize_code(trace.get("status"))
+    refit_status = normalize_code(refit.get("status"))
+    execution_mode = normalize_code(trace.get("execution-mode"))
+    history = refit.get("patch-history")
+    trace_history = trace.get("patch-history")
+    history_statuses = [
+        normalize_code(row.get("status"))
+        for row in history if isinstance(history, list) and isinstance(row, dict)
+    ] if isinstance(history, list) else []
+    lifecycle = ""
+    if (
+        trace_status == "needs-targeted-evidence-patch"
+        and refit_status == trace_status
+        and execution_mode == "initial"
+        and history_statuses == ["requested"]
+    ):
+        lifecycle = "requested"
+    elif (
+        trace_status in FINAL_PHASE5_STATUSES
+        and refit_status == trace_status
+        and execution_mode == "checkpoint-resume"
+        and history_statuses == ["closed"]
+    ):
+        lifecycle = "closed"
+    elif (
+        trace_status == "blocked"
+        and refit_status == trace_status
+        and execution_mode == "checkpoint-resume"
+        and history_statuses == ["blocked"]
+    ):
+        lifecycle = "blocked"
+    if not lifecycle:
+        reporter.error(
+            "phase5-patch-commit-marker",
+            trace_path,
+            "targeted/incremental mode缺少合法Phase 5 commit marker；"
+            f"trace-status={trace_status or 'missing'} refit-status={refit_status or 'missing'} "
+            f"execution-mode={execution_mode or 'missing'} history={history_statuses}",
+        )
+    if lifecycle in {"requested", "blocked"}:
+        _validate_phase5_patch_scope_out_rows(
+            refit,
+            checkpoint,
+            refit_path,
+            checkpoint_path,
+            reporter,
+        )
+
+    if trace_history != history:
+        reporter.error(
+            "phase5-patch-commit-history",
+            trace_path,
+            "Phase 5 trace patch-history必须与framework refit逐字一致",
+        )
+    history_row = history[0] if isinstance(history, list) and len(history) == 1 and isinstance(history[0], dict) else {}
+    if not history_row:
+        reporter.error("phase5-patch-commit-history", refit_path, "patch lifecycle要求恰好一条history row")
+    else:
+        exact_fields(
+            history_row,
+            {"request-id", "patch-request-ref", "checkpoint-ref", "finding-fingerprint", "status"},
+            refit_path,
+            reporter,
+            "phase5-patch-commit-history-fields",
+            "patch-history[0]",
+        )
+        if history_row.get("request-id") != PATCH_REQUEST_ID:
+            reporter.error("phase5-patch-commit-history", refit_path, f"request-id必须为{PATCH_REQUEST_ID}")
+        _validate_artifact_ref(
+            history_row.get("patch-request-ref"),
+            request_path,
+            refit_path,
+            repo_root,
+            reporter,
+            "phase5-patch-commit-request-ref",
+        )
+        _validate_artifact_ref(
+            history_row.get("checkpoint-ref"),
+            checkpoint_path,
+            refit_path,
+            repo_root,
+            reporter,
+            "phase5-patch-commit-checkpoint-ref",
+        )
+        patch_attempt = checkpoint.get("patch-attempt") if isinstance(checkpoint.get("patch-attempt"), dict) else {}
+        if history_row.get("finding-fingerprint") != patch_attempt.get("finding-fingerprint"):
+            reporter.error(
+                "phase5-patch-commit-fingerprint",
+                refit_path,
+                "patch-history finding-fingerprint必须与checkpoint patch-attempt一致",
+            )
+
+    _validate_artifact_ref(
+        checkpoint.get("patch-request-ref"),
+        request_path,
+        checkpoint_path,
+        repo_root,
+        reporter,
+        "phase5-patch-commit-checkpoint-request-ref",
+    )
+    trace_artifacts = (
+        ("framework-refit-trace", refit_path),
+        ("plan-refit-review", review_path),
+        ("evidence-patch-request", request_path),
+        ("phase-5-checkpoint", checkpoint_path),
+    )
+    for prefix, artifact_path in trace_artifacts:
+        if trace.get(f"{prefix}-path") != rel(artifact_path, repo_root):
+            reporter.error(
+                "phase5-patch-commit-path",
+                trace_path,
+                f"{prefix}-path未绑定canonical artifact",
+            )
+        if not artifact_path.exists() or trace.get(f"{prefix}-sha256") != sha256_file(artifact_path):
+            reporter.error(
+                "phase5-patch-commit-sha",
+                trace_path,
+                f"{prefix}-sha256未绑定当前artifact bytes",
+            )
+
+    if lifecycle in {"requested", "blocked"}:
+        terminal_paths = (
+            orchestrate_dir / "phase-works/phase-5/change-plan.md",
+            orchestrate_dir / "phase-works/phase-5/atom-plan-mapping.json",
+            orchestrate_dir / "phase-works/phase-5/atom-plan-mapping.md",
+            orchestrate_dir / "phase-works/phase-5/capability-baseline-reconciliation.json",
+            orchestrate_dir / "phase-works/phase-5/capability-baseline-reconciliation.md",
+            orchestrate_dir / "phase-works/phase-5/final-packet-index.json",
+            orchestrate_dir / "change-plan.md",
+            orchestrate_dir / "change-capability-anchors/index.md",
+        )
+        for terminal_path in terminal_paths:
+            if terminal_path.exists():
+                reporter.error(
+                    "phase5-patch-commit-terminal-surface",
+                    terminal_path,
+                    "requested/blocked marker发布前必须清理Phase 5 terminal surface",
+                )
+        anchors_dir = orchestrate_dir / "change-capability-anchors"
+        if anchors_dir.exists() and any(child.is_dir() for child in anchors_dir.iterdir()):
+            reporter.error(
+                "phase5-patch-commit-terminal-surface",
+                anchors_dir,
+                "requested/blocked marker不得保留final Change packet或Capability view目录",
+            )
+
+
 def iter_nested_keys(value: object) -> Iterable[str]:
     if isinstance(value, dict):
         for key, child in value.items():
@@ -3565,6 +4322,7 @@ def validate_phase_3(orchestrate_dir: Path, repo_root: Path, reporter: IssueRepo
             ):
                 reporter.error("phase3-blocked-initial-fields", trace_path, "initial blocked要求patch/base为null且affected/new arrays为空")
         elif update_mode == "incremental-patch":
+            _validate_phase5_patch_commit_marker(orchestrate_dir, repo_root, reporter)
             request_path = _patch_request_path(orchestrate_dir)
             checkpoint_path = _checkpoint_path(orchestrate_dir)
             _validate_artifact_ref(
@@ -3642,6 +4400,7 @@ def validate_phase_3(orchestrate_dir: Path, repo_root: Path, reporter: IssueRepo
             ):
                 reporter.error("phase3-initial-incremental-fields", trace_path, "initial mode要求patch/base为null且affected/new arrays为空")
         elif update_mode == "incremental-patch":
+            _validate_phase5_patch_commit_marker(orchestrate_dir, repo_root, reporter)
             request_path = _patch_request_path(orchestrate_dir)
             checkpoint_path = _checkpoint_path(orchestrate_dir)
             _validate_artifact_ref(
@@ -4130,6 +4889,7 @@ def validate_phase_4(orchestrate_dir: Path, repo_root: Path, reporter: IssueRepo
             ):
                 reporter.error("phase4-blocked-initial-fields", phase4_trace_path, "initial blocked要求patch/base为null且affected closure为空")
         elif update_mode == "incremental-patch":
+            _validate_phase5_patch_commit_marker(orchestrate_dir, repo_root, reporter)
             request_path = _patch_request_path(orchestrate_dir)
             checkpoint_path = _checkpoint_path(orchestrate_dir)
             _validate_artifact_ref(
@@ -4205,6 +4965,7 @@ def validate_phase_4(orchestrate_dir: Path, repo_root: Path, reporter: IssueRepo
         ):
             reporter.error("phase4-initial-incremental-fields", phase4_trace_path, "initial mode要求patch/base为null且affected closure为空")
     elif update_mode == "incremental-patch":
+        _validate_phase5_patch_commit_marker(orchestrate_dir, repo_root, reporter)
         request_path = _patch_request_path(orchestrate_dir)
         checkpoint_path = _checkpoint_path(orchestrate_dir)
         _validate_artifact_ref(
@@ -4841,9 +5602,16 @@ def _validate_phase5_derived_outputs(
     try:
         evidence = load_phase5_evidence(orchestrate_dir)
         mapping = load_phase5_mapping(mapping_path)
-        validate_phase5_mapping(evidence, mapping, changes, capabilities, overlay)
+        validate_phase5_mapping(
+            evidence,
+            mapping,
+            changes,
+            capabilities,
+            overlay,
+            repo_root=repo_root,
+        )
         refit = load_framework_refit(work / "framework-refit-trace.json")
-        validate_refit_mapping_crosscheck(refit, mapping)
+        validate_gap_framework_impacts(orchestrate_dir, refit, mapping)
     except (OSError, ValueError, json.JSONDecodeError) as exc:
         reporter.error("phase5-mapping-contract", mapping_path, str(exc))
         return
@@ -4992,6 +5760,7 @@ def validate_phase_5(orchestrate_dir: Path, repo_root: Path, reporter: IssueRepo
                 "phase5-trace-fields",
                 "patch lifecycle phase-5 trace",
             )
+            _validate_phase5_patch_commit_marker(orchestrate_dir, repo_root, reporter)
             expected_execution_mode = "initial" if trace_status == "needs-targeted-evidence-patch" else "checkpoint-resume"
             if normalize_code(trace.get("execution-mode")) != expected_execution_mode:
                 reporter.error("phase5-execution-mode", trace_path, f"{trace_status}要求execution-mode={expected_execution_mode}")
@@ -5197,20 +5966,6 @@ def validate_phase_5(orchestrate_dir: Path, repo_root: Path, reporter: IssueRepo
             for item in row.get("final-capabilities", [])
             if isinstance(item, str)
         }
-        scoped_unassigned_changes = {
-            normalize_code(row.get("final-change"))
-            for row in terminal_refit.get("unassigned-and-gap-reviews", [])
-            if isinstance(row, dict)
-            and normalize_code(row.get("global-atom-id")) in pending_unassigned
-            and normalize_code(row.get("final-change")) not in {"", "none", "null"}
-        }
-        scoped_unassigned_capabilities = {
-            normalize_code(row.get("final-capability"))
-            for row in terminal_refit.get("unassigned-and-gap-reviews", [])
-            if isinstance(row, dict)
-            and normalize_code(row.get("global-atom-id")) in pending_unassigned
-            and normalize_code(row.get("final-capability")) not in {"", "none", "null"}
-        }
         scoped_mapping_changes = {
             normalize_code(row.get("final-owner-change"))
             for row in terminal_mapping.get("rows", [])
@@ -5246,11 +6001,9 @@ def validate_phase_5(orchestrate_dir: Path, repo_root: Path, reporter: IssueRepo
             for item in provisional_framework.get("capabilities", [])
             if isinstance(item, str)
         }
-        actual_new_changes = (
-            scoped_terminal_changes | scoped_unassigned_changes | scoped_mapping_changes
-        ) - provisional_change_ids
+        actual_new_changes = (scoped_terminal_changes | scoped_mapping_changes) - provisional_change_ids
         actual_new_capabilities = (
-            scoped_terminal_capabilities | scoped_unassigned_capabilities | scoped_mapping_capabilities
+            scoped_terminal_capabilities | scoped_mapping_capabilities
         ) - provisional_capability_ids
         expected_new_changes = expected_scoped_changes - provisional_change_ids
         expected_new_capabilities = expected_scoped_capabilities - provisional_capability_ids
@@ -5258,14 +6011,14 @@ def validate_phase_5(orchestrate_dir: Path, repo_root: Path, reporter: IssueRepo
             reporter.error(
                 "phase5-checkpoint-final-change-scope",
                 _checkpoint_path(orchestrate_dir),
-                "scope中新Change必须且只能由pending Change/unassigned/mapping row实际产生或引用；"
+                "scope中新Change必须且只能由pending Change review或mapping row实际产生或引用；"
                 f"expected-new={sorted(expected_new_changes)} actual-new={sorted(actual_new_changes)}",
             )
         if actual_new_capabilities != expected_new_capabilities:
             reporter.error(
                 "phase5-checkpoint-final-capability-scope",
                 _checkpoint_path(orchestrate_dir),
-                "scope中新Capability必须且只能由pending Capability/unassigned/mapping row实际产生或引用；"
+                "scope中新Capability必须且只能由pending Capability review或mapping row实际产生或引用；"
                 f"expected-new={sorted(expected_new_capabilities)} actual-new={sorted(actual_new_capabilities)}",
             )
         _validate_checkpoint_pending_existing_output_scope(

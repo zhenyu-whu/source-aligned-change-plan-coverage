@@ -16,7 +16,7 @@ from pathlib import Path
 from typing import Dict, Iterable, List, Optional, Sequence, Tuple
 
 
-TRACE_CONTRACT_VERSION = "source-aligned-trace-v3"
+TRACE_CONTRACT_VERSION = "source-aligned-trace-v4"
 MANIFEST_SCHEMA = "source-aligned-orchestrate-manifest-v2"
 PHASE_TRACE_SCHEMAS = {
     "phase-1": "source-aligned-phase-1-trace-v3",
@@ -29,12 +29,12 @@ SOURCE_ATOMS_SCHEMA = "source-aligned-source-atoms-v4"
 GLOBAL_ATOM_INDEX_SCHEMA = "source-aligned-global-atom-index-v3"
 PHASE3_COVERAGE_REVIEW_SCHEMA = "source-aligned-phase-3-coverage-review-v2"
 EVIDENCE_COLLECTION_INDEX_SCHEMA = "source-aligned-evidence-collection-index-v2"
-FRAMEWORK_REFIT_TRACE_SCHEMA = "source-aligned-framework-refit-trace-v2"
+FRAMEWORK_REFIT_TRACE_SCHEMA = "source-aligned-framework-refit-trace-v3"
 ATOM_PLAN_MAPPING_SCHEMA = "source-aligned-atom-plan-mapping-v4"
 FINAL_PACKET_INDEX_SCHEMA = "source-aligned-final-packet-index-v2"
 CAPABILITY_BASELINE_SCHEMA = "source-aligned-capability-baseline-v1"
 EVIDENCE_PATCH_REQUEST_SCHEMA = "source-aligned-evidence-patch-request-v1"
-PHASE5_CHECKPOINT_SCHEMA = "source-aligned-phase-5-checkpoint-v1"
+PHASE5_CHECKPOINT_SCHEMA = "source-aligned-phase-5-checkpoint-v2"
 
 GLOBAL_ATOM_ID_RE = re.compile(r"^GA-\d{4}$")
 GLOBAL_ATOM_ID_FIND_RE = re.compile(r"GA-\d{4}")

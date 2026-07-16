@@ -32,7 +32,7 @@ from source_aligned_trace_lib import (
 )
 
 
-RENDER_CONTRACT_VERSION = "source-aligned-render-v7"
+RENDER_CONTRACT_VERSION = "source-aligned-render-v8"
 SUPPORTED_ARTIFACTS = {
     "phase2-source-atoms",
     "phase2-index",
@@ -565,7 +565,8 @@ def render_framework_refit_review(orchestrate_dir: Path, json_path: Path) -> str
             code(row.get("evidence-collection-path")),
             code(row.get("decision")),
             code_list(row.get("final-capabilities")),
-            md(_gate_results_text(row.get("gate-results"))),
+            md(_gate_results_text(row.get("initial-gate-results"))),
+            code_list(row.get("supporting-global-atom-ids")),
             md(row.get("reason")),
         ]
         for row in data.get("capability-reviews", [])
@@ -577,7 +578,8 @@ def render_framework_refit_review(orchestrate_dir: Path, json_path: Path) -> str
             code(row.get("evidence-collection-path")),
             code(row.get("decision")),
             code_list(row.get("final-changes")),
-            md(_gate_results_text(row.get("gate-results"))),
+            md(_gate_results_text(row.get("initial-gate-results"))),
+            code_list(row.get("supporting-global-atom-ids")),
             md(row.get("reason")),
         ]
         for row in data.get("change-reviews", [])
@@ -587,9 +589,7 @@ def render_framework_refit_review(orchestrate_dir: Path, json_path: Path) -> str
         [
             code(row.get("global-atom-id")),
             code(json.dumps(row.get("evidence-ref"), ensure_ascii=False, sort_keys=True)),
-            code(row.get("disposition")),
-            code(row.get("final-change")),
-            capability_target(row.get("final-capability")),
+            code(row.get("framework-impact")),
             md(row.get("reason")),
         ]
         for row in data.get("unassigned-and-gap-reviews", [])
@@ -638,25 +638,33 @@ def render_framework_refit_review(orchestrate_dir: Path, json_path: Path) -> str
         "## Capability Review",
         "",
         render_table(
-            ["Input Capability", "Evidence Collection", "Decision", "Final Capability(s)", "Failed or Passed Gates", "Reason"],
+            [
+                "Input Capability", "Evidence Collection", "Decision", "Final Capability(s)",
+                "Initial Gate Results", "Supporting GAs", "Reason",
+            ],
             capability_rows,
         ).rstrip(),
         "",
         "## Change Review",
         "",
         render_table(
-            ["Input Change", "Evidence Collection", "Decision", "Final Change(s)", "Failed or Passed Gates", "Reason"],
+            [
+                "Input Change", "Evidence Collection", "Decision", "Final Change(s)",
+                "Initial Gate Results", "Supporting GAs", "Reason",
+            ],
             change_rows,
         ).rstrip(),
         "",
         "## Unassigned and Gap Review",
         "",
         render_table(
-            ["GA", "Evidence Reference", "Disposition", "Final Change", "Final Capability", "Reason"],
+            ["GA", "Evidence Reference", "Framework Impact", "Reason"],
             gap_rows,
         ).rstrip(),
         "",
-        "## Mapping Ambiguities",
+        "## Potential Mapping Ambiguities (Input)",
+        "",
+        "本节只镜像 Phase 3 输入；最终 resolution 仅见 atom-plan-mapping mirror。",
         "",
         render_table(
             ["GA", "Evidence Reference", "Ambiguous Dimensions", "Reason"],

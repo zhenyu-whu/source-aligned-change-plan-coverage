@@ -1,6 +1,6 @@
 # Phase 2：source-first obligation atom 提取
 
-Phase 2 逐份完整阅读 source document，提取所有具有产品或系统语义的 source atom candidate。analysis unit 是 source document，不是 planned Change；Phase 1 framework 只提供现有 Change/Capability 的候选映射目标。
+Phase 2逐份完整阅读source document，按自然语义单位提取所有具有产品或系统语义的source atom candidate。Analysis unit是source document，不是planned Change；Phase 1 framework只提供现有Change/Capability的候选映射目标。
 
 本 Phase 只负责 raw extraction 和 existing-framework candidate mapping。正常路径使用 `mode: initial`；唯一回补路径使用 `mode: targeted-patch`，且只能消费 Phase 5 生成的 `EPR-0001`。本 Phase 不执行跨文档去重、global coverage closure、new/refit Change 判断、new Capability 判断或 repository baseline reconciliation；无法映射到现有 framework 的 atom 统一标记为 `unassigned`。
 
@@ -21,7 +21,7 @@ Phase 2 逐份完整阅读 source document，提取所有具有产品或系统�
 - `openspec/orchestrate/phase-works/phase-1/initial-change-plan.md`
 - `openspec/orchestrate/phase-works/phase-1/source-doc-manifest.md`
 - 用户指定的 source root 或精确 source path，用于读取正文和生成行引用。
-- `mode: targeted-patch` 时还必须读取 `phase-works/phase-5/evidence-patch-request.json` 和 `phase-works/phase-5/phase-5-checkpoint.json`；缺少、digest不匹配或request-id不是`EPR-0001`时立即`blocked`。
+- `mode: targeted-patch`时必须额外完整读取`references/targeted-evidence-patch-contract.md`，并验证request、checkpoint、refit history与Phase 5 trace commit marker构成闭合授权组；孤立artifact不得授权写入。
 
 只写入以下 Phase 2 artifact：
 
@@ -34,7 +34,7 @@ Phase 2 逐份完整阅读 source document，提取所有具有产品或系统�
 
 路径均相对于 `openspec/orchestrate/`。source atom file 使用单层确定性名称：移除 source extension，将 path separator 替换为 `--`，再添加 `.atoms.json` 或 `.atoms.md`。
 
-canonical JSON、renderer 和 validator 以 `references/trace-sidecar-contract.md` 为准；跨阶段语义以 `references/cross-phase-contract.md` 为准。每个 extraction writer 和 index/report writer 必须直接完整读取本文件、cross-phase contract 和 trace-sidecar contract。
+Canonical JSON、renderer和validator以`references/trace-sidecar-contract.md`为准；跨阶段语义以`references/cross-phase-contract.md`为准。每个extraction writer和index/report writer必须直接完整读取本文件、cross-phase contract和trace-sidecar contract；只有targeted patch writer加载patch contract。
 
 validator 通过后冻结 `.atoms.json`；`.atoms.md` 只能由 renderer 刷新。validator 未通过时本 Phase `blocked`，不得自动重启 producer 或重复当前 Phase。唯一例外是已进入合法 `mode: targeted-patch` 的单次局部写入。
 
@@ -73,17 +73,12 @@ validator 通过后冻结 `.atoms.json`；`.atoms.md` 只能由 renderer 刷新�
 
 ## Targeted patch mode
 
-每个 generation 最多执行一次 targeted patch，且固定消费 `source-aligned-evidence-patch-request-v1` 的 `request-id: EPR-0001`。
+本模式的eligibility、defect/operation、window、successor ID、protected row、发布组和失败规则全部以`references/targeted-evidence-patch-contract.md`为唯一权威，本文件不复制。
 
-- `targets[]` 只允许 defect `quote-mismatch`、`range-mismatch`、`mixed-independent-occurrences`、`missing-occurrence`；只允许 operation `replace-quote`、`adjust-range`、`split`、`add`。
-- writer只能读取并写入target的`source-document`、`source-atom-id`和`allowed-line-window`；必须使用request中的`canonical-owner`。不得删除、合并或重命名任何atom。
-- `missing-occurrence`只能使用`add`，其`source-atom-id`、`global-atom-id`、`evidence-ref`、`base-row`和`base-row-sha256`必须为null；新增ID从`patch-epr-0001-add-01`连续分配。
-- `split`保留原atom ID作为第一项，新增ID从`<old-source-atom-id>.part-02`连续分配；不得复用其他ID。
-- `replace-quote`、`adjust-range`和`split`必须先验证immutable `base-row`及其`base-row-sha256`；原row除allowed operation对应的`source-fact`/`line-ranges`外不得改变；所有target必须限制在`allowed-line-window`。
-- 每个target必须携带已冻结的`defect-witness`：只允许`phase-2-atom|phase-3-disposition` locator origin，source/window digest与canonical source逐字匹配，且window完全位于origin ranges的连续闭包内。existing target必须以自身immutable base row作为origin；非原文base不得进入targeted mode。
-- `protected-rows`中的每行必须按compact sorted UTF-8 JSON计算SHA256并保持不变。任一protected row变化、request越界或需要第二次patch时立即`blocked`。
-- targeted patch不得改变candidate mapping。split successor继承原atom的candidate status/projection/owner/target；新增遗漏occurrence使用`unassigned` owner/status且不得预填现有Capability target。最终mapping仍由Phase 5裁决。
-- patch完成后仍使用canonical status `source-atoms-written`，只通过`phase-2.trace.json.mode: targeted-patch`区分；不得新增另一terminal status。
+- Writer只修改request targets及必要最小局部上下文，并使用冻结canonical owner；不得执行全量重提取。
+- Candidate mapping保持不变；split successor继承原candidate metadata，新增missing occurrence使用`unassigned`且不预填Capability target。
+- 完成后仍使用`status: source-atoms-written`，只以`phase-2.trace.json.mode: targeted-patch`区分。
+- 失败trace保留commit marker引用、base digest与affected sources，随后由main agent按patch contract执行abort；不得重跑本Phase。
 
 ## Work queue
 
@@ -195,30 +190,9 @@ Phase 2 不记录 `candidate-capability-impact`、`candidate-related-capabilitie
 
 ## Canonical source atom file
 
-每份 `.atoms.json` 使用 `source-aligned-source-atoms-v4`，包含：
+每份`.atoms.json`使用`source-aligned-source-atoms-v4`，是本Phase extraction的内容权威；顶层、context row、atom row、range row、trace source row及Markdown mirror的exact machine/render shape只由`references/trace-sidecar-contract.md`定义。本文件只定义如何按自然语义单位提取及填写这些字段，不复制机器契约。
 
-- `trace-schema`、`trace-contract-version`
-- `source-document`、`source-sha256`、`read-status: read-full`、`canonical-owner`
-- `source-role`、`phase-1-candidate-changes-capabilities-considered`
-- `source-atoms[]`
-- `blockers[]`
-- `language-self-check`
-
-`source-atoms[]` 的 Markdown mirror：
-
-| Source Atom ID | Lines | Atom Type | Source Fact | Normativity | Candidate Status | Candidate Artifact Projection | Candidate Owner Change | Candidate Target Capability | Rationale |
-| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
-
-`Lines`列由canonical `line-ranges[]`生成。`.atoms.md`还包含source identity、Phase 1 context、blocker、language self-check和`Trace Appendix`；render contract为`source-aligned-render-v7`。
-
-字段 shape：
-
-- `phase-1-candidate-changes-capabilities-considered` 是 array；每项包含 `change`、`capabilities[]` 和简短中文 `note`。
-- `blockers[]` 是简体中文 string array；没有 blocker 时为 `[]`。
-- `language-self-check` 是非空简体中文 string。
-- `source-atoms[].line-ranges[]` 必须恰好包含一个 range；`source-fact` 必须是该 range 对应 source text 的原文连续 substring。
-
-`phase-2.trace.json.sources[]` 每份 source 一行，包含 `source-document`、`atom-json-path`、`atom-json-sha256`、`atom-markdown-path`、`canonical-owner`、`read-status`、`atom-count` 和 `blockers[]`。
+每个atom仍只对应一个连续evidence range，`source-fact`必须是该range对应source text的逐字连续substring。`.atoms.md`完全由canonical JSON按`source-aligned-render-v8`生成，只用于review，不得直接编辑或补充第二份语义。
 
 ## 索引与报告
 
@@ -236,7 +210,7 @@ Phase 2 不记录 `candidate-capability-impact`、`candidate-related-capabilitie
 
 aggregate 不发布 duplicate statistic、candidate new boundary、global coverage statistic、global atom 或 final plan map。
 
-`phase-2.trace.json` 使用 `source-aligned-phase-2-trace-v4`，在既有字段外增加`mode`、`patch-request-ref`、`checkpoint-ref`和`patch-summary`。initial mode的两个ref和summary均为null。targeted mode的`patch-summary`必须且只能包含`base-phase-2-trace-sha256`、`affected-sources[]`、`changed-atoms[]`、`new-atoms[]`和`patch-writer-id`；changed row只含source document/atom ID与before/after row SHA，new row只含source document/atom ID与row SHA。不得把patch写成第二次initial extraction。`blocked` trace必须且只能包含schema/version、status、mode、两个patch ref、nullable `base-phase-2-trace-sha256`、`affected-sources[]`和非空`issues[]`；initial blocked的refs/base为null且affected为空，targeted blocked必须绑定唯一request/checkpoint、request中的base Phase 2 digest，并按request target首次出现顺序精确列出affected sources。
+`phase-2.trace.json`继续使用`source-aligned-phase-2-trace-v4`。字段、exact shape、initial/targeted cardinality和blocked surface只由trace contract定义；targeted trace还必须满足patch contract的commit marker与affected closure规则，不得伪装成第二次initial extraction。
 
 ## 完成门禁
 
@@ -247,6 +221,6 @@ aggregate 不发布 duplicate statistic、candidate new boundary、global covera
 5. **Artifact gate**：canonical JSON 使用 v4 schema 且只含 `line-ranges[]`；mirror 与 renderer output 一致。
 6. **Role gate**：extraction writer 只写分配 JSON；index/report writer 未编辑 extraction 或执行全局判断。
 7. **Validation gate**：validator通过且manifest已刷新；失败即`blocked`，不得自动重启producer、重复当前Phase或启动reviewer/repair。
-8. **Patch gate**：targeted mode只出现一次，request/checkpoint/base/protected row全部有效，修改严格落在targets与allowed operations内。
+8. **Patch gate**：targeted mode只出现一次，完整Phase 5授权组、base/protected row与affected closure全部有效，修改严格落在patch contract授权范围内。
 
 final reply 使用简短中文，报告 batch、已处理 source、atom count、mapped/unassigned atom、conflict/unclassified、language gate 和 blocker。

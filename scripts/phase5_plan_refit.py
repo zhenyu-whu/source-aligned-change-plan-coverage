@@ -32,6 +32,7 @@ from source_aligned_trace_lib import (
     EVIDENCE_COLLECTION_INDEX_SCHEMA,
     FINAL_PACKET_INDEX_SCHEMA,
     FRAMEWORK_REFIT_TRACE_SCHEMA,
+    GLOBAL_ATOM_ID_RE,
     GLOBAL_ATOM_INDEX_SCHEMA,
     KEBAB_CASE_RE,
     PHASE3_COVERAGE_REVIEW_SCHEMA,
@@ -65,6 +66,27 @@ PATCH_HISTORY_FIELDS = {
     "request-id", "patch-request-ref", "checkpoint-ref", "finding-fingerprint", "status",
 }
 PATCH_HISTORY_STATUSES = {"requested", "closed", "blocked"}
+
+# 与 references/change-capability-framework-principles.md 的顺序严格一致。
+# 测试 fixture 与其他 validator 应直接复用这些 tuple，避免 gate 名称漂移。
+CAPABILITY_INITIAL_GATE_NAMES = (
+    "domain-basis",
+    "purpose",
+    "behavior-first",
+    "cohesion",
+    "owns-excludes",
+    "implementation-substitution",
+    "archive-durability",
+    "delta-feasibility",
+)
+CHANGE_INITIAL_GATE_NAMES = (
+    "one-intent",
+    "scope-cohesion",
+    "independent-decision-archive",
+    "indivisibility",
+    "acceptance",
+    "implementation-readiness",
+)
 
 
 @dataclass(frozen=True)
@@ -477,17 +499,85 @@ def _require_identifier_list(value: object, where: str, allow_empty: bool = Fals
     return result
 
 
-def _validate_gate_results(value: object, where: str) -> None:
-    if not isinstance(value, list) or not value:
-        raise ValueError(f"{where}.gate-results必须是非空array")
+def _validate_initial_gate_results(
+    value: object,
+    expected_gates: Sequence[str],
+    where: str,
+) -> bool:
+    """校验完整、固定顺序的initial gate快照，并返回是否存在failed gate。"""
+    if not isinstance(value, list):
+        raise ValueError(f"{where}.initial-gate-results必须是array")
+    actual_gates: List[str] = []
+    has_failed = False
     for index, item in enumerate(value):
         if not isinstance(item, dict):
-            raise ValueError(f"{where}.gate-results[{index}]必须是object")
-        _require_exact_fields(item, {"gate", "result", "note"}, f"{where}.gate-results[{index}]")
-        if not normalize_code(item.get("gate")) or normalize_code(item.get("result")) not in {"passed", "failed"}:
-            raise ValueError(f"{where}.gate-results[{index}] gate/result非法")
-        if not squash(item.get("note")):
-            raise ValueError(f"{where}.gate-results[{index}].note不得为空")
+            raise ValueError(f"{where}.initial-gate-results[{index}]必须是object")
+        _require_exact_fields(
+            item,
+            {"gate", "result", "note"},
+            f"{where}.initial-gate-results[{index}]",
+        )
+        gate = normalize_code(item.get("gate"))
+        result = normalize_code(item.get("result"))
+        actual_gates.append(gate)
+        if result not in {"passed", "failed"}:
+            raise ValueError(f"{where}.initial-gate-results[{index}].result非法")
+        note = squash(item.get("note"))
+        if not note or not re.search(r"[\u4e00-\u9fff]", note):
+            raise ValueError(
+                f"{where}.initial-gate-results[{index}].note必须使用简体中文解释"
+            )
+        has_failed = has_failed or result == "failed"
+    if tuple(actual_gates) != tuple(expected_gates):
+        raise ValueError(
+            f"{where}.initial-gate-results必须完整按固定顺序覆盖共享gate；"
+            f"期望={list(expected_gates)}，实际={actual_gates}"
+        )
+    return has_failed
+
+
+def _validate_supporting_global_atom_ids(
+    value: object,
+    *,
+    where: str,
+    decision: str,
+    collection_ga_ids: Sequence[str],
+    global_positions: Dict[str, int],
+    has_failed_gate: bool,
+) -> List[str]:
+    """校验review的source-backed supporting GA及唯一空集合例外。"""
+    if not isinstance(value, list):
+        raise ValueError(f"{where}.supporting-global-atom-ids必须是array")
+    result = [normalize_code(item) for item in value]
+    if any(not GLOBAL_ATOM_ID_RE.fullmatch(item) for item in result):
+        raise ValueError(f"{where}.supporting-global-atom-ids必须只包含GA ID")
+    if len(result) != len(set(result)):
+        raise ValueError(f"{where}.supporting-global-atom-ids不得重复")
+    if any(item not in global_positions for item in result):
+        raise ValueError(f"{where}.supporting-global-atom-ids包含未知GA")
+    if result != sorted(result, key=global_positions.__getitem__):
+        raise ValueError(f"{where}.supporting-global-atom-ids必须按global index顺序排列")
+    allowed = set(collection_ga_ids)
+    outside = [item for item in result if item not in allowed]
+    if outside:
+        raise ValueError(f"{where}.supporting-global-atom-ids跨出对应Phase 4 collection：{outside}")
+    if decision == "keep":
+        if has_failed_gate:
+            raise ValueError(f"{where} keep要求全部initial gate通过")
+        if result:
+            raise ValueError(f"{where} keep要求supporting-global-atom-ids为空")
+    elif not result:
+        empty_collection_exception = (
+            decision in {"remove", "merge"}
+            and not collection_ga_ids
+            and has_failed_gate
+        )
+        if not empty_collection_exception:
+            raise ValueError(
+                f"{where} 非keep决定必须引用对应collection中的supporting GA；"
+                "只有零GA collection的remove/merge且initial gate失败时允许为空"
+            )
+    return result
 
 
 def load_framework_refit(path: Path) -> Dict[str, object]:
@@ -579,6 +669,10 @@ def validate_framework_refit(
         "capability-reviews", "change-reviews", "unassigned-and-gap-reviews",
         "final-framework", "issues", "patch-history", "language-self-check",
     }, "framework-refit-trace")
+    if data.get("trace-schema") != FRAMEWORK_REFIT_TRACE_SCHEMA:
+        raise ValueError(f"framework-refit-trace trace-schema必须是{FRAMEWORK_REFIT_TRACE_SCHEMA}")
+    if data.get("trace-contract-version") != TRACE_CONTRACT_VERSION:
+        raise ValueError(f"framework-refit-trace trace-contract-version必须是{TRACE_CONTRACT_VERSION}")
     status = normalize_code(data.get("status"))
     if status not in TERMINAL_STATUSES | NONTERMINAL_STATUSES:
         raise ValueError(f"framework refit status非法：{status}")
@@ -618,12 +712,47 @@ def validate_framework_refit(
             raise ValueError(f"{status}要求final-framework=null且issues非空")
         return status
 
+    collection_path = (
+        orchestrate_dir
+        / "phase-works/phase-4/source-evidence-collections/evidence-collection-index.json"
+    )
+    collection = require_json(collection_path, EVIDENCE_COLLECTION_INDEX_SCHEMA)
+    collection_rows = collection.get("rows")
+    if not isinstance(collection_rows, list):
+        raise ValueError("Phase 4 evidence collection index rows必须是array")
+    global_index_path = orchestrate_dir / "change-capability-anchors/obligation-atom-index.json"
+    global_index = require_json(global_index_path, GLOBAL_ATOM_INDEX_SCHEMA)
+    global_rows = global_index.get("global-atoms")
+    if not isinstance(global_rows, list):
+        raise ValueError("global atom index global-atoms必须是array")
+    global_order = [
+        normalize_code(row.get("global-atom-id"))
+        for row in global_rows
+        if isinstance(row, dict)
+    ]
+    if any(not GLOBAL_ATOM_ID_RE.fullmatch(ga) for ga in global_order) or len(global_order) != len(set(global_order)):
+        raise ValueError("global atom index GA顺序非法")
+    global_positions = {ga: index for index, ga in enumerate(global_order)}
+    change_collection_ga_ids: Dict[str, List[str]] = defaultdict(list)
+    capability_collection_ga_ids: Dict[str, List[str]] = defaultdict(list)
+    for row in collection_rows:
+        if not isinstance(row, dict):
+            raise ValueError("Phase 4 evidence collection index row必须是object")
+        ga = normalize_code(row.get("global-atom-id"))
+        if ga not in global_positions:
+            raise ValueError(f"Phase 4 evidence collection index引用未知GA：{ga}")
+        change_collection_ga_ids[normalize_code(row.get("change-bucket"))].append(ga)
+        capability = normalize_code(row.get("capability-bucket"))
+        if capability != "none":
+            capability_collection_ga_ids[capability].append(ga)
+
     capability_decisions: Dict[str, str] = {}
     for index, row in enumerate(capability_rows):
         if not isinstance(row, dict):
             raise ValueError(f"capability-reviews[{index}]必须是object")
         _require_exact_fields(row, {
-            "input-capability", "evidence-collection-path", "decision", "final-capabilities", "gate-results", "reason",
+            "input-capability", "evidence-collection-path", "decision", "final-capabilities",
+            "initial-gate-results", "supporting-global-atom-ids", "reason",
         }, f"capability-reviews[{index}]")
         source = normalize_code(row.get("input-capability"))
         decision = normalize_code(row.get("decision"))
@@ -648,7 +777,20 @@ def validate_framework_refit(
         )
         if row.get("evidence-collection-path") != expected_collection:
             raise ValueError(f"{source} evidence-collection-path应为{expected_collection}")
-        _validate_gate_results(row.get("gate-results"), f"capability-reviews[{index}]")
+        where = f"capability-reviews[{index}]"
+        has_failed_gate = _validate_initial_gate_results(
+            row.get("initial-gate-results"),
+            CAPABILITY_INITIAL_GATE_NAMES,
+            where,
+        )
+        _validate_supporting_global_atom_ids(
+            row.get("supporting-global-atom-ids"),
+            where=where,
+            decision=decision,
+            collection_ga_ids=capability_collection_ga_ids[source],
+            global_positions=global_positions,
+            has_failed_gate=has_failed_gate,
+        )
         if not squash(row.get("reason")) or not re.search(r"[\u4e00-\u9fff]", str(row.get("reason"))):
             raise ValueError(f"{source} reason必须使用简体中文解释")
         capability_decisions[source] = decision
@@ -667,7 +809,8 @@ def validate_framework_refit(
         if not isinstance(row, dict):
             raise ValueError(f"change-reviews[{index}]必须是object")
         _require_exact_fields(row, {
-            "input-change", "evidence-collection-path", "decision", "final-changes", "gate-results", "reason",
+            "input-change", "evidence-collection-path", "decision", "final-changes",
+            "initial-gate-results", "supporting-global-atom-ids", "reason",
         }, f"change-reviews[{index}]")
         source = normalize_code(row.get("input-change"))
         decision = normalize_code(row.get("decision"))
@@ -692,7 +835,20 @@ def validate_framework_refit(
         )
         if row.get("evidence-collection-path") != expected_collection:
             raise ValueError(f"{source} evidence-collection-path应为{expected_collection}")
-        _validate_gate_results(row.get("gate-results"), f"change-reviews[{index}]")
+        where = f"change-reviews[{index}]"
+        has_failed_gate = _validate_initial_gate_results(
+            row.get("initial-gate-results"),
+            CHANGE_INITIAL_GATE_NAMES,
+            where,
+        )
+        _validate_supporting_global_atom_ids(
+            row.get("supporting-global-atom-ids"),
+            where=where,
+            decision=decision,
+            collection_ga_ids=change_collection_ga_ids[source],
+            global_positions=global_positions,
+            has_failed_gate=has_failed_gate,
+        )
         if not squash(row.get("reason")) or not re.search(r"[\u4e00-\u9fff]", str(row.get("reason"))):
             raise ValueError(f"{source} reason必须使用简体中文解释")
         change_decisions[source] = decision
@@ -706,11 +862,9 @@ def validate_framework_refit(
     if any(count < 2 for count in change_merge_targets.values()):
         raise ValueError("Change merge要求至少两个initial Change指向同一个final Change")
 
-    collection_path = orchestrate_dir / "phase-works/phase-4/source-evidence-collections/evidence-collection-index.json"
-    collection = require_json(collection_path, EVIDENCE_COLLECTION_INDEX_SCHEMA)
     expected_gap = {
         normalize_code(row.get("global-atom-id")): row.get("evidence-ref")
-        for row in collection.get("rows", [])
+        for row in collection_rows
         if isinstance(row, dict) and normalize_code(row.get("change-bucket")) == "unassigned-and-gap"
     }
     seen_gap: set[str] = set()
@@ -718,7 +872,7 @@ def validate_framework_refit(
         if not isinstance(row, dict):
             raise ValueError(f"unassigned-and-gap-reviews[{index}]必须是object")
         _require_exact_fields(row, {
-            "global-atom-id", "evidence-ref", "disposition", "final-change", "final-capability", "reason",
+            "global-atom-id", "evidence-ref", "framework-impact", "reason",
         }, f"unassigned-and-gap-reviews[{index}]")
         ga = normalize_code(row.get("global-atom-id"))
         if ga in seen_gap or ga not in expected_gap:
@@ -726,10 +880,8 @@ def validate_framework_refit(
         seen_gap.add(ga)
         if row.get("evidence-ref") != expected_gap[ga]:
             raise ValueError(f"{ga} evidence-ref与Phase 4 index不一致")
-        if not normalize_code(row.get("disposition")) or not normalize_code(row.get("final-change")):
-            raise ValueError(f"{ga} disposition/final-change不得为空")
-        if not normalize_code(row.get("final-capability")):
-            raise ValueError(f"{ga} final-capability必须显式使用none或Capability ID")
+        if normalize_code(row.get("framework-impact")) not in {"none", "supports-adjustment"}:
+            raise ValueError(f"{ga} framework-impact必须为none或supports-adjustment")
         if not squash(row.get("reason")) or not re.search(r"[\u4e00-\u9fff]", str(row.get("reason"))):
             raise ValueError(f"{ga} reason必须使用简体中文解释")
     if seen_gap != set(expected_gap):
@@ -737,16 +889,6 @@ def validate_framework_refit(
 
     if issues:
         raise ValueError(f"{status}要求issues为空")
-    failed_gates = [
-        normalize_code(gate.get("gate"))
-        for review in [*capability_rows, *change_rows]
-        if isinstance(review, dict)
-        for gate in review.get("gate-results", [])
-        if isinstance(gate, dict) and normalize_code(gate.get("result")) != "passed"
-    ]
-    if failed_gates:
-        raise ValueError(f"terminal refit要求所有gate通过；未通过={failed_gates}")
-
     framework = data.get("final-framework")
     if not isinstance(framework, dict):
         raise ValueError(f"{status}要求非空final-framework")
@@ -782,12 +924,6 @@ def validate_framework_refit(
     for row in change_rows:
         if any(item not in final_change_ids for item in row.get("final-changes", [])):
             raise ValueError(f"{row.get('input-change')}引用未知final Change")
-    for row in gap_rows:
-        if normalize_code(row.get("final-change")) not in final_change_ids:
-            raise ValueError(f"{row.get('global-atom-id')}引用未知final Change")
-        cap = normalize_code(row.get("final-capability"))
-        if cap != "none" and cap not in final_capability_ids:
-            raise ValueError(f"{row.get('global-atom-id')}引用未知final Capability")
     all_keep = all(value == "keep" for value in capability_decisions.values()) and all(value == "keep" for value in change_decisions.values())
     same_framework = (
         final_change_order == initial_changes
@@ -796,8 +932,15 @@ def validate_framework_refit(
     )
     if "reorder" in change_decisions.values() and final_change_order == initial_changes:
         raise ValueError("reorder decision要求final Change顺序发生变化")
-    if status == "accepted" and (not all_keep or not same_framework):
-        raise ValueError("accepted要求所有initial unit为keep且final framework集合、顺序、overlay与Phase 1一致")
+    if status == "accepted" and (
+        not all_keep
+        or not same_framework
+        or any(normalize_code(row.get("framework-impact")) != "none" for row in gap_rows)
+    ):
+        raise ValueError(
+            "accepted要求所有initial unit为通过全部gate的keep、所有gap impact为none，"
+            "且final framework集合、顺序、overlay与Phase 1一致"
+        )
     if status == "adjusted" and all_keep and same_framework:
         raise ValueError("adjusted要求至少一个可追溯的framework调整")
     return status
@@ -840,12 +983,13 @@ def validate_mapping(
     changes: Sequence[ChangeDef],
     capabilities: Sequence[CapabilityDef],
     overlay: Dict[Tuple[str, str], str],
+    *,
+    repo_root: Path,
 ) -> None:
     if set(mapping) != set(evidence):
         raise ValueError(f"mapping GA集合不一致；缺少={sorted(set(evidence)-set(mapping))}，多余={sorted(set(mapping)-set(evidence))}")
     change_ids = {change.slug for change in changes}
     capability_ids = {capability.slug for capability in capabilities}
-    mapping_overlay: Dict[Tuple[str, str], set[str]] = defaultdict(set)
     direct_by_change: Dict[str, int] = defaultdict(int)
     for ga, row in mapping.items():
         source = evidence[ga]
@@ -870,7 +1014,6 @@ def validate_mapping(
             if row.projection in SPEC_PROJECTIONS:
                 if row.capability_impact not in {"new", "modified"} or row.target_capability not in capability_ids:
                     raise ValueError(f"{ga} direct spec mapping缺少有效Capability impact/target")
-                mapping_overlay[(row.owner_change, row.target_capability)].add(row.capability_impact)
             elif row.capability_impact != "none" or row.target_capability != "none":
                 raise ValueError(f"{ga} design/verification mapping必须使用none/none")
         else:
@@ -883,22 +1026,32 @@ def validate_mapping(
     missing_direct = sorted(change_id for change_id in change_ids if direct_by_change.get(change_id, 0) == 0)
     if missing_direct:
         raise ValueError(f"final Change缺少direct evidence：{', '.join(missing_direct)}")
-    normalized_overlay = {pair: next(iter(impacts)) for pair, impacts in mapping_overlay.items() if len(impacts) == 1}
-    if any(len(impacts) != 1 for impacts in mapping_overlay.values()) or normalized_overlay != overlay:
-        raise ValueError(f"final plan overlay与mapping不一致；plan={overlay} mapping={normalized_overlay}")
+    expected_overlay, _ = derive_advancement(
+        repo_root,
+        changes,
+        capabilities,
+        mapping,
+    )
+    if expected_overlay != overlay:
+        raise ValueError(
+            f"final plan overlay与确定性advancement derivation不一致；"
+            f"plan={overlay} derived={expected_overlay}"
+        )
 
 
-def build_baseline(
+def derive_advancement(
     repo_root: Path,
     changes: Sequence[ChangeDef],
     capabilities: Sequence[CapabilityDef],
     mapping: Dict[str, Mapping],
-) -> Dict[str, object]:
+) -> Tuple[Dict[Tuple[str, str], str], Dict[str, object]]:
+    """从final顺序、direct spec mapping与repository baseline派生唯一edge和baseline。"""
     cap_defs = {capability.slug: capability for capability in capabilities}
     by_change_target: Dict[Tuple[str, str], set[str]] = defaultdict(set)
     for row in mapping.values():
         if row.relation == "direct" and row.projection in SPEC_PROJECTIONS:
             by_change_target[(row.owner_change, row.target_capability)].add(row.capability_impact)
+    derived_overlay: Dict[Tuple[str, str], str] = {}
     rows: List[Dict[str, object]] = []
     progress: Dict[str, int] = defaultdict(int)
     first_change: Dict[str, str] = {}
@@ -914,6 +1067,7 @@ def build_baseline(
             actual = next(iter(impacts))
             if actual != expected:
                 raise ValueError(f"{change.slug}/{target} baseline期望{expected}，mapping为{actual}")
+            derived_overlay[(change.slug, target)] = expected
             if target not in first_change:
                 first_change[target] = change.slug
             progress[target] += 1
@@ -930,12 +1084,24 @@ def build_baseline(
             "required-first-relation": "modified" if existing else "new",
             "later-relation-rule": "modified",
         })
-    return {
+    baseline = {
         "trace-schema": CAPABILITY_BASELINE_SCHEMA,
         "trace-contract-version": TRACE_CONTRACT_VERSION,
         "repository-specs-root": "openspec/specs",
         "capabilities": rows,
     }
+    return derived_overlay, baseline
+
+
+def build_baseline(
+    repo_root: Path,
+    changes: Sequence[ChangeDef],
+    capabilities: Sequence[CapabilityDef],
+    mapping: Dict[str, Mapping],
+) -> Dict[str, object]:
+    """兼容调用入口；baseline与overlay均由derive_advancement一次性产生。"""
+    _, baseline = derive_advancement(repo_root, changes, capabilities, mapping)
+    return baseline
 
 
 def fence(text: str) -> str:
@@ -1039,8 +1205,49 @@ def render_anchor_index(
     return "\n".join(lines).rstrip() + "\n"
 
 
-def validate_refit_mapping_crosscheck(data: Dict[str, object], mapping: Dict[str, Mapping]) -> None:
-    """校验 refit gap disposition 与最终 GA owner/target 映射。"""
+def validate_gap_framework_impacts(
+    orchestrate_dir: Path,
+    data: Dict[str, object],
+    mapping: Dict[str, Mapping],
+) -> None:
+    """校验gap impact的机械依据，不在refit中复制mapping owner/target。"""
+    initial_changes, initial_capabilities, initial_overlay = _phase1_framework(orchestrate_dir)
+    final_framework = data.get("final-framework")
+    if not isinstance(final_framework, dict):
+        return
+    new_change_ids = {
+        normalize_code(item)
+        for item in final_framework.get("change-order", [])
+        if normalize_code(item) not in set(initial_changes)
+    }
+    new_capability_ids = {
+        normalize_code(item)
+        for item in final_framework.get("capabilities", [])
+        if normalize_code(item) not in set(initial_capabilities)
+    }
+    supporting_ga_ids = {
+        normalize_code(ga)
+        for review in [
+            *data.get("capability-reviews", []),
+            *data.get("change-reviews", []),
+        ]
+        if isinstance(review, dict) and normalize_code(review.get("decision")) != "keep"
+        for ga in review.get("supporting-global-atom-ids", [])
+    }
+    reviewed_final_changes = {
+        normalize_code(item)
+        for review in data.get("change-reviews", [])
+        if isinstance(review, dict)
+        for item in review.get("final-changes", [])
+    }
+    reviewed_final_capabilities = {
+        normalize_code(item)
+        for review in data.get("capability-reviews", [])
+        if isinstance(review, dict)
+        for item in review.get("final-capabilities", [])
+    }
+    gap_mapped_new_changes: set[str] = set()
+    gap_mapped_new_capabilities: set[str] = set()
     for row in data.get("unassigned-and-gap-reviews", []):
         if not isinstance(row, dict):
             continue
@@ -1048,11 +1255,39 @@ def validate_refit_mapping_crosscheck(data: Dict[str, object], mapping: Dict[str
         mapped = mapping.get(ga)
         if mapped is None:
             raise ValueError(f"refit trace中的{ga}缺少atom mapping")
-        final_capability = normalize_code(row.get("final-capability"))
-        if mapped.owner_change != normalize_code(row.get("final-change")):
-            raise ValueError(f"{ga} refit final Change与atom mapping owner不一致")
-        if mapped.target_capability != final_capability:
-            raise ValueError(f"{ga} refit final Capability与atom mapping target不一致")
+        if normalize_code(row.get("framework-impact")) != "supports-adjustment":
+            continue
+        if mapped.owner_change in new_change_ids:
+            gap_mapped_new_changes.add(mapped.owner_change)
+        if mapped.target_capability in new_capability_ids:
+            gap_mapped_new_capabilities.add(mapped.target_capability)
+        maps_to_new_final_id = (
+            mapped.owner_change in new_change_ids
+            or mapped.target_capability in new_capability_ids
+        )
+        creates_new_advancement_edge = (
+            mapped.relation == "direct"
+            and mapped.projection in SPEC_PROJECTIONS
+            and (mapped.owner_change, mapped.target_capability) not in initial_overlay
+        )
+        if (
+            ga not in supporting_ga_ids
+            and not maps_to_new_final_id
+            and not creates_new_advancement_edge
+        ):
+            raise ValueError(
+                f"{ga} supports-adjustment必须关联非keep review、映射到新增final ID，"
+                "或产生Phase 1不存在的advancement edge"
+            )
+    untraced_changes = new_change_ids - reviewed_final_changes - gap_mapped_new_changes
+    untraced_capabilities = (
+        new_capability_ids - reviewed_final_capabilities - gap_mapped_new_capabilities
+    )
+    if untraced_changes or untraced_capabilities:
+        raise ValueError(
+            "新增final unit缺少initial review lineage或supports-adjustment gap mapping；"
+            f"Changes={sorted(untraced_changes)}，Capabilities={sorted(untraced_capabilities)}"
+        )
 
 
 def clean_legacy(orchestrate_dir: Path) -> None:
@@ -1191,30 +1426,31 @@ def _write_nonterminal_outputs(
     write_json(trace_path, trace_payload)
 
 
+def _validate_patch_authorization_before_marker(orchestrate_dir: Path) -> None:
+    """复用validator机器权威，在任何清理或commit marker写入前校验完整授权组。"""
+    # 延迟导入避免validator在模块加载时反向导入本helper形成循环。
+    from validate_source_aligned_orchestrate import validate_patch_authorization_group
+
+    result = validate_patch_authorization_group(
+        orchestrate_dir,
+        repo_root_for(orchestrate_dir),
+    )
+    if result.get("ok"):
+        return
+    messages = [
+        f"{issue.get('rule_id')}: {issue.get('message')}"
+        for issue in result.get("issues", [])
+        if isinstance(issue, dict) and issue.get("severity") == "error"
+    ]
+    raise ValueError("Phase 5 patch授权组未通过完整机器校验：" + " | ".join(messages))
+
+
 def _write_targeted_patch_outputs(
     orchestrate_dir: Path,
     refit: Dict[str, object],
     refit_path: Path,
     review_path: Path,
 ) -> None:
-    upstream_modes = (
-        ("phase-2", "mode", "initial", "status", "source-atoms-written"),
-        ("phase-3", "update-mode", "initial", "decision", "coverage-complete"),
-        ("phase-4", "update-mode", "initial", "status", "assembled"),
-    )
-    for phase, mode_field, expected_mode, status_field, expected_status in upstream_modes:
-        trace_path = orchestrate_dir / f"trace/{phase}.trace.json"
-        trace = require_json(trace_path, PHASE_TRACE_SCHEMAS[phase])
-        if (
-            normalize_code(trace.get(mode_field)) != expected_mode
-            or normalize_code(trace.get(status_field)) != expected_status
-        ):
-            raise ValueError(
-                "targeted evidence patch只能从尚未执行过patch的initial success Phase 2–4快照发起；"
-                f"{phase}.{mode_field}={trace.get(mode_field)!r}, "
-                f"{status_field}={trace.get(status_field)!r}"
-            )
-
     existing_phase5_trace_path = orchestrate_dir / "trace/phase-5.trace.json"
     if existing_phase5_trace_path.exists():
         existing_phase5_trace = require_json(existing_phase5_trace_path, PHASE_TRACE_SCHEMAS["phase-5"])
@@ -1222,6 +1458,8 @@ def _write_targeted_patch_outputs(
             "targeted evidence patch只能在首次Phase 5尚未发布canonical trace时发起；"
             f"现有Phase 5状态{existing_phase5_trace.get('status')!r}不得回退为requested"
         )
+
+    _validate_patch_authorization_before_marker(orchestrate_dir)
 
     plan_path = orchestrate_dir / "phase-works/phase-5/change-plan.md"
     checkpoint_path = orchestrate_dir / "phase-works/phase-5/phase-5-checkpoint.json"
@@ -1301,8 +1539,15 @@ def _write_targeted_patch_outputs(
 
     evidence = load_evidence(orchestrate_dir)
     mapping = load_mapping(mapping_path)
-    validate_mapping(evidence, mapping, changes, capabilities, overlay)
-    validate_refit_mapping_crosscheck(provisional_refit, mapping)
+    validate_mapping(
+        evidence,
+        mapping,
+        changes,
+        capabilities,
+        overlay,
+        repo_root=repo_root_for(orchestrate_dir),
+    )
+    validate_gap_framework_impacts(orchestrate_dir, provisional_refit, mapping)
 
     completed = checkpoint.get("completed-rows")
     pending = checkpoint.get("pending-ids")
@@ -1486,8 +1731,15 @@ def write_outputs(orchestrate_dir: Path) -> None:
     validate_framework_refit(orchestrate_dir, refit, changes, capabilities, overlay)
     evidence = load_evidence(orchestrate_dir)
     mapping = load_mapping(mapping_path)
-    validate_mapping(evidence, mapping, changes, capabilities, overlay)
-    validate_refit_mapping_crosscheck(refit, mapping)
+    validate_mapping(
+        evidence,
+        mapping,
+        changes,
+        capabilities,
+        overlay,
+        repo_root=repo_root,
+    )
+    validate_gap_framework_impacts(orchestrate_dir, refit, mapping)
     clean_legacy(orchestrate_dir)
     patch_history = [dict(row) for row in refit.get("patch-history", []) if isinstance(row, dict)]
     if not patch_history:
@@ -1499,7 +1751,7 @@ def write_outputs(orchestrate_dir: Path) -> None:
     mapping_md = work / "atom-plan-mapping.md"
     mapping_md.write_text(render_atom_plan_mapping(orchestrate_dir, mapping_path), encoding="utf-8")
     baseline_path = work / "capability-baseline-reconciliation.json"
-    baseline = build_baseline(repo_root, changes, capabilities, mapping)
+    _, baseline = derive_advancement(repo_root, changes, capabilities, mapping)
     write_json(baseline_path, baseline)
     (work / "capability-baseline-reconciliation.md").write_text(render_capability_baseline(orchestrate_dir, baseline_path), encoding="utf-8")
 
@@ -1667,13 +1919,21 @@ def validate_outputs(orchestrate_dir: Path) -> None:
     mapping_path = work / "atom-plan-mapping.json"
     evidence = load_evidence(orchestrate_dir)
     mapping = load_mapping(mapping_path)
-    validate_mapping(evidence, mapping, changes, capabilities, overlay)
-    validate_refit_mapping_crosscheck(refit, mapping)
+    validate_mapping(
+        evidence,
+        mapping,
+        changes,
+        capabilities,
+        overlay,
+        repo_root=repo_root,
+    )
+    validate_gap_framework_impacts(orchestrate_dir, refit, mapping)
     expected_mapping_md = render_atom_plan_mapping(orchestrate_dir, mapping_path)
     if (work / "atom-plan-mapping.md").read_text(encoding="utf-8") != expected_mapping_md:
         raise ValueError("atom plan mapping Markdown drift")
     baseline_path = work / "capability-baseline-reconciliation.json"
-    if require_json(baseline_path, CAPABILITY_BASELINE_SCHEMA) != build_baseline(repo_root, changes, capabilities, mapping):
+    _, expected_baseline = derive_advancement(repo_root, changes, capabilities, mapping)
+    if require_json(baseline_path, CAPABILITY_BASELINE_SCHEMA) != expected_baseline:
         raise ValueError("Capability baseline JSON drift")
     if (work / "capability-baseline-reconciliation.md").read_text(encoding="utf-8") != render_capability_baseline(orchestrate_dir, baseline_path):
         raise ValueError("Capability baseline Markdown drift")
@@ -1761,8 +2021,15 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
                 validate_framework_refit(args.orchestrate_dir, refit, changes, capabilities, overlay)
                 evidence = load_evidence(args.orchestrate_dir)
                 mapping = load_mapping(mapping_path)
-                validate_mapping(evidence, mapping, changes, capabilities, overlay)
-                validate_refit_mapping_crosscheck(refit, mapping)
+                validate_mapping(
+                    evidence,
+                    mapping,
+                    changes,
+                    capabilities,
+                    overlay,
+                    repo_root=repo_root_for(args.orchestrate_dir),
+                )
+                validate_gap_framework_impacts(args.orchestrate_dir, refit, mapping)
             elif status not in {TARGETED_PATCH_STATUS, "blocked"}:
                 raise ValueError("mechanical helper只处理terminal、targeted patch或blocked状态")
         if args.validate_rendered:

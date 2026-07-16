@@ -1,8 +1,8 @@
-# Phase 4：确定性冻结原文集合组装
+# Phase 4：冻结 Evidence 的确定性汇总（不作判断）
 
-Phase 4在Phase 3 `coverage-complete`后运行。它通过evidence resolver读取Phase 2 atom和Phase 3 gap atom中已冻结的`source-fact`，按Phase 1 initial Change、initial Capability和`unassigned-and-gap`机械重排原文。本Phase不读取原始source document、不扩展source window、不执行framework判断。
+Phase 4在Phase 3 `coverage-complete`后运行。它通过evidence resolver读取Phase 2 atom和Phase 3 gap atom中已冻结的`source-fact`，按Phase 1 initial Change、initial Capability和`unassigned-and-gap`机械重排原文。本Phase不读取原始source document、不扩展source window，也不作mapping、refit或其他语义判断。
 
-writer必须完整读取`references/cross-phase-contract.md`、本文件和`references/trace-sidecar-contract.md`。Phase 4不加载Change/Capability共享原则，因为它不得执行refit。
+Writer必须完整读取`references/cross-phase-contract.md`、本文件和`references/trace-sidecar-contract.md`。Phase 4不加载Change/Capability共享原则；仅`update-mode: incremental-patch`额外完整读取`references/targeted-evidence-patch-contract.md`。
 
 ## 输入
 
@@ -93,52 +93,27 @@ python3 .codex/skills/source-aligned-change-plan-coverage/scripts/render_source_
 
 ## 派生index v2
 
-`evidence-collection-index.json`使用`source-aligned-evidence-collection-index-v2`，顶层必须且只能包含：
+`evidence-collection-index.json`使用`source-aligned-evidence-collection-index-v2`。顶层、upstream digest、逐GA index row和rendered artifact row的exact machine shape只由`references/trace-sidecar-contract.md`定义。
 
-- `trace-schema`
-- `trace-contract-version`
-- `generated-from[]`
-- `rows[]`
-- `rendered-artifacts[]`
-
-`generated-from[]`每行包含`artifact-path`和`sha256`。
-
-`rows[]`每行必须且只能包含：
-
-- `global-atom-id`
-- `evidence-ref`
-- `change-bucket`
-- `capability-bucket`
-- `rendered-collection-paths[]`
-
-`rendered-artifacts[]`每行必须且只能包含：
-
-- `artifact-path`
-- `sha256`
-- `collection-kind`
-- `owner-id`
-
-每个GA恰好一行，`evidence-ref`与global index完全相同。index不得复制source fact、path、range、type、normativity或candidate metadata。
+本文件只规定派生语义：每个GA恰好一行，evidence reference与global index逐字一致，bucket和collection path完全由前述机械规则得出；rendered artifact只登记实际生成的collection及其digest。index不得复制source fact、source path/range、type、normativity或candidate metadata。
 
 ## Incremental deterministic refresh
 
-`update-mode: incremental-patch`只在唯一targeted patch链中使用：
+`update-mode: incremental-patch`只在patch contract定义的完整授权链中使用；request/checkpoint但无Phase 5 trace commit marker时不得运行。
 
-- 输入必须包含有效`EPR-0001`、`P5CP-0001`和Phase 3 incremental result；
-- assembler仍从当前Phase 1–3 authority确定性生成内容，不读取checkpoint取得语义；
-- 未受影响`phase-4-index-rows`与`phase-4-rendered-artifacts`必须通过request的protected row digest；
-- 只有changed/new GA所进入的collection及其index digest允许变化；不得修改bucket规则或解读mapping ambiguity；
-- Phase 4 bucket只使用Phase 1 identity；受影响Change/Capability bucket必须分别属于checkpoint的`initial-changes[]`、`initial-capabilities[]`，不得用同名final scope绕过initial review scope；
-- 可为实现确定性一致性重写文件，但语义变化必须严格落在受影响collection集合。
+- Assembler仍从当前Phase 1–3 authority确定性生成内容，不读取checkpoint取得语义。
+- 未受影响index/rendered row必须通过protected digest；只有changed/new GA进入的collection及index digest允许变化。
+- Bucket仍只使用Phase 1 identity；不得修改bucket规则、解读ambiguity或用同名final ID绕过initial scope。
+- 授权、affected closure、identity保护和失败处理全部以`references/targeted-evidence-patch-contract.md`为准。
 
 ## Status与trace v4
 
 - `assembled`：resolver成功，全部Markdown和派生index已生成且无drift。
 - `blocked`：Phase 2/3 artifact或digest冲突，无法建立可信resolver结果。
 
-terminal trace使用`source-aligned-phase-4-trace-v4`，顶层包含schema/version、`status: assembled`、`update-mode: initial|incremental-patch`、`patch-request-ref`、`checkpoint-ref`、`base-evidence-collection-index-sha256`、`affected-closure`和`assembled` object；assembled记录index path/SHA及`renderer-result-summary`。`affected-closure`只包含`global-atom-ids[]`、`change-buckets[]`、`capability-buckets[]`、`rendered-artifact-paths[]`。initial mode的ref/base为null且closure各array为空；incremental-patch时必须记录有效base与受影响closure。
+`source-aligned-phase-4-trace-v4`的assembled、blocked、affected closure和assembled summary exact shape只由`references/trace-sidecar-contract.md`定义。Initial mode不带patch引用、base digest或affected closure；incremental-patch必须记录有效base与受影响closure。
 
-blocked trace包含schema/version、status、update-mode、request/checkpoint ref、base index digest、已知`affected-closure`和非空`issues[]`。initial blocked的ref/base为null且closure为空；incremental blocked必须保留immutable ref与已知影响范围、清理未完成的terminal index/collection，再由main agent调用`phase5_plan_refit.py --abort-patch-chain --issue ...`机械关闭Phase 5唯一history。该control transform不得改写semantic row；abort validation不得依赖已清理的Phase 4 surface，也不得自动重跑assembler或回到其他Phase。
+Blocked trace exact shape见trace contract。Incremental blocked保留commit marker引用、base digest与已知closure，清理未完成terminal index/collection，再由main agent按patch contract执行机械abort；不得自动重跑assembler或回到其他Phase。
 
 Phase 4不得记录split、merge、rename、reorder、boundary、owner、projection、relation或Capability impact判断。
 
