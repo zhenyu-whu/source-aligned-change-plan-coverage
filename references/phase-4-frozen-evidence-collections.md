@@ -2,7 +2,7 @@
 
 Phase 4在Phase 3 `coverage-complete`后运行。它通过evidence resolver读取Phase 2 atom和Phase 3 gap atom中已冻结的`source-fact`，按Phase 1 initial Change、initial Capability和`unassigned-and-gap`机械重排原文。本Phase不读取原始source document、不扩展source window，也不作mapping、refit或其他语义判断。
 
-Writer必须完整读取`references/cross-phase-contract.md`、本文件和`references/trace-sidecar-contract.md`。Phase 4不加载Change/Capability共享原则；仅`update-mode: incremental-patch`额外完整读取`references/targeted-evidence-patch-contract.md`。
+Assembler必须完整读取`references/cross-phase-contract.md`、本文件和`references/trace-sidecar-contract.md`。Phase 4不加载Change/Capability共享原则。
 
 ## 输入
 
@@ -43,7 +43,7 @@ Phase 4信任经过Phase 2/3 validator冻结的`source-fact`，不按range重新
 
 ## Assembler固定顺序
 
-assembler必须：
+assembler必须在staging中：
 
 1. 读取并解析Phase 1 initial Change/Capability集合及顺序。
 2. 解析Phase 3 global index中的全部GA/evidence ref，并通过resolver逐一验证。
@@ -51,8 +51,9 @@ assembler必须：
 4. 生成`index.md`、全部initial Change/Capability collection和`unassigned-and-gap.md`。
 5. 检查每个GA的collection path、原文fence及空集合。
 6. 最后生成派生`evidence-collection-index.json`。
+7. 自校验全部staging collection/index；成功后原子发布全部派生surface，并最后写`status: assembled` trace作为commit marker。
 
-不得先写index再从index渲染Markdown。
+不得先写index再从index渲染Markdown。Staging失败时清理未提交派生surface并发布最小`blocked` trace；不得保留半发布index或collection。
 
 ## Bucket规则
 
@@ -97,29 +98,20 @@ python3 .codex/skills/source-aligned-change-plan-coverage/scripts/render_source_
 
 本文件只规定派生语义：每个GA恰好一行，evidence reference与global index逐字一致，bucket和collection path完全由前述机械规则得出；rendered artifact只登记实际生成的collection及其digest。index不得复制source fact、source path/range、type、normativity或candidate metadata。
 
-## Incremental deterministic refresh
-
-`update-mode: incremental-patch`只在patch contract定义的完整授权链中使用；request/checkpoint但无Phase 5 trace commit marker时不得运行。
-
-- Assembler仍从当前Phase 1–3 authority确定性生成内容，不读取checkpoint取得语义。
-- 未受影响index/rendered row必须通过protected digest；只有changed/new GA进入的collection及index digest允许变化。
-- Bucket仍只使用Phase 1 identity；不得修改bucket规则、解读ambiguity或用同名final ID绕过initial scope。
-- 授权、affected closure、identity保护和失败处理全部以`references/targeted-evidence-patch-contract.md`为准。
-
-## Status与trace v4
+## Status与trace v5
 
 - `assembled`：resolver成功，全部Markdown和派生index已生成且无drift。
 - `blocked`：Phase 2/3 artifact或digest冲突，无法建立可信resolver结果。
 
-`source-aligned-phase-4-trace-v4`的assembled、blocked、affected closure和assembled summary exact shape只由`references/trace-sidecar-contract.md`定义。Initial mode不带patch引用、base digest或affected closure；incremental-patch必须记录有效base与受影响closure。
+`source-aligned-phase-4-trace-v5`的assembled、blocked和assembled summary exact shape只由`references/trace-sidecar-contract.md`定义。Trace不包含update mode、patch/checkpoint ref、base digest或affected closure。
 
-Blocked trace exact shape见trace contract。Incremental blocked保留commit marker引用、base digest与已知closure，清理未完成terminal index/collection，再由main agent按patch contract执行机械abort；不得自动重跑assembler或回到其他Phase。
+Blocked trace exact shape见trace contract。失败时清理未提交派生surface并最后写blocked marker；不得启动reviewer/repair、自动重跑assembler或回到其他Phase。
 
 Phase 4不得记录split、merge、rename、reorder、boundary、owner、projection、relation或Capability impact判断。
 
 ## 完成条件
 
-- collection Markdown、派生index、trace和非canonical agent report存在；
+- collection Markdown、派生index、trace和非canonical agent report存在，且assembled trace是最后发布的commit marker；
 - validator从Phase 1–3重算全部Markdown和index且无drift；
 - validator拒绝缺失、篡改、stale文件、GA基数错误、上游digest drift及`source-fact`变化；
 - empty initial unit collection存在，bucket机械正确且没有refit判断；

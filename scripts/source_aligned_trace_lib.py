@@ -16,25 +16,23 @@ from pathlib import Path
 from typing import Dict, Iterable, List, Optional, Sequence, Tuple
 
 
-TRACE_CONTRACT_VERSION = "source-aligned-trace-v4"
+TRACE_CONTRACT_VERSION = "source-aligned-trace-v5"
 MANIFEST_SCHEMA = "source-aligned-orchestrate-manifest-v2"
 PHASE_TRACE_SCHEMAS = {
     "phase-1": "source-aligned-phase-1-trace-v3",
-    "phase-2": "source-aligned-phase-2-trace-v4",
-    "phase-3": "source-aligned-phase-3-trace-v3",
-    "phase-4": "source-aligned-phase-4-trace-v4",
-    "phase-5": "source-aligned-phase-5-trace-v4",
+    "phase-2": "source-aligned-phase-2-trace-v5",
+    "phase-3": "source-aligned-phase-3-trace-v4",
+    "phase-4": "source-aligned-phase-4-trace-v5",
+    "phase-5": "source-aligned-phase-5-trace-v5",
 }
-SOURCE_ATOMS_SCHEMA = "source-aligned-source-atoms-v4"
+SOURCE_ATOMS_SCHEMA = "source-aligned-source-atoms-v5"
 GLOBAL_ATOM_INDEX_SCHEMA = "source-aligned-global-atom-index-v3"
 PHASE3_COVERAGE_REVIEW_SCHEMA = "source-aligned-phase-3-coverage-review-v2"
 EVIDENCE_COLLECTION_INDEX_SCHEMA = "source-aligned-evidence-collection-index-v2"
-FRAMEWORK_REFIT_TRACE_SCHEMA = "source-aligned-framework-refit-trace-v3"
+FRAMEWORK_REFIT_TRACE_SCHEMA = "source-aligned-framework-refit-trace-v4"
 ATOM_PLAN_MAPPING_SCHEMA = "source-aligned-atom-plan-mapping-v4"
 FINAL_PACKET_INDEX_SCHEMA = "source-aligned-final-packet-index-v2"
 CAPABILITY_BASELINE_SCHEMA = "source-aligned-capability-baseline-v1"
-EVIDENCE_PATCH_REQUEST_SCHEMA = "source-aligned-evidence-patch-request-v1"
-PHASE5_CHECKPOINT_SCHEMA = "source-aligned-phase-5-checkpoint-v2"
 
 GLOBAL_ATOM_ID_RE = re.compile(r"^GA-\d{4}$")
 GLOBAL_ATOM_ID_FIND_RE = re.compile(r"GA-\d{4}")
@@ -87,22 +85,13 @@ class IssueReporter:
 
 
 def canonical_json_sha256(value: object) -> str:
-    """Return the canonical row digest used by patch/checkpoint contracts."""
+    """Return the workflow's deterministic digest for a JSON-compatible value."""
     payload = json.dumps(
         value,
         ensure_ascii=False,
         sort_keys=True,
         separators=(",", ":"),
     ).encode("utf-8")
-    return hashlib.sha256(payload).hexdigest()
-
-
-def source_window_sha256(path: Path, start: int, end: int) -> str:
-    """Hash an exact 1-based line window using normalized LF joins and no trailing LF."""
-    lines = path.read_text(encoding="utf-8").splitlines()
-    if start < 1 or end < start or end > len(lines):
-        raise ValueError(f"source window越界：{path}:{start}-{end}")
-    payload = "\n".join(lines[start - 1 : end]).encode("utf-8")
     return hashlib.sha256(payload).hexdigest()
 
 
@@ -148,45 +137,6 @@ def normalize_code(value: object) -> str:
     while len(text) >= 2 and text.startswith("`") and text.endswith("`"):
         text = text[1:-1].strip()
     return text.replace("\\|", "|").strip()
-
-
-def evidence_patch_finding_fingerprint(targets: object) -> str:
-    """Return the deterministic identity of an evidence-integrity finding set.
-
-    Remediation choices, prose reasons, owner identities, and generated successor
-    IDs are deliberately excluded so a different writer cannot disguise the same
-    located defect as a new finding.
-    """
-    rows: List[Dict[str, object]] = []
-    for target in targets if isinstance(targets, list) else []:
-        if not isinstance(target, dict):
-            continue
-        window = target.get("allowed-line-window")
-        normalized_window = {
-            "start": window.get("start"),
-            "end": window.get("end"),
-        } if isinstance(window, dict) else None
-        evidence_ref = target.get("evidence-ref")
-        witness = target.get("defect-witness")
-        rows.append({
-            "source-document": normalize_code(target.get("source-document")),
-            "source-atom-id": normalize_code(target.get("source-atom-id")) or None,
-            "global-atom-id": normalize_code(target.get("global-atom-id")) or None,
-            "evidence-ref": evidence_ref if isinstance(evidence_ref, dict) else None,
-            "defect": normalize_code(target.get("defect")),
-            "allowed-line-window": normalized_window,
-            "source-sha256": normalize_code(witness.get("source-sha256")) if isinstance(witness, dict) else None,
-            "window-sha256": normalize_code(witness.get("window-sha256")) if isinstance(witness, dict) else None,
-        })
-    rows.sort(
-        key=lambda row: json.dumps(
-            row,
-            ensure_ascii=False,
-            sort_keys=True,
-            separators=(",", ":"),
-        )
-    )
-    return canonical_json_sha256({"evidence-integrity-defects": rows})
 
 
 def squash(value: object) -> str:
@@ -417,6 +367,91 @@ def sha256_file(path: Path) -> str:
 
 def sha256_text(text: str) -> str:
     return hashlib.sha256(text.encode("utf-8")).hexdigest()
+
+
+def repo_relative_path(path: Path, repo_root: Path) -> str:
+    """Serialize a canonical path relative to the workspace/repository root."""
+    try:
+        return path.resolve().relative_to(repo_root.resolve()).as_posix()
+    except ValueError as exc:
+        raise ValueError(f"canonical path不在repository root内：{path}") from exc
+
+
+def evidence_authority_payload(
+    orchestrate_dir: Path,
+    repo_root: Path,
+    *,
+    include_phase3: bool = True,
+) -> Dict[str, object]:
+    """Build the normalized Phase 2/3 evidence authority fingerprint payload.
+
+    Reports, Markdown mirrors, and phase traces are deliberately excluded.  The
+    digest binds the source bytes, every canonical Phase 2 atom JSON document,
+    and the two canonical Phase 3 semantic authorities.
+    """
+    phase1_trace_path = orchestrate_dir / "trace/phase-1.trace.json"
+    phase1_trace = read_json(phase1_trace_path)
+    source_documents = phase1_trace.get("source-documents")
+    if not isinstance(source_documents, list):
+        raise ValueError(f"{phase1_trace_path} source-documents必须是array")
+
+    source_rows: List[Dict[str, str]] = []
+    for item in source_documents:
+        if not isinstance(item, dict):
+            raise ValueError(f"{phase1_trace_path} source-documents[]必须是object")
+        source_document = normalize_code(item.get("source-document"))
+        if not source_document:
+            raise ValueError(f"{phase1_trace_path} source-document不得为空")
+        source_path = repo_root / source_document
+        source_digest = normalize_code(item.get("sha256") or item.get("source-sha256"))
+        if not re.fullmatch(r"[0-9a-f]{64}", source_digest):
+            raise ValueError(f"{phase1_trace_path} {source_document} source digest非法")
+        source_rows.append({
+            "source-document": repo_relative_path(source_path, repo_root),
+            "sha256": source_digest,
+        })
+    source_rows.sort(key=lambda row: row["source-document"])
+
+    atom_root = orchestrate_dir / "phase-works/phase-2/source-obligation-atoms"
+    atom_rows = [
+        {
+            "json-path": repo_relative_path(path, repo_root),
+            "sha256": sha256_file(path),
+        }
+        for path in sorted(atom_root.glob("*.atoms.json"))
+    ]
+    payload: Dict[str, object] = {
+        "source-documents": source_rows,
+        "source-atoms": atom_rows,
+    }
+    if include_phase3:
+        global_index_path = orchestrate_dir / "change-capability-anchors/obligation-atom-index.json"
+        coverage_review_path = orchestrate_dir / "phase-works/phase-3/coverage-review.json"
+        payload.update({
+            "global-index": {
+                "json-path": repo_relative_path(global_index_path, repo_root),
+                "sha256": sha256_file(global_index_path),
+            },
+            "coverage-review": {
+                "json-path": repo_relative_path(coverage_review_path, repo_root),
+                "sha256": sha256_file(coverage_review_path),
+            },
+        })
+    else:
+        payload.update({"global-index": None, "coverage-review": None})
+    return payload
+
+
+def evidence_authority_sha256(
+    orchestrate_dir: Path,
+    repo_root: Path,
+    *,
+    include_phase3: bool = True,
+) -> str:
+    """Return the canonical Phase 2/3 evidence authority digest."""
+    return canonical_json_sha256(
+        evidence_authority_payload(orchestrate_dir, repo_root, include_phase3=include_phase3)
+    )
 
 
 def read_json(path: Path) -> Dict[str, object]:

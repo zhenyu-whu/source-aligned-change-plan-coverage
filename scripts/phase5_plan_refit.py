@@ -1,11 +1,11 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
-"""Phase 5 机械派生器与targeted evidence patch checkpoint 呈现器。
+"""Phase 5 refit/mapping 机械派生器。
 
 语义权威是 final change-plan.md、framework-refit-trace.json 和
 atom-plan-mapping.json；plan-refit-review.md 只是 JSON mirror。
 本脚本不接受 semantic config，不推断 framework，不补写 acceptance/dependency/archive 文案。
-targeted patch / blocked 状态下只校验引用、渲染 review 并发布非终态 trace。
+blocked 状态只渲染 review、发布最小 trace，并清理所有 terminal surface。
 """
 
 from __future__ import annotations
@@ -28,7 +28,6 @@ from render_source_aligned_orchestrate import (
 from source_aligned_trace_lib import (
     ATOM_PLAN_MAPPING_SCHEMA,
     CAPABILITY_BASELINE_SCHEMA,
-    EVIDENCE_PATCH_REQUEST_SCHEMA,
     EVIDENCE_COLLECTION_INDEX_SCHEMA,
     FINAL_PACKET_INDEX_SCHEMA,
     FRAMEWORK_REFIT_TRACE_SCHEMA,
@@ -36,14 +35,13 @@ from source_aligned_trace_lib import (
     GLOBAL_ATOM_INDEX_SCHEMA,
     KEBAB_CASE_RE,
     PHASE3_COVERAGE_REVIEW_SCHEMA,
-    PHASE5_CHECKPOINT_SCHEMA,
     PHASE_TRACE_SCHEMAS,
     SOURCE_ATOMS_SCHEMA,
     TRACE_CONTRACT_VERSION,
-    canonical_json_sha256,
     cell,
     line_ranges_label,
     normalize_code,
+    repo_relative_path as rel,
     sha256_file,
     source_atom_file_name,
     table_rows,
@@ -57,15 +55,10 @@ CHANGE_ONLY_PROJECTIONS = {"design-obligation", "verification-obligation"}
 RELATIONS = {"direct", "context", "dependency", "preserve", "reference", "non-goal"}
 CAPABILITY_IMPACTS = {"new", "modified", "none"}
 TERMINAL_STATUSES = {"accepted", "adjusted"}
-TARGETED_PATCH_STATUS = "needs-targeted-evidence-patch"
-NONTERMINAL_STATUSES = {TARGETED_PATCH_STATUS, "blocked"}
+NONTERMINAL_STATUSES = {"blocked"}
 NONE_VALUES = {"", "none", "null", "None", "NULL"}
 CAPABILITY_REVIEW_DECISIONS = {"keep", "split", "merge", "remove", "rename"}
 CHANGE_REVIEW_DECISIONS = {"keep", "split", "merge", "scope-adjusted", "remove", "rename", "reorder"}
-PATCH_HISTORY_FIELDS = {
-    "request-id", "patch-request-ref", "checkpoint-ref", "finding-fingerprint", "status",
-}
-PATCH_HISTORY_STATUSES = {"requested", "closed", "blocked"}
 
 # 与 references/change-capability-framework-principles.md 的顺序严格一致。
 # 测试 fixture 与其他 validator 应直接复用这些 tuple，避免 gate 名称漂移。
@@ -142,96 +135,6 @@ class Mapping:
     reason: str
 
 
-def framework_semantic_digest_rows(
-    changes: Sequence[ChangeDef],
-    capabilities: Sequence[CapabilityDef],
-) -> Tuple[List[Dict[str, str]], List[Dict[str, str]]]:
-    """为checkpoint生成可按final ID保护的framework语义row digest。"""
-    change_rows: List[Dict[str, str]] = []
-    for change in changes:
-        payload = {
-            "final-change": change.slug,
-            "intent": change.intent,
-            "outcome": change.outcome,
-            "source-hint": change.source_hint,
-            "scope-in": change.scope_in,
-            "scope-out": change.scope_out,
-            "trigger": change.trigger,
-            "normative-behavior": change.normative_behavior,
-            "observable-outcome": change.observable_outcome,
-            "exception-semantics": change.exception_semantics,
-            "acceptance": change.acceptance,
-            "dependencies": change.dependencies_raw,
-            "ordering-reason": change.ordering_reason,
-            "archive-condition": change.archive_condition,
-            "split-merge-judgment": change.split_merge_judgment,
-        }
-        change_rows.append({
-            "final-change": change.slug,
-            "sha256": canonical_json_sha256(payload),
-        })
-    capability_rows: List[Dict[str, str]] = []
-    for capability in capabilities:
-        payload = {
-            "final-capability": capability.slug,
-            "purpose": capability.purpose,
-            "owns": capability.owns,
-            "excludes": capability.excludes,
-            "boundary-rationale": capability.rationale,
-        }
-        capability_rows.append({
-            "final-capability": capability.slug,
-            "sha256": canonical_json_sha256(payload),
-        })
-    return change_rows, capability_rows
-
-
-def framework_dependency_edges(changes: Sequence[ChangeDef]) -> List[Dict[str, str]]:
-    """按provisional roadmap顺序冻结final Change hard-dependency拓扑。"""
-    positions = {change.slug: index for index, change in enumerate(changes)}
-    return [
-        {"change": change.slug, "depends-on": dependency}
-        for change in changes
-        for dependency in sorted(change.dependencies, key=lambda item: positions[item])
-    ]
-
-
-def framework_review_lineage(
-    refit: Dict[str, object],
-) -> Tuple[List[Dict[str, object]], List[Dict[str, object]]]:
-    """冻结每个initial review unit在patch前产生的provisional final IDs。"""
-    change_lineage = [
-        {
-            "input-change": normalize_code(row.get("input-change")),
-            "provisional-final-changes": list(row.get("final-changes", [])),
-        }
-        for row in refit.get("change-reviews", [])
-        if isinstance(row, dict) and isinstance(row.get("final-changes"), list)
-    ]
-    capability_lineage = [
-        {
-            "input-capability": normalize_code(row.get("input-capability")),
-            "provisional-final-capabilities": list(row.get("final-capabilities", [])),
-        }
-        for row in refit.get("capability-reviews", [])
-        if isinstance(row, dict) and isinstance(row.get("final-capabilities"), list)
-    ]
-    return change_lineage, capability_lineage
-
-
-def framework_ga_lineage(mapping_rows: object) -> List[Dict[str, object]]:
-    """冻结existing GA对provisional final framework的最小provenance。"""
-    return [
-        {
-            "global-atom-id": normalize_code(row.get("global-atom-id")),
-            "provisional-final-change": normalize_code(row.get("final-owner-change")),
-            "provisional-final-capability": normalize_code(row.get("final-target-capability")),
-            "provisional-related-capabilities": list(row.get("related-capabilities", [])),
-        }
-        for row in mapping_rows if isinstance(mapping_rows, list) and isinstance(row, dict)
-    ] if isinstance(mapping_rows, list) else []
-
-
 def squash(value: object) -> str:
     return re.sub(r"\s+", " ", "" if value is None else str(value).replace("\n", " ")).strip()
 
@@ -243,13 +146,6 @@ def md(value: object) -> str:
 def code(value: object) -> str:
     text = squash(value).replace("|", "\\|")
     return f"`{text}`" if text else "`None`"
-
-
-def rel(path: Path, root: Path) -> str:
-    try:
-        return path.resolve().relative_to(root.resolve()).as_posix()
-    except ValueError:
-        return path.as_posix()
 
 
 def repo_root_for(orchestrate_dir: Path) -> Path:
@@ -584,90 +480,18 @@ def load_framework_refit(path: Path) -> Dict[str, object]:
     return require_json(path, FRAMEWORK_REFIT_TRACE_SCHEMA)
 
 
-def _validate_artifact_ref(
-    orchestrate_dir: Path,
-    value: object,
-    where: str,
-    expected_path: Path,
-    expected_schema: str,
-) -> Dict[str, object]:
-    """校验 patch lifecycle 引用，但不重做 request/checkpoint 内的语义。"""
-    if not isinstance(value, dict):
-        raise ValueError(f"{where}必须是object")
-    _require_exact_fields(value, {"artifact-path", "sha256"}, where)
-    repo_root = repo_root_for(orchestrate_dir)
-    expected_relative = rel(expected_path, repo_root)
-    if value.get("artifact-path") != expected_relative:
-        raise ValueError(f"{where}.artifact-path应为{expected_relative}")
-    if not expected_path.is_file():
-        raise ValueError(f"{where}引用的artifact不存在：{expected_relative}")
-    require_json(expected_path, expected_schema)
-    actual_digest = sha256_file(expected_path)
-    if value.get("sha256") != actual_digest:
-        raise ValueError(f"{where}.sha256与当前artifact不一致")
-    return dict(value)
-
-
-def _validate_patch_history(
-    orchestrate_dir: Path,
-    value: object,
-    status: str,
-) -> List[Dict[str, object]]:
-    if not isinstance(value, list):
-        raise ValueError("patch-history必须是array")
-    work = orchestrate_dir / "phase-works/phase-5"
-    request_path = work / "evidence-patch-request.json"
-    checkpoint_path = work / "phase-5-checkpoint.json"
-    rows: List[Dict[str, object]] = []
-    for index, item in enumerate(value):
-        if not isinstance(item, dict):
-            raise ValueError(f"patch-history[{index}]必须是object")
-        _require_exact_fields(item, PATCH_HISTORY_FIELDS, f"patch-history[{index}]")
-        request_id = normalize_code(item.get("request-id"))
-        fingerprint = normalize_code(item.get("finding-fingerprint"))
-        row_status = normalize_code(item.get("status"))
-        if not request_id or not fingerprint or row_status not in PATCH_HISTORY_STATUSES:
-            raise ValueError(f"patch-history[{index}] request-id/finding-fingerprint/status非法")
-        _validate_artifact_ref(
-            orchestrate_dir,
-            item.get("patch-request-ref"),
-            f"patch-history[{index}].patch-request-ref",
-            request_path,
-            EVIDENCE_PATCH_REQUEST_SCHEMA,
-        )
-        _validate_artifact_ref(
-            orchestrate_dir,
-            item.get("checkpoint-ref"),
-            f"patch-history[{index}].checkpoint-ref",
-            checkpoint_path,
-            PHASE5_CHECKPOINT_SCHEMA,
-        )
-        rows.append(dict(item))
-
-    row_statuses = [normalize_code(row.get("status")) for row in rows]
-    if status == TARGETED_PATCH_STATUS and (len(rows) != 1 or row_statuses != ["requested"]):
-        raise ValueError(f"{TARGETED_PATCH_STATUS}要求patch-history恰好一条requested")
-    if status in TERMINAL_STATUSES and row_statuses not in ([], ["closed"]):
-        raise ValueError("terminal refit的patch-history必须为空，或恰好一条closed")
-    if status == "blocked" and row_statuses not in ([], ["blocked"]):
-        raise ValueError("blocked refit的patch-history只允许为空，或恰好一条blocked")
-    return rows
-
-
 def validate_framework_refit(
     orchestrate_dir: Path,
     data: Dict[str, object],
     changes: Optional[Sequence[ChangeDef]] = None,
     capabilities: Optional[Sequence[CapabilityDef]] = None,
     overlay: Optional[Dict[Tuple[str, str], str]] = None,
-    *,
-    verify_current_inputs: bool = True,
 ) -> str:
     """校验 refit trace 的结构、基数及与 final plan 的 framework 一致性。"""
     _require_exact_fields(data, {
         "trace-schema", "trace-contract-version", "status", "initial-plan-ref",
         "capability-reviews", "change-reviews", "unassigned-and-gap-reviews",
-        "final-framework", "issues", "patch-history", "language-self-check",
+        "final-framework", "issues", "language-self-check",
     }, "framework-refit-trace")
     if data.get("trace-schema") != FRAMEWORK_REFIT_TRACE_SCHEMA:
         raise ValueError(f"framework-refit-trace trace-schema必须是{FRAMEWORK_REFIT_TRACE_SCHEMA}")
@@ -687,13 +511,9 @@ def validate_framework_refit(
     initial_digest = normalize_code(initial_ref.get("sha256"))
     if not re.fullmatch(r"[0-9a-f]{64}", initial_digest):
         raise ValueError("initial-plan-ref sha256非法")
-    if verify_current_inputs and initial_digest != sha256_file(initial_path):
+    if initial_digest != sha256_file(initial_path):
         raise ValueError("initial-plan-ref digest与Phase 1 initial plan不一致")
-    if verify_current_inputs or status in TERMINAL_STATUSES:
-        initial_changes, initial_capabilities, initial_overlay = _phase1_framework(orchestrate_dir)
-    else:
-        # patch lifecycle abort只验证冻结refit内部结构；current authority drift正是blocked原因。
-        initial_changes, initial_capabilities, initial_overlay = [], [], {}
+    initial_changes, initial_capabilities, initial_overlay = _phase1_framework(orchestrate_dir)
 
     capability_rows = data.get("capability-reviews")
     change_rows = data.get("change-reviews")
@@ -706,7 +526,6 @@ def validate_framework_refit(
     language = squash(data.get("language-self-check"))
     if not language or not re.search(r"[\u4e00-\u9fff]", language):
         raise ValueError("language-self-check必须使用简体中文解释")
-    _validate_patch_history(orchestrate_dir, data.get("patch-history"), status)
     if status in NONTERMINAL_STATUSES:
         if data.get("final-framework") is not None or not issues:
             raise ValueError(f"{status}要求final-framework=null且issues非空")
@@ -1305,8 +1124,8 @@ def clean_legacy(orchestrate_dir: Path) -> None:
             path.unlink()
 
 
-def _remove_terminal_outputs_for_patch(orchestrate_dir: Path) -> None:
-    """进入 targeted patch checkpoint 时移除旧 terminal surface，保留 request/checkpoint/refit。"""
+def _remove_terminal_outputs(orchestrate_dir: Path) -> None:
+    """移除 Phase 5 terminal surface，保留 refit authority 与其 review mirror。"""
     work = orchestrate_dir / "phase-works/phase-5"
     for name in (
         "change-plan.md",
@@ -1332,50 +1151,15 @@ def _remove_terminal_outputs_for_patch(orchestrate_dir: Path) -> None:
             final_index.unlink()
 
 
-def _patch_trace_payload(
-    orchestrate_dir: Path,
-    refit: Dict[str, object],
-    refit_path: Path,
-    review_path: Path,
-) -> Dict[str, object]:
-    repo_root = repo_root_for(orchestrate_dir)
-    history = refit.get("patch-history")
-    if not isinstance(history, list) or len(history) != 1 or not isinstance(history[0], dict):
-        raise ValueError("targeted patch trace要求恰好一条patch-history")
-    patch_ref = history[0].get("patch-request-ref")
-    checkpoint_ref = history[0].get("checkpoint-ref")
-    if not isinstance(patch_ref, dict) or not isinstance(checkpoint_ref, dict):
-        raise ValueError("targeted patch trace缺少request/checkpoint ref")
-    return {
-        "trace-schema": PHASE_TRACE_SCHEMAS["phase-5"],
-        "trace-contract-version": TRACE_CONTRACT_VERSION,
-        "status": TARGETED_PATCH_STATUS,
-        "execution-mode": "initial",
-        "framework-refit-trace-path": rel(refit_path, repo_root),
-        "framework-refit-trace-sha256": sha256_file(refit_path),
-        "plan-refit-review-path": rel(review_path, repo_root),
-        "plan-refit-review-sha256": sha256_file(review_path),
-        "evidence-patch-request-path": patch_ref.get("artifact-path"),
-        "evidence-patch-request-sha256": patch_ref.get("sha256"),
-        "phase-5-checkpoint-path": checkpoint_ref.get("artifact-path"),
-        "phase-5-checkpoint-sha256": checkpoint_ref.get("sha256"),
-        "patch-history": [dict(history[0])],
-        "issues": list(refit.get("issues", [])),
-    }
-
-
 def _blocked_trace_payload(
     orchestrate_dir: Path,
     refit: Dict[str, object],
     refit_path: Path,
     review_path: Path,
 ) -> Dict[str, object]:
-    """构造普通 blocked 或 checkpoint-resume blocked 的最小 trace。"""
+    """构造 blocked 的最小 Phase 5 trace。"""
     repo_root = repo_root_for(orchestrate_dir)
-    history = refit.get("patch-history")
-    if not isinstance(history, list):
-        raise ValueError("blocked trace要求patch-history array")
-    payload: Dict[str, object] = {
+    return {
         "trace-schema": PHASE_TRACE_SCHEMAS["phase-5"],
         "trace-contract-version": TRACE_CONTRACT_VERSION,
         "status": "blocked",
@@ -1385,265 +1169,6 @@ def _blocked_trace_payload(
         "plan-refit-review-sha256": sha256_file(review_path),
         "issues": list(refit.get("issues", [])),
     }
-    if not history:
-        return payload
-    if len(history) != 1 or not isinstance(history[0], dict) or normalize_code(history[0].get("status")) != "blocked":
-        raise ValueError("patch lifecycle blocked要求patch-history恰好一条blocked")
-    patch_ref = history[0].get("patch-request-ref")
-    checkpoint_ref = history[0].get("checkpoint-ref")
-    if not isinstance(patch_ref, dict) or not isinstance(checkpoint_ref, dict):
-        raise ValueError("patch lifecycle blocked缺少request/checkpoint ref")
-    payload.update({
-        "execution-mode": "checkpoint-resume",
-        "evidence-patch-request-path": patch_ref.get("artifact-path"),
-        "evidence-patch-request-sha256": patch_ref.get("sha256"),
-        "phase-5-checkpoint-path": checkpoint_ref.get("artifact-path"),
-        "phase-5-checkpoint-sha256": checkpoint_ref.get("sha256"),
-        "patch-history": [dict(history[0])],
-    })
-    return payload
-
-
-def _write_nonterminal_outputs(
-    orchestrate_dir: Path,
-    refit: Dict[str, object],
-    refit_path: Path,
-    review_path: Path,
-) -> None:
-    """发布非终态 review/trace，并清理所有 terminal surface。"""
-    clean_legacy(orchestrate_dir)
-    _remove_terminal_outputs_for_patch(orchestrate_dir)
-    review_path.parent.mkdir(parents=True, exist_ok=True)
-    review_path.write_text(render_framework_refit_review(orchestrate_dir, refit_path), encoding="utf-8")
-    trace_path = orchestrate_dir / "trace/phase-5.trace.json"
-    status = normalize_code(refit.get("status"))
-    if status == TARGETED_PATCH_STATUS:
-        trace_payload = _patch_trace_payload(orchestrate_dir, refit, refit_path, review_path)
-    elif status == "blocked":
-        trace_payload = _blocked_trace_payload(orchestrate_dir, refit, refit_path, review_path)
-    else:
-        raise ValueError(f"非终态输出不支持status={status}")
-    write_json(trace_path, trace_payload)
-
-
-def _validate_patch_authorization_before_marker(orchestrate_dir: Path) -> None:
-    """复用validator机器权威，在任何清理或commit marker写入前校验完整授权组。"""
-    # 延迟导入避免validator在模块加载时反向导入本helper形成循环。
-    from validate_source_aligned_orchestrate import validate_patch_authorization_group
-
-    result = validate_patch_authorization_group(
-        orchestrate_dir,
-        repo_root_for(orchestrate_dir),
-    )
-    if result.get("ok"):
-        return
-    messages = [
-        f"{issue.get('rule_id')}: {issue.get('message')}"
-        for issue in result.get("issues", [])
-        if isinstance(issue, dict) and issue.get("severity") == "error"
-    ]
-    raise ValueError("Phase 5 patch授权组未通过完整机器校验：" + " | ".join(messages))
-
-
-def _write_targeted_patch_outputs(
-    orchestrate_dir: Path,
-    refit: Dict[str, object],
-    refit_path: Path,
-    review_path: Path,
-) -> None:
-    existing_phase5_trace_path = orchestrate_dir / "trace/phase-5.trace.json"
-    if existing_phase5_trace_path.exists():
-        existing_phase5_trace = require_json(existing_phase5_trace_path, PHASE_TRACE_SCHEMAS["phase-5"])
-        raise ValueError(
-            "targeted evidence patch只能在首次Phase 5尚未发布canonical trace时发起；"
-            f"现有Phase 5状态{existing_phase5_trace.get('status')!r}不得回退为requested"
-        )
-
-    _validate_patch_authorization_before_marker(orchestrate_dir)
-
-    plan_path = orchestrate_dir / "phase-works/phase-5/change-plan.md"
-    checkpoint_path = orchestrate_dir / "phase-works/phase-5/phase-5-checkpoint.json"
-    if not plan_path.is_file():
-        raise ValueError("targeted patch checkpoint发布前必须保留provisional change-plan供机械冻结")
-    checkpoint = require_json(checkpoint_path, PHASE5_CHECKPOINT_SCHEMA)
-    provisional = checkpoint.get("provisional-framework")
-    if not isinstance(provisional, dict):
-        raise ValueError("checkpoint provisional-framework必须是object")
-    _require_exact_fields(
-        provisional,
-        {
-            "change-order", "capabilities", "overlay",
-            "change-semantic-digests", "capability-semantic-digests",
-            "dependency-edges", "change-lineage", "capability-lineage", "ga-lineage",
-        },
-        "checkpoint.provisional-framework",
-    )
-    changes, capabilities, overlay = parse_final_plan(plan_path)
-    expected_change_digests, expected_capability_digests = framework_semantic_digest_rows(
-        changes,
-        capabilities,
-    )
-    expected_change_lineage, expected_capability_lineage = framework_review_lineage(refit)
-    mapping_path = orchestrate_dir / "phase-works/phase-5/atom-plan-mapping.json"
-    mapping_data = require_json(mapping_path, ATOM_PLAN_MAPPING_SCHEMA)
-    expected_overlay = [
-        {"change": change, "capability": capability, "capability-impact": impact}
-        for (change, capability), impact in overlay.items()
-    ]
-    expected = {
-        "change-order": [change.slug for change in changes],
-        "capabilities": [capability.slug for capability in capabilities],
-        "overlay": expected_overlay,
-        "change-semantic-digests": expected_change_digests,
-        "capability-semantic-digests": expected_capability_digests,
-        "dependency-edges": framework_dependency_edges(changes),
-        "change-lineage": expected_change_lineage,
-        "capability-lineage": expected_capability_lineage,
-        "ga-lineage": framework_ga_lineage(mapping_data.get("rows")),
-    }
-    if provisional != expected:
-        raise ValueError("checkpoint provisional-framework未逐row绑定发布前provisional change-plan")
-
-    provisional_refit = dict(refit)
-    provisional_refit["final-framework"] = {
-        "change-order": list(provisional.get("change-order", [])),
-        "capabilities": list(provisional.get("capabilities", [])),
-        "overlay": list(provisional.get("overlay", [])),
-    }
-    provisional_refit["issues"] = []
-    provisional_refit["patch-history"] = []
-    refit_valid = False
-    refit_errors: List[str] = []
-    for candidate_status in ("accepted", "adjusted"):
-        candidate = dict(provisional_refit)
-        candidate["status"] = candidate_status
-        try:
-            validate_framework_refit(
-                orchestrate_dir,
-                candidate,
-                changes,
-                capabilities,
-                overlay,
-            )
-        except ValueError as exc:
-            refit_errors.append(str(exc))
-        else:
-            provisional_refit = candidate
-            refit_valid = True
-            break
-    if not refit_valid:
-        raise ValueError(
-            "checkpoint发布前provisional refit rows无法组成合法terminal snapshot："
-            + " | ".join(refit_errors)
-        )
-
-    evidence = load_evidence(orchestrate_dir)
-    mapping = load_mapping(mapping_path)
-    validate_mapping(
-        evidence,
-        mapping,
-        changes,
-        capabilities,
-        overlay,
-        repo_root=repo_root_for(orchestrate_dir),
-    )
-    validate_gap_framework_impacts(orchestrate_dir, provisional_refit, mapping)
-
-    completed = checkpoint.get("completed-rows")
-    pending = checkpoint.get("pending-ids")
-    if not isinstance(completed, dict) or not isinstance(pending, dict):
-        raise ValueError("checkpoint completed-rows/pending-ids必须是object")
-    checkpoint_row_specs = (
-        ("capability-reviews", "input-capability", provisional_refit.get("capability-reviews")),
-        ("change-reviews", "input-change", provisional_refit.get("change-reviews")),
-        ("unassigned-and-gap-reviews", "global-atom-id", provisional_refit.get("unassigned-and-gap-reviews")),
-        ("atom-plan-mappings", "global-atom-id", mapping_data.get("rows")),
-    )
-    for kind, key_field, source_rows in checkpoint_row_specs:
-        pending_ids = {
-            normalize_code(item)
-            for item in pending.get(kind, [])
-            if isinstance(item, str)
-        }
-        expected_completed = [
-            row
-            for row in source_rows if isinstance(source_rows, list) and isinstance(row, dict)
-            if normalize_code(row.get(key_field)) not in pending_ids
-        ] if isinstance(source_rows, list) else []
-        if completed.get(kind) != expected_completed:
-            raise ValueError(
-                f"checkpoint completed-rows.{kind}必须逐字复用发布前provisional terminal rows"
-            )
-
-    scope = checkpoint.get("allowed-update-scope")
-    if not isinstance(scope, dict):
-        raise ValueError("checkpoint allowed-update-scope必须是object")
-    ga_origins: Dict[str, Dict[str, set[str]]] = {
-        "change": defaultdict(set),
-        "capability": defaultdict(set),
-    }
-    for row in provisional.get("ga-lineage", []):
-        if not isinstance(row, dict):
-            continue
-        ga_id = normalize_code(row.get("global-atom-id"))
-        change_id = normalize_code(row.get("provisional-final-change"))
-        capability_ids = {
-            normalize_code(row.get("provisional-final-capability")),
-            *(
-                normalize_code(item)
-                for item in row.get("provisional-related-capabilities", [])
-                if isinstance(item, str)
-            ),
-        } - {"", "none", "null"}
-        if change_id not in {"", "none", "null"}:
-            ga_origins["change"][change_id].add(ga_id)
-        for capability_id in capability_ids:
-            ga_origins["capability"][capability_id].add(ga_id)
-
-    lineage_specs = (
-        (
-            "change-lineage", "input-change", "provisional-final-changes",
-            "initial-changes", "final-changes", set(provisional.get("change-order", [])), "change",
-        ),
-        (
-            "capability-lineage", "input-capability", "provisional-final-capabilities",
-            "initial-capabilities", "final-capabilities", set(provisional.get("capabilities", [])), "capability",
-        ),
-    )
-    scoped_ga = {
-        normalize_code(item) for item in scope.get("global-atom-ids", []) if isinstance(item, str)
-    }
-    for lineage_field, input_field, output_field, scope_initial_field, scope_final_field, existing_ids, kind in lineage_specs:
-        origins: Dict[str, set[str]] = defaultdict(set)
-        for row in provisional.get(lineage_field, []):
-            if not isinstance(row, dict):
-                continue
-            origin = normalize_code(row.get(input_field))
-            for final_id in row.get(output_field, []) if isinstance(row.get(output_field), list) else []:
-                origins[normalize_code(final_id)].add(origin)
-        scoped_initial = {
-            normalize_code(item) for item in scope.get(scope_initial_field, []) if isinstance(item, str)
-        }
-        for final_id in scope.get(scope_final_field, []) if isinstance(scope.get(scope_final_field), list) else []:
-            normalized_final = normalize_code(final_id)
-            if normalized_final not in existing_ids:
-                continue
-            initial_origins = origins.get(normalized_final, set())
-            evidence_origins = ga_origins[kind].get(normalized_final, set())
-            if initial_origins:
-                authorized = initial_origins.issubset(scoped_initial)
-            else:
-                authorized = bool(evidence_origins) and evidence_origins.issubset(scoped_ga)
-            if not authorized:
-                raise ValueError(
-                    f"checkpoint {scope_final_field}不得劫持scope外或无provenance的provisional final ID：{normalized_final}"
-                )
-    _write_nonterminal_outputs(
-        orchestrate_dir,
-        refit,
-        refit_path,
-        review_path,
-    )
 
 
 def _write_blocked_outputs(
@@ -1652,49 +1177,15 @@ def _write_blocked_outputs(
     refit_path: Path,
     review_path: Path,
 ) -> None:
-    _write_nonterminal_outputs(
-        orchestrate_dir,
-        refit,
-        refit_path,
-        review_path,
-    )
-
-
-def abort_patch_lifecycle(orchestrate_dir: Path, issue: str) -> None:
-    """将唯一requested patch链机械终止为blocked。
-
-    该control transform只修改refit status、issues和唯一history row的status；
-    不重算review/mapping/framework语义row。
-    """
-    normalized_issue = issue.strip()
-    if not normalized_issue:
-        raise ValueError("abort patch chain要求非空issue")
-    refit_path = orchestrate_dir / "phase-works/phase-5/framework-refit-trace.json"
-    refit = load_framework_refit(refit_path)
-    if validate_framework_refit(
-        orchestrate_dir,
-        refit,
-        verify_current_inputs=False,
-    ) != TARGETED_PATCH_STATUS:
-        raise ValueError("abort patch chain只允许从needs-targeted-evidence-patch转移")
-    history = refit.get("patch-history")
-    if (
-        not isinstance(history, list)
-        or len(history) != 1
-        or not isinstance(history[0], dict)
-        or normalize_code(history[0].get("status")) != "requested"
-    ):
-        raise ValueError("abort patch chain要求恰好一条requested patch-history")
-
-    blocked = dict(refit)
-    blocked_history = dict(history[0])
-    blocked_history["status"] = "blocked"
-    blocked["status"] = "blocked"
-    blocked["issues"] = [normalized_issue]
-    blocked["patch-history"] = [blocked_history]
-    validate_framework_refit(orchestrate_dir, blocked, verify_current_inputs=False)
-    write_json(refit_path, blocked)
-    write_outputs(orchestrate_dir)
+    """发布 blocked review/trace，并清理所有 terminal surface。"""
+    if normalize_code(refit.get("status")) != "blocked":
+        raise ValueError("blocked output只接受status=blocked")
+    clean_legacy(orchestrate_dir)
+    _remove_terminal_outputs(orchestrate_dir)
+    review_path.parent.mkdir(parents=True, exist_ok=True)
+    review_path.write_text(render_framework_refit_review(orchestrate_dir, refit_path), encoding="utf-8")
+    trace_path = orchestrate_dir / "trace/phase-5.trace.json"
+    write_json(trace_path, _blocked_trace_payload(orchestrate_dir, refit, refit_path, review_path))
 
 
 def write_outputs(orchestrate_dir: Path) -> None:
@@ -1705,23 +1196,7 @@ def write_outputs(orchestrate_dir: Path) -> None:
     review_path = work / "plan-refit-review.md"
     mapping_path = work / "atom-plan-mapping.json"
     refit = load_framework_refit(refit_path)
-    raw_status = normalize_code(refit.get("status"))
-    raw_history = refit.get("patch-history")
-    patch_lifecycle_blocked = (
-        raw_status == "blocked"
-        and isinstance(raw_history, list)
-        and len(raw_history) == 1
-        and isinstance(raw_history[0], dict)
-        and normalize_code(raw_history[0].get("status")) == "blocked"
-    )
-    status = validate_framework_refit(
-        orchestrate_dir,
-        refit,
-        verify_current_inputs=not patch_lifecycle_blocked,
-    )
-    if status == TARGETED_PATCH_STATUS:
-        _write_targeted_patch_outputs(orchestrate_dir, refit, refit_path, review_path)
-        return
+    status = validate_framework_refit(orchestrate_dir, refit)
     if status == "blocked":
         _write_blocked_outputs(orchestrate_dir, refit, refit_path, review_path)
         return
@@ -1741,11 +1216,6 @@ def write_outputs(orchestrate_dir: Path) -> None:
     )
     validate_gap_framework_impacts(orchestrate_dir, refit, mapping)
     clean_legacy(orchestrate_dir)
-    patch_history = [dict(row) for row in refit.get("patch-history", []) if isinstance(row, dict)]
-    if not patch_history:
-        for stale_patch_artifact in (work / "evidence-patch-request.json", work / "phase-5-checkpoint.json"):
-            if stale_patch_artifact.exists():
-                stale_patch_artifact.unlink()
 
     review_path.write_text(render_framework_refit_review(orchestrate_dir, refit_path), encoding="utf-8")
     mapping_md = work / "atom-plan-mapping.md"
@@ -1794,19 +1264,10 @@ def write_outputs(orchestrate_dir: Path) -> None:
         "packets": packets,
     })
     trace_path = orchestrate_dir / "trace/phase-5.trace.json"
-    execution_mode = "checkpoint-resume" if patch_history else "initial"
-    terminal_patch_ref = patch_history[0].get("patch-request-ref") if patch_history else None
-    terminal_checkpoint_ref = patch_history[0].get("checkpoint-ref") if patch_history else None
     write_json(trace_path, {
         "trace-schema": PHASE_TRACE_SCHEMAS["phase-5"],
         "trace-contract-version": TRACE_CONTRACT_VERSION,
         "status": status,
-        "execution-mode": execution_mode,
-        "patch-history": patch_history,
-        "evidence-patch-request-path": terminal_patch_ref.get("artifact-path") if isinstance(terminal_patch_ref, dict) else None,
-        "evidence-patch-request-sha256": terminal_patch_ref.get("sha256") if isinstance(terminal_patch_ref, dict) else None,
-        "phase-5-checkpoint-path": terminal_checkpoint_ref.get("artifact-path") if isinstance(terminal_checkpoint_ref, dict) else None,
-        "phase-5-checkpoint-sha256": terminal_checkpoint_ref.get("sha256") if isinstance(terminal_checkpoint_ref, dict) else None,
         "final-change-plan-path": rel(plan_path, repo_root),
         "final-change-plan-sha256": sha256_file(plan_path),
         "framework-refit-trace-path": rel(refit_path, repo_root),
@@ -1827,46 +1288,8 @@ def validate_outputs(orchestrate_dir: Path) -> None:
     work = orchestrate_dir / "phase-works/phase-5"
     refit_path = work / "framework-refit-trace.json"
     refit = load_framework_refit(refit_path)
-    raw_status = normalize_code(refit.get("status"))
-    raw_history = refit.get("patch-history")
-    patch_lifecycle_blocked = (
-        raw_status == "blocked"
-        and isinstance(raw_history, list)
-        and len(raw_history) == 1
-        and isinstance(raw_history[0], dict)
-        and normalize_code(raw_history[0].get("status")) == "blocked"
-    )
-    status = validate_framework_refit(
-        orchestrate_dir,
-        refit,
-        verify_current_inputs=not patch_lifecycle_blocked,
-    )
+    status = validate_framework_refit(orchestrate_dir, refit)
     review_path = work / "plan-refit-review.md"
-    if status == TARGETED_PATCH_STATUS:
-        if not review_path.is_file() or review_path.read_text(encoding="utf-8") != render_framework_refit_review(orchestrate_dir, refit_path):
-            raise ValueError("targeted patch plan refit review Markdown drift")
-        trace_path = orchestrate_dir / "trace/phase-5.trace.json"
-        trace = require_json(trace_path, PHASE_TRACE_SCHEMAS["phase-5"])
-        expected_trace = _patch_trace_payload(orchestrate_dir, refit, refit_path, review_path)
-        if trace != expected_trace:
-            raise ValueError("targeted patch Phase 5 trace drift")
-        forbidden = [
-            work / "change-plan.md",
-            work / "atom-plan-mapping.json",
-            work / "atom-plan-mapping.md",
-            work / "capability-baseline-reconciliation.json",
-            work / "capability-baseline-reconciliation.md",
-            work / "final-packet-index.json",
-            orchestrate_dir / "change-plan.md",
-            orchestrate_dir / "change-capability-anchors/index.md",
-        ]
-        anchors = orchestrate_dir / "change-capability-anchors"
-        if anchors.exists():
-            forbidden.extend(child for child in anchors.iterdir() if child.is_dir())
-        existing = [rel(path, repo_root) for path in forbidden if path.exists()]
-        if existing:
-            raise ValueError(f"targeted patch禁止terminal artifact：{existing}")
-        return
     if status == "blocked":
         if not review_path.is_file() or review_path.read_text(encoding="utf-8") != render_framework_refit_review(orchestrate_dir, refit_path):
             raise ValueError("blocked plan refit review Markdown drift")
@@ -1893,25 +1316,21 @@ def validate_outputs(orchestrate_dir: Path) -> None:
             raise ValueError(f"blocked禁止terminal artifact：{existing}")
         return
     if status not in TERMINAL_STATUSES:
-        raise ValueError("rendered output validation只处理terminal、targeted patch或blocked状态")
+        raise ValueError("rendered output validation只处理terminal或blocked状态")
     plan = work / "change-plan.md"
     changes, capabilities, overlay = parse_final_plan(plan)
     validate_framework_refit(orchestrate_dir, refit, changes, capabilities, overlay)
     trace = require_json(orchestrate_dir / "trace/phase-5.trace.json", PHASE_TRACE_SCHEMAS["phase-5"])
-    patch_history = [dict(row) for row in refit.get("patch-history", []) if isinstance(row, dict)]
-    expected_mode = "checkpoint-resume" if patch_history else "initial"
-    if trace.get("execution-mode") != expected_mode or trace.get("patch-history") != patch_history:
-        raise ValueError("terminal Phase 5 trace execution-mode/patch-history drift")
-    expected_patch_ref = patch_history[0].get("patch-request-ref") if patch_history else None
-    expected_checkpoint_ref = patch_history[0].get("checkpoint-ref") if patch_history else None
-    expected_patch_fields = {
-        "evidence-patch-request-path": expected_patch_ref.get("artifact-path") if isinstance(expected_patch_ref, dict) else None,
-        "evidence-patch-request-sha256": expected_patch_ref.get("sha256") if isinstance(expected_patch_ref, dict) else None,
-        "phase-5-checkpoint-path": expected_checkpoint_ref.get("artifact-path") if isinstance(expected_checkpoint_ref, dict) else None,
-        "phase-5-checkpoint-sha256": expected_checkpoint_ref.get("sha256") if isinstance(expected_checkpoint_ref, dict) else None,
+    expected_trace_fields = {
+        "trace-schema", "trace-contract-version", "status",
+        "final-change-plan-path", "final-change-plan-sha256",
+        "framework-refit-trace-path", "framework-refit-trace-sha256",
+        "plan-refit-review-path", "plan-refit-review-sha256",
+        "atom-plan-mapping-path", "atom-plan-mapping-sha256",
+        "capability-baseline-reconciliation-path", "capability-baseline-reconciliation-sha256",
+        "final-packet-index-path", "final-packet-index-sha256",
     }
-    if any(trace.get(field) != value for field, value in expected_patch_fields.items()):
-        raise ValueError("terminal Phase 5 trace request/checkpoint refs drift")
+    _require_exact_fields(trace, expected_trace_fields, "terminal Phase 5 trace")
     if plan.read_bytes() != (orchestrate_dir / "change-plan.md").read_bytes():
         raise ValueError("根change-plan.md与Phase 5 plan不一致")
     if review_path.read_text(encoding="utf-8") != render_framework_refit_review(orchestrate_dir, refit_path):
@@ -1973,16 +1392,9 @@ def validate_outputs(orchestrate_dir: Path) -> None:
 
 
 def build_parser() -> argparse.ArgumentParser:
-    parser = argparse.ArgumentParser(description="从Phase 5 refit/checkpoint状态机械生成允许的派生产物。")
+    parser = argparse.ArgumentParser(description="从Phase 5 refit/mapping状态机械生成允许的派生产物。")
     parser.add_argument("--orchestrate-dir", type=Path, default=Path("openspec/orchestrate"))
-    action = parser.add_mutually_exclusive_group()
-    action.add_argument("--write", action="store_true", help="写入baseline、packets、trace和根plan")
-    action.add_argument(
-        "--abort-patch-chain",
-        action="store_true",
-        help="机械将唯一requested patch链终止为blocked，不改写语义row",
-    )
-    parser.add_argument("--issue", help="--abort-patch-chain所需的单一终止原因")
+    parser.add_argument("--write", action="store_true", help="写入baseline、packets、trace和根plan")
     parser.add_argument("--validate-rendered", action="store_true", help="验证已生成派生产物")
     return parser
 
@@ -1990,30 +1402,12 @@ def build_parser() -> argparse.ArgumentParser:
 def main(argv: Optional[Sequence[str]] = None) -> int:
     args = build_parser().parse_args(argv)
     try:
-        if args.abort_patch_chain:
-            if not args.issue:
-                raise ValueError("--abort-patch-chain必须同时提供--issue")
-            abort_patch_lifecycle(args.orchestrate_dir, args.issue)
-        elif args.issue:
-            raise ValueError("--issue只能与--abort-patch-chain一起使用")
-        elif args.write:
+        if args.write:
             write_outputs(args.orchestrate_dir)
         else:
             refit_path = args.orchestrate_dir / "phase-works/phase-5/framework-refit-trace.json"
             refit = load_framework_refit(refit_path)
-            raw_history = refit.get("patch-history")
-            patch_lifecycle_blocked = (
-                normalize_code(refit.get("status")) == "blocked"
-                and isinstance(raw_history, list)
-                and len(raw_history) == 1
-                and isinstance(raw_history[0], dict)
-                and normalize_code(raw_history[0].get("status")) == "blocked"
-            )
-            status = validate_framework_refit(
-                args.orchestrate_dir,
-                refit,
-                verify_current_inputs=not patch_lifecycle_blocked,
-            )
+            status = validate_framework_refit(args.orchestrate_dir, refit)
             if status in TERMINAL_STATUSES:
                 plan = args.orchestrate_dir / "phase-works/phase-5/change-plan.md"
                 mapping_path = args.orchestrate_dir / "phase-works/phase-5/atom-plan-mapping.json"
@@ -2030,8 +1424,8 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
                     repo_root=repo_root_for(args.orchestrate_dir),
                 )
                 validate_gap_framework_impacts(args.orchestrate_dir, refit, mapping)
-            elif status not in {TARGETED_PATCH_STATUS, "blocked"}:
-                raise ValueError("mechanical helper只处理terminal、targeted patch或blocked状态")
+            elif status != "blocked":
+                raise ValueError("mechanical helper只处理terminal或blocked状态")
         if args.validate_rendered:
             validate_outputs(args.orchestrate_dir)
     except (OSError, ValueError, json.JSONDecodeError) as exc:

@@ -2,7 +2,7 @@
 
 Phase 5基于冻结evidence和共享framework标准，对Phase 1 framework做最小source-backed refit；为每个GA生成唯一terminal mapping，并由该mapping裁决Phase 3 potential mapping ambiguity；最后完成baseline、overlay与final plan的一致性冻结。
 
-Writer必须完整读取`references/cross-phase-contract.md`、`references/change-capability-framework-principles.md`、本文件和`references/trace-sidecar-contract.md`。普通initial refit不加载patch contract；仅在发现可能的evidence integrity defect时按“异常分支”加载。
+Writer必须完整读取`references/cross-phase-contract.md`、`references/change-capability-framework-principles.md`、本文件和`references/trace-sidecar-contract.md`。
 
 ## 目标与非目标
 
@@ -14,7 +14,7 @@ Writer必须完整读取`references/cross-phase-contract.md`、`references/chang
 ## 输入与语义权威
 
 - 输入：Phase 1 initial plan、Phase 2/3 semantic JSON、global index、potential ambiguities、Phase 4 collections/index，以及只读`openspec/specs/<capability>/spec.md` baseline。
-- Refit语义权威：`framework-refit-trace.json`，schema为`source-aligned-framework-refit-trace-v3`。
+- Refit语义权威：`framework-refit-trace.json`，schema为`source-aligned-framework-refit-trace-v4`。
 - Final mapping语义权威：`atom-plan-mapping.json`，继续使用`source-aligned-atom-plan-mapping-v4`。
 - Final plan内容权威：`phase-works/phase-5/change-plan.md`；根`change-plan.md`必须与其逐字节一致。
 - Review、mapping mirror、baseline、packet、Capability view与anchor index均由helper确定性生成，不得反向恢复语义。
@@ -23,7 +23,7 @@ Writer必须完整读取`references/cross-phase-contract.md`、`references/chang
 
 1. 按Phase 1顺序复审每个initial Capability、initial Change及Phase 4 `unassigned-and-gap` GA，记录initial gate与最小refit理由。
 2. 形成provisional final Change/Capability、hard dependency和roadmap，不先冻结overlay或`new|modified`。
-3. 为全部GA建立provisional完整mapping；用同GA row裁决已记录ambiguity，并在reason中裁决late-discovered ambiguity。
+3. 为全部GA建立完整terminal mapping；用同GA row裁决已记录ambiguity，并在reason中裁决late-discovered ambiguity。Candidate owner/target与final值不一致是正常裁决，不回写Phase 2/3。
 4. 读取mapped target的repository baseline；由final Change order、direct mapping和baseline统一推导edge impact、overlay及baseline rows。
 5. 使用共享原则校验minimality、dependency、final Change/Capability和最终顺序；确保plan、refit、mapping与推导结果一致。
 6. 一致后原子冻结refit JSON、mapping JSON和final plan，再运行helper生成全部派生物。
@@ -65,7 +65,7 @@ reason
 - 每个GA恰好一个mapping row，包含完整final owner、relation、projection、Capability impact/target、related Capability及reason。
 - 每个Phase 3 potential ambiguity GA必须由同GA mapping row裁决，evidence ref一致且对应dimension没有placeholder。
 - Late-discovered ambiguity不回写Phase 3；在mapping reason中明确记录发现与裁决依据。
-- Candidate mapping不一致、`unassigned`、gap、relation选择或framework调整由本Phase裁决，不得请求evidence patch。
+- Candidate mapping不一致、`unassigned`、gap、relation选择或framework调整由本Phase terminal mapping/refit直接裁决，不得回写冻结evidence。
 - Direct与non-direct evidence均归属一个final Change；只有direct `spec-requirement|spec-guard`推进Capability。
 - Design、verification、non-direct和related-only mapping不推进Capability，impact/target按mapping v4约束使用`none`。
 
@@ -84,19 +84,22 @@ final Change order + direct spec/guard mapping + repository baseline
 - Mapping impact、refit overlay、final plan overlay和baseline reconciliation必须逐edge等于同一推导结果；任一漂移由helper/validator拒绝。
 - Overlay只包含实际advancement edge，不包含dependency、reuse、preserve、related-only、design-only或verification-only relation。
 
-## 异常：唯一 targeted evidence patch
+## 冻结 evidence defect
 
-若frozen evidence暗示可定位的evidence integrity defect，initial writer才加载`references/targeted-evidence-patch-contract.md`。只有完成全局review、provisional framework和全部GA provisional mapping后，才可按该contract执行一次有界核验并返回`needs-targeted-evidence-patch`。
+Phase 5若发现quote/range不可信、missing occurrence、mixed independent occurrence或其他需要修改冻结Phase 2/3 authority的evidence integrity defect，必须：
 
-Request、checkpoint、scope、发布顺序、commit marker、Phase 2–4增量链、resume与abort全部以patch contract为唯一权威；本文件不重复。Checkpoint resume writer必须同时加载该contract，只重算pending scope并复用scope外completed row。
+- 在framework refit `issues[]`与Phase 5 blocked trace中记录稳定、可定位的issue；
+- 返回`blocked`，不发布Phase 5 terminal mapping、final plan或根`change-plan.md`；
+- 不回写Phase 2/3、不创建request/checkpoint、不运行incremental assembler或checkpoint resume。
+
+Candidate mapping不一致、final owner/relation/projection/target选择、related Capability及framework boundary调整都不是evidence defect，直接由terminal mapping/refit表达。
 
 ## Status、helper 与 handoff
 
 - `accepted`：全部initial gate通过、全部initial review为`keep`、framework语义与Phase 1一致、所有gap review为`none`，且全部GA已完成mapping与baseline reconciliation。
 - `adjusted`：存在可追溯且实际改变framework语义的最小调整；允许initial gate失败，但失败row不得`keep`；全部terminal authority一致且`issues[]`为空。
-- `needs-targeted-evidence-patch`：仅按patch contract发布合法原子授权组。
-- `blocked`：存在非patchable blocker、patch lifecycle失败、validator失败或需要用户决定。
+- `blocked`：存在冻结evidence缺陷、validator失败、需要用户决定或其他无法形成可信terminal authority的blocker。
 
-`phase5_plan_refit.py`只校验语义输入、执行统一advancement推导、生成mirror/派生物并清理不适用surface；不得补写Change/Capability语义、代作mapping裁决或读取source。Render contract使用`source-aligned-render-v8`：review mirror显示`Initial Gate Results`、`Supporting GAs`、gap的`Framework Impact`，并将输入观察命名为`Potential Mapping Ambiguities (Input)`；resolution只在mapping mirror。
+`phase5_plan_refit.py`只校验语义输入、执行统一advancement推导、生成mirror/派生物并清理不适用surface；不得补写Change/Capability语义、代作mapping裁决或读取source。Render contract使用`source-aligned-render-v9`：review mirror显示`Initial Gate Results`、`Supporting GAs`、gap的`Framework Impact`，并将输入观察命名为`Potential Mapping Ambiguities (Input)`；resolution只在mapping mirror。
 
-Phase 5 trace继续使用`source-aligned-phase-5-trace-v4`。Phase 5 validator通过后，main agent运行all-phase complete validator与一次final integration reviewer；reviewer必须确认所有final Change/Capability通过共享原则。两者都通过后才handoff。
+Phase 5 trace使用`source-aligned-phase-5-trace-v5`，只允许`accepted|adjusted|blocked`。Phase 5 validator通过后，main agent运行all-phase complete validator与一次final integration reviewer；reviewer必须确认所有final Change/Capability通过共享原则。两者都通过后才handoff。

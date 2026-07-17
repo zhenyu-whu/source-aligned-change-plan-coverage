@@ -25,6 +25,7 @@ from source_aligned_trace_lib import (
     cell,
     line_ranges_label,
     normalize_code,
+    repo_relative_path as rel,
     sha256_file,
     source_atom_file_name,
     table_rows,
@@ -32,7 +33,7 @@ from source_aligned_trace_lib import (
 )
 
 
-RENDER_CONTRACT_VERSION = "source-aligned-render-v8"
+RENDER_CONTRACT_VERSION = "source-aligned-render-v9"
 SUPPORTED_ARTIFACTS = {
     "phase2-source-atoms",
     "phase2-index",
@@ -49,13 +50,6 @@ SUPPORTED_ARTIFACTS = {
 def squash(value: object) -> str:
     text = "" if value is None else str(value)
     return " ".join(text.replace("\n", " ").split())
-
-
-def rel(path: Path, root: Path) -> str:
-    try:
-        return path.resolve().relative_to(root.resolve()).as_posix()
-    except ValueError:
-        return path.as_posix()
 
 
 def repo_root_for(orchestrate_dir: Path) -> Path:
@@ -527,29 +521,13 @@ def _gate_results_text(value: object) -> str:
     return "；".join(parts) or "None"
 
 
-def _artifact_ref_text(value: object) -> str:
-    """以确定性文本呈现 artifact ref，不把 ref 当作第二份语义权威。"""
-    if not isinstance(value, dict):
-        return "None"
-    return json.dumps(value, ensure_ascii=False, sort_keys=True)
-
-
-def _mapping_ambiguities(
-    orchestrate_dir: Path,
-    *,
-    tolerate_invalid: bool = False,
-) -> List[Dict[str, object]]:
+def _mapping_ambiguities(orchestrate_dir: Path) -> List[Dict[str, object]]:
     """加载 Phase 3 冻结的 mapping ambiguity，供 Phase 5 review mirror 只读展示。"""
     coverage_path = orchestrate_dir / "phase-works/phase-3/coverage-review.json"
     if not coverage_path.exists():
         return []
-    try:
-        coverage = read_json(coverage_path)
-        require_trace_contract(coverage, coverage_path, PHASE3_COVERAGE_REVIEW_SCHEMA)
-    except (OSError, ValueError, json.JSONDecodeError):
-        if tolerate_invalid:
-            return []
-        raise
+    coverage = read_json(coverage_path)
+    require_trace_contract(coverage, coverage_path, PHASE3_COVERAGE_REVIEW_SCHEMA)
     rows = coverage.get("mapping-ambiguities")
     return [dict(row) for row in rows if isinstance(row, dict)] if isinstance(rows, list) else []
 
@@ -595,11 +573,6 @@ def render_framework_refit_review(orchestrate_dir: Path, json_path: Path) -> str
         for row in data.get("unassigned-and-gap-reviews", [])
         if isinstance(row, dict)
     )
-    patch_lifecycle_blocked = (
-        normalize_code(data.get("status")) == "blocked"
-        and isinstance(data.get("patch-history"), list)
-        and bool(data.get("patch-history"))
-    )
     ambiguity_rows = (
         [
             code(row.get("global-atom-id")),
@@ -607,21 +580,7 @@ def render_framework_refit_review(orchestrate_dir: Path, json_path: Path) -> str
             code_list(row.get("dimensions")),
             md(row.get("reason")),
         ]
-        for row in _mapping_ambiguities(
-            orchestrate_dir,
-            tolerate_invalid=patch_lifecycle_blocked,
-        )
-    )
-    patch_rows = (
-        [
-            code(row.get("request-id")),
-            code(_artifact_ref_text(row.get("patch-request-ref"))),
-            code(_artifact_ref_text(row.get("checkpoint-ref"))),
-            code(row.get("finding-fingerprint")),
-            code(row.get("status")),
-        ]
-        for row in data.get("patch-history", [])
-        if isinstance(row, dict)
+        for row in _mapping_ambiguities(orchestrate_dir)
     )
     final_framework = data.get("final-framework") if isinstance(data.get("final-framework"), dict) else None
     summary = "无（非终态）"
@@ -669,13 +628,6 @@ def render_framework_refit_review(orchestrate_dir: Path, json_path: Path) -> str
         render_table(
             ["GA", "Evidence Reference", "Ambiguous Dimensions", "Reason"],
             ambiguity_rows,
-        ).rstrip(),
-        "",
-        "## Patch History",
-        "",
-        render_table(
-            ["Request ID", "Patch Request", "Checkpoint", "Finding Fingerprint", "Status"],
-            patch_rows,
         ).rstrip(),
         "",
         "## Final Decision",
