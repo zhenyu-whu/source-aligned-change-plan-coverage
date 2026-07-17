@@ -67,7 +67,7 @@ Phase 1、Phase 4、Phase 5的source、authority、schema、validator或用户�
 4. Phase 1 writer 发布可校验 authority 后运行 validator 与 bounded review；最多两轮定向 repair。两者最终均通过才进入 Phase 2。
 5. Phase 2 writer发布provisional atoms后先运行`--phase phase-2 --preflight`；聚合trace/mirror/index并通过普通Phase 2 validator后进入Phase 3，但不得声明evidence已冻结。
 6. Phase 3机械闭合coverage并建立provisional GA，随后按review gate运行Phase 2/3 validator、fresh reviewer和最多两轮定向repair。repair后必须重算Phase 3并重跑两个validator；terminal review通过后最后发布`coverage-complete` commit marker，同时冻结Phase 2/3与GA。
-7. Phase 4从冻结authority全量确定性生成；Phase 5只生成final refit/mapping，不回写candidate mapping。两个Phase的validator失败即`blocked`。
+7. Phase 4从冻结authority全量确定性生成；Phase 5只生成final refit/mapping，不回写candidate mapping。Phase 5 helper必须先校验refit/mapping envelope与canonical mirror path，再生成派生物；helper或validator失败即`blocked`，不得自动normalize、repair或重跑当前Phase。
 8. Phase 5 terminal 后运行 all-phase complete validator 与一次 final integration reviewer；全部通过后才 handoff。
 
 ## 恢复与版本规则

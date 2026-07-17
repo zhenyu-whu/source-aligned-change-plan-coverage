@@ -228,7 +228,7 @@ Unassigned/gap review row只含`global-atom-id`、`evidence-ref`、`framework-im
 
 Terminal `final-framework`只含`change-order[]`、`capabilities[]`和`overlay[]`；overlay row只含`change`、`capability`、`capability-impact: new|modified`。Blocked时`final-framework`为null、`issues[]`非空，并清理terminal mapping、plan与全部派生surface。Refit v4不含`patch-history`，validator拒绝旧patch status/field。
 
-Atom mapping v4顶层只含`trace-schema`、`trace-contract-version`、repository-relative `artifact-path`和`rows[]`。每个GA恰好一行，只含`global-atom-id`、`evidence-ref`、`final-owner-change`、`final-relation`、`final-artifact-projection`、`final-capability-impact`、`final-target-capability`、`related-capabilities[]`和简体中文`reason`。
+Atom mapping v4顶层只含`trace-schema`、`trace-contract-version`、repository-relative `artifact-path`和`rows[]`。`artifact-path`固定指向`openspec/orchestrate/phase-works/phase-5/atom-plan-mapping.md`，不得指向JSON自身；JSON authority的位置由固定布局与manifest `json-path`标识。每个GA恰好一行，只含`global-atom-id`、`evidence-ref`、`final-owner-change`、`final-relation`、`final-artifact-projection`、`final-capability-impact`、`final-target-capability`、`related-capabilities[]`和简体中文`reason`。
 
 - Relation只允许`direct|context|dependency|preserve|reference|non-goal`。
 - Direct projection只允许`spec-requirement|spec-guard|design-obligation|verification-obligation`；non-direct使用`contextual-only`。
@@ -257,7 +257,7 @@ Phase 5 review mirror固定使用`Initial Gate Results`与`Supporting GAs`列；
 - Validator检查schema、repository-relative path、digest、ID、reference cardinality、source quote、coverage complement、potential ambiguity、review budget/identity/digest、render drift和跨artifact一致性。
 - `--preflight`只允许配合`--phase phase-2|phase-3`，且与`--complete`互斥。Phase 2 preflight不要求terminal surface；Phase 3 preflight只接受review-pending。普通Phase 3 validator只接受coverage-complete+passed或合法blocked。
 - Complete validator要求Phase 1 review passed、Phase 3 evidence freeze passed、Phase 4 assembled、Phase 5 terminal，且Phase 5 plan与根plan逐字节一致。
-- Phase 5 helper/validator由final Change order、direct spec/guard mapping与repository baseline执行唯一advancement推导，并拒绝mapping impact、refit/final plan overlay或baseline row漂移。
+- Phase 5 helper在生成任何派生物前校验refit/mapping envelope与canonical mirror path；helper/validator由final Change order、direct spec/guard mapping与repository baseline执行唯一advancement推导，并拒绝mapping impact、refit/final plan overlay或baseline row漂移。Helper只拒绝非法输入，不自动修正authority。
 - Phase 4 assembler/validator及Phase 5 helper不得读取source document；source quote验证只属于Phase 2/3 freeze前校验。
 - Validator拒绝v4 trace、旧patch/checkpoint schema、旧status、旧field和遗留patch artifact；不检查semantic duplicate，也不因GA数量推断framework。
 - Final packet和plan必须声明它是完整evidence mapping，不是经过语义去重的requirement inventory。

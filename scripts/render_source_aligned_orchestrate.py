@@ -22,6 +22,7 @@ from source_aligned_trace_lib import (
     PHASE3_COVERAGE_REVIEW_SCHEMA,
     SOURCE_ATOMS_SCHEMA,
     TRACE_CONTRACT_VERSION,
+    require_atom_plan_mapping_envelope,
     cell,
     line_ranges_label,
     normalize_code,
@@ -471,7 +472,7 @@ def render_coverage_review(orchestrate_dir: Path, json_path: Path) -> str:
 def render_atom_plan_mapping(orchestrate_dir: Path, json_path: Path) -> str:
     repo_root = repo_root_for(orchestrate_dir)
     data = read_json(json_path)
-    require_trace_contract(data, json_path, ATOM_PLAN_MAPPING_SCHEMA)
+    require_atom_plan_mapping_envelope(data, json_path, repo_root)
     body = [
         "# atom plan 映射",
         "",

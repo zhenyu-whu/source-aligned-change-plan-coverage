@@ -38,6 +38,7 @@ from source_aligned_trace_lib import (
     PHASE_TRACE_SCHEMAS,
     SOURCE_ATOMS_SCHEMA,
     TRACE_CONTRACT_VERSION,
+    require_atom_plan_mapping_envelope,
     cell,
     line_ranges_label,
     normalize_code,
@@ -765,8 +766,8 @@ def validate_framework_refit(
     return status
 
 
-def load_mapping(path: Path) -> Dict[str, Mapping]:
-    data = require_json(path, ATOM_PLAN_MAPPING_SCHEMA)
+def parse_mapping_rows(data: Dict[str, object]) -> Dict[str, Mapping]:
+    """Parse mapping rows after the caller has handled the document envelope."""
     expected = {
         "global-atom-id", "evidence-ref", "final-owner-change", "final-relation",
         "final-artifact-projection", "final-capability-impact", "final-target-capability",
@@ -794,6 +795,12 @@ def load_mapping(path: Path) -> Dict[str, Mapping]:
             reason=str(row.get("reason", "")),
         )
     return mapping
+
+
+def load_mapping(path: Path, *, repo_root: Path) -> Dict[str, Mapping]:
+    data = require_json(path, ATOM_PLAN_MAPPING_SCHEMA)
+    require_atom_plan_mapping_envelope(data, path, repo_root)
+    return parse_mapping_rows(data)
 
 
 def validate_mapping(
@@ -1205,7 +1212,7 @@ def write_outputs(orchestrate_dir: Path) -> None:
     changes, capabilities, overlay = parse_final_plan(plan_path)
     validate_framework_refit(orchestrate_dir, refit, changes, capabilities, overlay)
     evidence = load_evidence(orchestrate_dir)
-    mapping = load_mapping(mapping_path)
+    mapping = load_mapping(mapping_path, repo_root=repo_root)
     validate_mapping(
         evidence,
         mapping,
@@ -1337,7 +1344,7 @@ def validate_outputs(orchestrate_dir: Path) -> None:
         raise ValueError("plan refit review Markdown drift")
     mapping_path = work / "atom-plan-mapping.json"
     evidence = load_evidence(orchestrate_dir)
-    mapping = load_mapping(mapping_path)
+    mapping = load_mapping(mapping_path, repo_root=repo_root)
     validate_mapping(
         evidence,
         mapping,
@@ -1414,14 +1421,15 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
                 changes, capabilities, overlay = parse_final_plan(plan)
                 validate_framework_refit(args.orchestrate_dir, refit, changes, capabilities, overlay)
                 evidence = load_evidence(args.orchestrate_dir)
-                mapping = load_mapping(mapping_path)
+                repo_root = repo_root_for(args.orchestrate_dir)
+                mapping = load_mapping(mapping_path, repo_root=repo_root)
                 validate_mapping(
                     evidence,
                     mapping,
                     changes,
                     capabilities,
                     overlay,
-                    repo_root=repo_root_for(args.orchestrate_dir),
+                    repo_root=repo_root,
                 )
                 validate_gap_framework_impacts(args.orchestrate_dir, refit, mapping)
             elif status != "blocked":

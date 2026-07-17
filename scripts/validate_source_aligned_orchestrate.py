@@ -12,6 +12,7 @@ from typing import Dict, List, Set, Tuple
 
 from source_aligned_trace_lib import (
     ATOM_PLAN_MAPPING_SCHEMA,
+    ATOM_PLAN_MAPPING_TOP_LEVEL_FIELDS,
     CAPABILITY_BASELINE_SCHEMA,
     DIRECT_PROJECTIONS,
     EVIDENCE_COLLECTION_INDEX_SCHEMA,
@@ -26,6 +27,7 @@ from source_aligned_trace_lib import (
     SOURCE_ATOMS_SCHEMA,
     TRACE_CONTRACT_VERSION,
     IssueReporter,
+    atom_plan_mapping_markdown_path,
     cell,
     evidence_authority_sha256,
     line_range_label,
@@ -58,7 +60,7 @@ from phase5_plan_refit import (
     build_baseline as build_phase5_baseline,
     load_framework_refit,
     load_evidence as load_phase5_evidence,
-    load_mapping as load_phase5_mapping,
+    parse_mapping_rows as parse_phase5_mapping_rows,
     parse_final_plan,
     render_anchor_index,
     render_capability_view,
@@ -2366,18 +2368,18 @@ def _validate_phase5_derived_outputs(
     mapping_data = json_obj(mapping_path, reporter, ATOM_PLAN_MAPPING_SCHEMA)
     exact_fields(
         mapping_data,
-        {"trace-schema", "trace-contract-version", "artifact-path", "rows"},
+        ATOM_PLAN_MAPPING_TOP_LEVEL_FIELDS,
         mapping_path,
         reporter,
         "phase5-mapping-top-fields",
         "mapping",
     )
-    expected_artifact_path = rel(mapping_path.with_suffix(".md"), repo_root)
+    expected_artifact_path = atom_plan_mapping_markdown_path(mapping_path, repo_root)
     if mapping_data.get("artifact-path") != expected_artifact_path:
         reporter.error("phase5-mapping-artifact-path", mapping_path, f"artifact-path应为{expected_artifact_path}")
     try:
         evidence = load_phase5_evidence(orchestrate_dir)
-        mapping = load_phase5_mapping(mapping_path)
+        mapping = parse_phase5_mapping_rows(mapping_data)
         validate_phase5_mapping(
             evidence,
             mapping,

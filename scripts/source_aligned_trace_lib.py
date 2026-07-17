@@ -31,6 +31,12 @@ PHASE3_COVERAGE_REVIEW_SCHEMA = "source-aligned-phase-3-coverage-review-v2"
 EVIDENCE_COLLECTION_INDEX_SCHEMA = "source-aligned-evidence-collection-index-v2"
 FRAMEWORK_REFIT_TRACE_SCHEMA = "source-aligned-framework-refit-trace-v4"
 ATOM_PLAN_MAPPING_SCHEMA = "source-aligned-atom-plan-mapping-v4"
+ATOM_PLAN_MAPPING_TOP_LEVEL_FIELDS = {
+    "trace-schema",
+    "trace-contract-version",
+    "artifact-path",
+    "rows",
+}
 FINAL_PACKET_INDEX_SCHEMA = "source-aligned-final-packet-index-v2"
 CAPABILITY_BASELINE_SCHEMA = "source-aligned-capability-baseline-v1"
 
@@ -375,6 +381,42 @@ def repo_relative_path(path: Path, repo_root: Path) -> str:
         return path.resolve().relative_to(repo_root.resolve()).as_posix()
     except ValueError as exc:
         raise ValueError(f"canonical path不在repository root内：{path}") from exc
+
+
+def atom_plan_mapping_markdown_path(json_path: Path, repo_root: Path) -> str:
+    """Return the canonical Markdown mirror path declared by mapping v4."""
+    return repo_relative_path(json_path.with_suffix(".md"), repo_root)
+
+
+def require_atom_plan_mapping_envelope(
+    data: Dict[str, object],
+    json_path: Path,
+    repo_root: Path,
+) -> None:
+    """Reject a mapping v4 envelope that cannot identify its Markdown mirror."""
+    actual_fields = set(data)
+    if actual_fields != ATOM_PLAN_MAPPING_TOP_LEVEL_FIELDS:
+        missing = sorted(ATOM_PLAN_MAPPING_TOP_LEVEL_FIELDS - actual_fields)
+        extra = sorted(actual_fields - ATOM_PLAN_MAPPING_TOP_LEVEL_FIELDS)
+        raise ValueError(
+            "atom-plan-mapping v4顶层字段非法；"
+            f"missing={missing}，extra={extra}"
+        )
+    if data.get("trace-schema") != ATOM_PLAN_MAPPING_SCHEMA:
+        raise ValueError(
+            f"atom-plan-mapping trace-schema必须是{ATOM_PLAN_MAPPING_SCHEMA}"
+        )
+    if data.get("trace-contract-version") != TRACE_CONTRACT_VERSION:
+        raise ValueError(
+            "atom-plan-mapping trace-contract-version必须是"
+            f"{TRACE_CONTRACT_VERSION}"
+        )
+    expected_path = atom_plan_mapping_markdown_path(json_path, repo_root)
+    if data.get("artifact-path") != expected_path:
+        raise ValueError(
+            "atom-plan-mapping artifact-path必须指向Markdown mirror："
+            f"{expected_path}"
+        )
 
 
 def evidence_authority_payload(

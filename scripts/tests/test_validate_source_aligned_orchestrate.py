@@ -1356,6 +1356,98 @@ class SourceAlignedPhase45Test(unittest.TestCase):
         self.assertFalse(result["ok"])
         self._assert_rule(result, "phase5-mapping-contract")
 
+    def test_phase5_mapping_artifact_path_is_rejected_by_scoped_validator(self) -> None:
+        relative = "openspec/orchestrate/phase-works/phase-5/atom-plan-mapping.json"
+        data = self._data(relative)
+        data["artifact-path"] = relative
+        self._write_data(relative, data)
+
+        result = self._result("phase-5")
+
+        self.assertFalse(result["ok"], result)
+        self._assert_rule(result, "phase5-mapping-artifact-path")
+
+    def test_phase5_helper_rejects_mapping_path_before_derived_writes(self) -> None:
+        relative = "openspec/orchestrate/phase-works/phase-5/atom-plan-mapping.json"
+        data = self._data(relative)
+        data["artifact-path"] = relative
+        self._write_data(relative, data)
+        watched = [
+            self.orchestrate / "change-plan.md",
+            self.orchestrate / "trace/phase-5.trace.json",
+            self.orchestrate / "phase-works/phase-5/atom-plan-mapping.md",
+            self.orchestrate / "phase-works/phase-5/capability-baseline-reconciliation.json",
+            self.orchestrate / "phase-works/phase-5/capability-baseline-reconciliation.md",
+            self.orchestrate / "phase-works/phase-5/final-packet-index.json",
+            *sorted(
+                path
+                for path in (self.orchestrate / "change-capability-anchors").rglob("*")
+                if path.is_file()
+            ),
+        ]
+        before = {path: path.read_bytes() for path in watched}
+
+        with self.assertRaisesRegex(ValueError, "artifact-path必须指向Markdown mirror"):
+            write_outputs(self.orchestrate)
+
+        self.assertEqual(before, {path: path.read_bytes() for path in watched})
+
+    def test_phase5_helper_cli_rejects_mapping_path_in_all_terminal_modes(self) -> None:
+        relative = "openspec/orchestrate/phase-works/phase-5/atom-plan-mapping.json"
+        data = self._data(relative)
+        data["artifact-path"] = relative
+        self._write_data(relative, data)
+
+        for mode in ("--write", "--validate-rendered"):
+            with self.subTest(mode=mode):
+                result = subprocess.run(
+                    [
+                        sys.executable,
+                        str(SCRIPT_DIR / "phase5_plan_refit.py"),
+                        "--orchestrate-dir",
+                        str(self.orchestrate),
+                        mode,
+                    ],
+                    check=False,
+                    capture_output=True,
+                    text=True,
+                )
+                self.assertEqual(1, result.returncode, result)
+                self.assertIn(
+                    "artifact-path必须指向Markdown mirror",
+                    result.stderr,
+                )
+
+    def test_phase5_renderer_rejects_invalid_mapping_envelope_without_write(self) -> None:
+        relative = "openspec/orchestrate/phase-works/phase-5/atom-plan-mapping.json"
+        data = self._data(relative)
+        data["artifact-path"] = relative
+        self._write_data(relative, data)
+        mirror = self.orchestrate / "phase-works/phase-5/atom-plan-mapping.md"
+        before = mirror.read_bytes()
+
+        with self.assertRaisesRegex(ValueError, "artifact-path必须指向Markdown mirror"):
+            render_orchestrate(
+                self.orchestrate,
+                "phase5-atom-plan-mapping",
+                write=True,
+            )
+
+        self.assertEqual(before, mirror.read_bytes())
+
+    def test_phase5_helper_rejects_mapping_top_level_field_drift(self) -> None:
+        relative = "openspec/orchestrate/phase-works/phase-5/atom-plan-mapping.json"
+        original = self._data(relative)
+        variants = {
+            "missing": {key: value for key, value in original.items() if key != "artifact-path"},
+            "extra": {**original, "json-path": relative},
+        }
+        for name, data in variants.items():
+            with self.subTest(name=name):
+                self._write_data(relative, data)
+                with self.assertRaisesRegex(ValueError, "顶层字段非法"):
+                    write_outputs(self.orchestrate)
+
     def test_long_unique_mapping_has_no_length_based_failure(self) -> None:
         changes, capabilities, overlay = parse_final_plan(
             self.orchestrate / "phase-works/phase-5/change-plan.md"
