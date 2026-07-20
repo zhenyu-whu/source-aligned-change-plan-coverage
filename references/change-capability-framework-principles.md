@@ -60,9 +60,12 @@ trigger/context -> normative behavior -> observable outcome or invariant
 - 缺少时首个真实 outcome 无法合理启动；
 - 只包含 zero-domain engineering substrate；
 - 产生可验证、可复用的工程结果；
-- 明确首个消费该 substrate 的 outcome Change。
+- 明确首个消费该 substrate 的 outcome Change；
+- 不声明硬依赖，也不建立任何Change-Capability advancement edge。
 
 domain schema、entity、command、policy、user-facing API、business worker、identity/authorization、privacy、recovery、delivery、export、history/versioning、observability 等 domain behavior 不得进入 foundation；普通 technical enabler 默认并入首个 consumer Change。
+
+Foundation只由最终`capability-slices: []`机械识别；Phase 1、Phase 5及公开handoff均不增加类型字段。除了这个可选首项，所有Change必须至少产生一个direct spec/guard advancement edge。
 
 ## 排序原则
 

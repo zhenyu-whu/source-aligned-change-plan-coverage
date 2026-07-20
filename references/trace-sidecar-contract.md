@@ -17,8 +17,8 @@
 
 ## 全局版本与权威边界
 
-- trace contract：`source-aligned-trace-v5`
-- render contract：`source-aligned-render-v9`
+- trace contract：`source-aligned-trace-v6`
+- render contract：`source-aligned-render-v10`
 - JSON key使用kebab-case；ID不含Markdown反引号；多ID使用array。
 - canonical line evidence为`line-ranges: [{"start": 1, "end": 2}]`。
 - Phase 2 atom和Phase 3 gap atom各包含一个连续range及逐字`source-fact`；后续索引和mapping只保存reference。
@@ -31,11 +31,11 @@
 | Phase 2 | 每份provisional `.atoms.json` | atoms Markdown mirror、聚合`index.md`；直到Phase 3 freeze才冻结 |
 | Phase 3 | global atom index JSON与coverage review JSON | 对应Markdown mirror、逐GA mapping ambiguity及evidence-freeze gate |
 | Phase 4 | 由确定性assembler直接生成的evidence collection Markdown | 派生`evidence-collection-index.json` |
-| Phase 5 | final `change-plan.md`、framework refit JSON、atom mapping JSON | review mirror、baseline、packet、Capability view、anchor index |
+| Phase 5 | final `change-plan.md`、framework refit JSON、atom mapping JSON | review mirror、baseline、公开change source、Capability slices、bundle index |
 
 Work queue、agent report、Phase 1和Phase 3 reviewer/repair report、final integration report是noncanonical流程证据，直接写Markdown，不进入manifest。Phase 4–5不创建Phase reviewer/repair report。
 
-旧trace/artifact schema一律拒绝；不提供迁移脚本。`source-aligned-trace-v4`及更早generation保持原状态，不得迁移、伪装或原地升级；新generation必须从Phase 1开始。
+旧trace contract一律拒绝；不提供迁移脚本。`source-aligned-trace-v5`及更早generation保持原状态，不得迁移、伪装或原地升级；新generation必须从Phase 1使用v6开始。
 
 ## 必需布局
 
@@ -48,7 +48,9 @@ openspec/orchestrate/
 ├── change-capability-anchors/
 │   ├── obligation-atom-index.json|md
 │   ├── index.md
-│   └── <change>/...
+│   └── <change>/
+│       ├── change-source.md
+│       └── capability-slices/<capability>.md
 └── phase-works/
     ├── phase-1/
     │   ├── initial-change-plan.md
@@ -78,7 +80,7 @@ openspec/orchestrate/
         └── phase-5-agent-report.md
 ```
 
-Patch request、Phase 5 checkpoint及任何incremental/targeted artifact均不属于v5布局；validator必须拒绝其存在。
+Patch request、Phase 5 checkpoint及任何incremental/targeted artifact均不属于v6布局；validator必须拒绝其存在。
 
 ## Schema
 
@@ -99,9 +101,9 @@ Artifact：
 - `source-aligned-framework-refit-trace-v4`
 - `source-aligned-atom-plan-mapping-v4`
 - `source-aligned-capability-baseline-v1`
-- `source-aligned-final-packet-index-v2`
+- `source-aligned-final-packet-index-v3`
 
-保持原schema版本的artifact shape不变，但其`trace-contract-version`必须为`source-aligned-trace-v5`。
+除final packet index升级为v3外，内部artifact沿用原schema shape；所有新generation artifact的`trace-contract-version`必须为`source-aligned-trace-v6`。
 
 ## Manifest v2
 
@@ -237,7 +239,15 @@ Atom mapping v4顶层只含`trace-schema`、`trace-contract-version`、repositor
 
 Terminal `phase-5.trace.json`必须且只能包含`trace-schema`、`trace-contract-version`、`status: accepted|adjusted`、`final-change-plan-path`/SHA、`framework-refit-trace-path`/SHA、`plan-refit-review-path`/SHA、`atom-plan-mapping-path`/SHA、`capability-baseline-reconciliation-path`/SHA和`final-packet-index-path`/SHA。全部path为repository-relative。
 
-Blocked trace必须且只能包含`trace-schema`、`trace-contract-version`、`status: blocked`、`framework-refit-trace-path`/SHA、`plan-refit-review-path`/SHA和非空`issues[]`。不得保留Phase 5或根terminal plan、mapping、baseline、packet、Capability view或anchor index。V5 trace拒绝execution mode、patch history、request/checkpoint ref及resume/abort字段。
+Blocked trace必须且只能包含`trace-schema`、`trace-contract-version`、`status: blocked`、`framework-refit-trace-path`/SHA、`plan-refit-review-path`/SHA和非空`issues[]`。不得保留Phase 5或根terminal plan、mapping、baseline、change source、Capability slice或anchor index。V6 trace拒绝execution mode、patch history、request/checkpoint ref及resume/abort字段。
+
+`source-aligned-final-packet-index-v3`顶层必须且只能包含`trace-schema`、`trace-contract-version`和roadmap顺序的`packets[]`。每个packet row必须且只能包含`change`、`depends-on[]`、`change-source-path`、`change-source-sha256`和显式`capability-slices[]`。每个slice row必须且只能包含`capability`、`capability-impact: new|modified`、`slice-path`和`slice-sha256`。
+
+- `change-source.md`由该Change全部owner-scoped frozen evidence重算，按source path/range稳定排序；只公开Change boundary、source path/range和逐字原文。
+- `capability-slices/<capability>.md`只由该Change/Capability direct `spec-requirement|spec-guard` mapping重算，并公开Capability Purpose/Owns/Excludes、impact、source path/range和逐字原文。
+- 公开index与Markdown不包含任何Change类型字段，也禁止GA、atom ID、evidence ref、relation、projection、mapping reason等内部trace元数据。
+- 非空slices表示普通Change；空slices表示可选foundation。foundation最多一个、必须是roadmap首项、`depends-on`为空且无overlay；其余Change必须非空。
+- 所有公开path按固定repository-relative lexical path序列化，不跟随symlink。`change-capability-anchors/`、Change目录、`capability-slices/`及其文件的任一路径段为symlink时必须阻断；三个目录层级均执行exact-surface校验，空foundation也必须保留空的`capability-slices/`目录。
 
 ## Renderer
 
@@ -248,7 +258,7 @@ python3 .codex/skills/source-aligned-change-plan-coverage/scripts/render_source_
   --write
 ```
 
-支持Phase 2 atoms/index、Phase 3 global index/coverage review、Phase 4 assembler/index、Phase 5 refit review/mapping/baseline。所有mirror使用`source-aligned-render-v9`。Renderer不得从Markdown恢复语义。
+支持Phase 2 atoms/index、Phase 3 global index/coverage review、Phase 4 assembler/index、Phase 5 refit review/mapping/baseline。所有mirror使用`source-aligned-render-v10`。Renderer不得从Markdown恢复语义。
 
 Phase 5 review mirror固定使用`Initial Gate Results`与`Supporting GAs`列；gap表只显示`Framework Impact`，不得显示final owner/target；输入ambiguity章节名固定为`Potential Mapping Ambiguities (Input)`并声明resolution只在mapping mirror。
 
@@ -259,5 +269,5 @@ Phase 5 review mirror固定使用`Initial Gate Results`与`Supporting GAs`列；
 - Complete validator要求Phase 1 review passed、Phase 3 evidence freeze passed、Phase 4 assembled、Phase 5 terminal，且Phase 5 plan与根plan逐字节一致。
 - Phase 5 helper在生成任何派生物前校验refit/mapping envelope与canonical mirror path；helper/validator由final Change order、direct spec/guard mapping与repository baseline执行唯一advancement推导，并拒绝mapping impact、refit/final plan overlay或baseline row漂移。Helper只拒绝非法输入，不自动修正authority。
 - Phase 4 assembler/validator及Phase 5 helper不得读取source document；source quote验证只属于Phase 2/3 freeze前校验。
-- Validator拒绝v4 trace、旧patch/checkpoint schema、旧status、旧field和遗留patch artifact；不检查semantic duplicate，也不因GA数量推断framework。
-- Final packet和plan必须声明它是完整evidence mapping，不是经过语义去重的requirement inventory。
+- Validator拒绝v5及更早trace contract、旧packet surface、旧patch/checkpoint schema、旧status、旧field和遗留patch artifact；不检查semantic duplicate，也不因GA数量推断framework。
+- Validator从terminal mapping和final plan重算每个公开文件，核对source/slice集合、roadmap与Capability顺序、依赖、impact、固定path、digest及foundation cardinality；公开handoff不要求下游保留GA trace。

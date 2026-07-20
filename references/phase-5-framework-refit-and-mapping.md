@@ -18,7 +18,7 @@ Writer必须完整读取`references/cross-phase-contract.md`、`references/chang
 - Final mapping语义权威：`atom-plan-mapping.json`，继续使用`source-aligned-atom-plan-mapping-v4`。
 - `atom-plan-mapping.json.artifact-path`固定为repository-relative `openspec/orchestrate/phase-works/phase-5/atom-plan-mapping.md`；它标识确定性Markdown mirror，不改变JSON的语义权威地位，也不得指向JSON自身。
 - Final plan内容权威：`phase-works/phase-5/change-plan.md`；根`change-plan.md`必须与其逐字节一致。
-- Review、mapping mirror、baseline、packet、Capability view与anchor index均由helper确定性生成，不得反向恢复语义。
+- Review、mapping mirror、baseline、change source、Capability slices、bundle index与anchor index均由helper确定性生成，不得反向恢复语义。
 
 ## Semantic flow
 
@@ -101,6 +101,10 @@ Candidate mapping不一致、final owner/relation/projection/target选择、rela
 - `adjusted`：存在可追溯且实际改变framework语义的最小调整；允许initial gate失败，但失败row不得`keep`；全部terminal authority一致且`issues[]`为空。
 - `blocked`：存在冻结evidence缺陷、validator失败、需要用户决定或其他无法形成可信terminal authority的blocker。
 
-`phase5_plan_refit.py`先校验refit/mapping envelope与canonical mirror path，再校验语义输入、执行统一advancement推导、生成mirror/派生物并清理不适用surface；envelope失败时必须在写入任何派生物前返回失败，不得自动normalize或补写字段。Helper不得补写Change/Capability语义、代作mapping裁决或读取source。Render contract使用`source-aligned-render-v9`：review mirror显示`Initial Gate Results`、`Supporting GAs`、gap的`Framework Impact`，并将输入观察命名为`Potential Mapping Ambiguities (Input)`；resolution只在mapping mirror。
+`phase5_plan_refit.py`先校验refit/mapping envelope与canonical mirror path，再校验语义输入、执行统一advancement推导、生成mirror/派生物并清理不适用surface；envelope失败时必须在写入任何派生物前返回失败，不得自动normalize或补写字段。Helper不得补写Change/Capability语义、代作mapping裁决或读取source。Render contract使用`source-aligned-render-v10`：review mirror显示`Initial Gate Results`、`Supporting GAs`、gap的`Framework Impact`，并将输入观察命名为`Potential Mapping Ambiguities (Input)`；resolution只在mapping mirror。
+
+Helper还从terminal mapping确定性发布公开source bundle：每个Change一个`change-source.md`，每个direct spec/guard advancement edge一个`capability-slices/<capability>.md`。前者包含该owner的全部冻结原文，后者只包含对应Capability的direct spec/guard冻结原文以及final Capability Purpose/Owns/Excludes和`new|modified`。公开文件保留source path、range与逐字原文，但不得包含GA、atom ID、evidence ref、relation、projection或mapping reason。
+
+`capability-slices`非空即普通Change；显式空数组即foundation。foundation最多一个、必须位于roadmap首位、无硬依赖且无overlay；其余Change必须非空。该判定从terminal mapping与final roadmap重算，不在Phase 1、Phase 5 plan/refit或packet中增加类型字段。
 
 Phase 5 trace使用`source-aligned-phase-5-trace-v5`，只允许`accepted|adjusted|blocked`。Phase 5 validator通过后，main agent运行all-phase complete validator与一次final integration reviewer；reviewer必须确认所有final Change/Capability通过共享原则。两者都通过后才handoff。

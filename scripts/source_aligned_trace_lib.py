@@ -10,13 +10,14 @@ from __future__ import annotations
 
 import hashlib
 import json
+import os
 import re
 from dataclasses import asdict, dataclass
 from pathlib import Path
 from typing import Dict, Iterable, List, Optional, Sequence, Tuple
 
 
-TRACE_CONTRACT_VERSION = "source-aligned-trace-v5"
+TRACE_CONTRACT_VERSION = "source-aligned-trace-v6"
 MANIFEST_SCHEMA = "source-aligned-orchestrate-manifest-v2"
 PHASE_TRACE_SCHEMAS = {
     "phase-1": "source-aligned-phase-1-trace-v3",
@@ -37,7 +38,7 @@ ATOM_PLAN_MAPPING_TOP_LEVEL_FIELDS = {
     "artifact-path",
     "rows",
 }
-FINAL_PACKET_INDEX_SCHEMA = "source-aligned-final-packet-index-v2"
+FINAL_PACKET_INDEX_SCHEMA = "source-aligned-final-packet-index-v3"
 CAPABILITY_BASELINE_SCHEMA = "source-aligned-capability-baseline-v1"
 
 GLOBAL_ATOM_ID_RE = re.compile(r"^GA-\d{4}$")
@@ -46,6 +47,12 @@ TABLE_SEPARATOR_RE = re.compile(r"^:?-{3,}:?$")
 CANONICAL_RANGE_RE = re.compile(r"^L([1-9]\d*)-L([1-9]\d*)$")
 LEGACY_RANGE_RE = re.compile(r"^L?(\d+)(?:\s*-\s*L?(\d+))?$", re.IGNORECASE)
 KEBAB_CASE_RE = re.compile(r"^[a-z][a-z0-9]*(?:-[a-z0-9]+)*$")
+FORBIDDEN_CHANGE_CLASSIFICATION_KEYS = {
+    "changekind",
+    "changetype",
+    "change类型",
+    "specmode",
+}
 
 DIRECT_PROJECTIONS = {
     "spec-requirement",
@@ -183,6 +190,35 @@ def iter_markdown_tables(lines: Sequence[str]) -> Iterable[Tuple[Dict[str, int],
                 continue
             rows.append(cells)
         yield index, rows
+
+
+def normalize_markdown_field_label(value: object) -> str:
+    """Normalize a Markdown field/header label for reserved-field checks."""
+    text = normalize_code(value).lower()
+    return re.sub(r"[\s_\-*`]+", "", text)
+
+
+def forbidden_change_classification_fields(text: str) -> List[str]:
+    """Return forbidden Change classification labels used as fields or table headers."""
+    findings: List[str] = []
+    lines = text.splitlines()
+    for line in lines:
+        match = re.match(r"^\s*-\s*(.+?)[：:]", line)
+        if match:
+            label = normalize_markdown_field_label(match.group(1))
+            if label in FORBIDDEN_CHANGE_CLASSIFICATION_KEYS:
+                findings.append(match.group(1).strip())
+    for index in range(len(lines) - 1):
+        header = split_md_row(lines[index])
+        separator = split_md_row(lines[index + 1])
+        if not header or not separator or not all(
+            TABLE_SEPARATOR_RE.match(cell.strip()) for cell in separator
+        ):
+            continue
+        for cell_value in header:
+            if normalize_markdown_field_label(cell_value) in FORBIDDEN_CHANGE_CLASSIFICATION_KEYS:
+                findings.append(normalize_code(cell_value))
+    return findings
 
 
 def table_rows(path: Path, required_headers: Sequence[str]) -> List[Dict[str, str]]:
@@ -381,6 +417,33 @@ def repo_relative_path(path: Path, repo_root: Path) -> str:
         return path.resolve().relative_to(repo_root.resolve()).as_posix()
     except ValueError as exc:
         raise ValueError(f"canonical path不在repository root内：{path}") from exc
+
+
+def lexical_repo_relative_path(path: Path, repo_root: Path) -> str:
+    """Serialize a normalized lexical path without following symlinks."""
+    absolute_path = Path(os.path.abspath(path))
+    absolute_root = Path(os.path.abspath(repo_root))
+    try:
+        return absolute_path.relative_to(absolute_root).as_posix()
+    except ValueError as exc:
+        raise ValueError(f"lexical path不在repository root内：{path}") from exc
+
+
+def first_symlink_in_repo_path(path: Path, repo_root: Path) -> Optional[Path]:
+    """Return the first symlink from repo root to path, without following it."""
+    relative = Path(lexical_repo_relative_path(path, repo_root))
+    current = Path(os.path.abspath(repo_root))
+    for part in relative.parts:
+        current = current / part
+        if current.is_symlink():
+            return current
+    return None
+
+
+def require_no_symlink_in_repo_path(path: Path, repo_root: Path, where: str) -> None:
+    symlink = first_symlink_in_repo_path(path, repo_root)
+    if symlink is not None:
+        raise ValueError(f"{where}路径链不得包含symlink：{symlink}")
 
 
 def atom_plan_mapping_markdown_path(json_path: Path, repo_root: Path) -> str:

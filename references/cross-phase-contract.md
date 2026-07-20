@@ -43,7 +43,7 @@
 ## Ownership 与 Capability advancement
 
 - Phase 2 candidate owner/projection/target只是extraction-time hint；Phase 4 bucket也不是final owner或advancement。
-- 每个GA恰好一个final owner Change、relation、projection和Capability字段；direct与non-direct evidence都进入一个owner-scoped final packet。
+- 每个GA恰好一个final owner Change、relation、projection和Capability字段；direct与non-direct evidence都进入该Change公开的owner-scoped `change-source.md`，但GA与mapping元数据不进入公开文件。
 - 只有direct `spec-requirement|spec-guard` mapping推进Capability；design、verification、non-direct和related-only mapping不推进。
 - Advancement由final Change order、direct mapping和repository baseline统一推导：baseline已存在的target为`modified`；absent target首次推进为`new`，后续推进为`modified`。
 - Mapping impact、refit overlay、baseline reconciliation和final plan overlay必须等于同一推导结果。
@@ -56,6 +56,8 @@
 
 ## Handoff 与语言
 
-- Phase 5 final packet是完整、未语义去重的evidence mapping，不是requirement inventory。下游可以综合多个GA，但必须保留多对一trace。
+- Phase 5 handoff从terminal mapping确定性生成完整`change-source.md`和direct spec/guard `capability-slices/*.md`。公开文件只保留source path、range与逐字原文，不输出GA、atom ID、evidence ref、relation、projection或mapping reason。
+- `capability-slices: []`是foundation的唯一公共判据；它最多出现一次、只能位于roadmap首位、无硬依赖且无overlay。其他Change至少一个slice。任何Phase都不得新增Change类型字段。
+- GA、coverage、collections与terminal mapping继续作为上游内部审计链；下游不建立Requirement/Scenario到GA的映射，也无需保留多对一GA trace。
 - Agent编写的解释、判断、理由、报告与handoff使用简体中文；固定field、enum、ID、path、代码符号和精确source quote可保留英文。
 - `source-fact`保持source原文，不翻译、不转述、不改写。

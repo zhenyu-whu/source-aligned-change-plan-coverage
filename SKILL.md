@@ -76,12 +76,13 @@ Phase 1、Phase 4、Phase 5的source、authority、schema、validator或用户�
 - Phase 1 只发布 `phase-works/phase-1/initial-change-plan.md`；根 `change-plan.md` 只由 Phase 5 terminal 状态发布。
 - 最早失效authority之后的派生物均为stale。Phase 2/3未冻结时从当前未完成review round恢复，保留既有review/repair历史和预算；已冻结后不得修改evidence或GA。
 - Phase 4只允许从冻结Phase 1–3全量重建派生surface；Phase 5只恢复或重建其final authority，不存在targeted、incremental或checkpoint resume模式。
-- 旧workflow generation不迁移、不原地升级；`source-aligned-trace-v4`及更早generation保持原状态，新执行必须使用`source-aligned-trace-v5`并从Phase 1开始。
+- 旧workflow generation不迁移、不原地升级；`source-aligned-trace-v5`及更早generation保持原状态，新执行必须使用`source-aligned-trace-v6`并从Phase 1开始。
 
 ## 完成与 handoff
 
 - `phase-works/phase-5/change-plan.md` 与根 `change-plan.md` 必须逐字节一致。
-- Complete validator 与 final integration reviewer核对每个 occurrence 的 GA、Phase 4 collection、terminal mapping、baseline、packet、Capability view、anchor index和final plan一致性。
+- Complete validator 与 final integration reviewer在上游内部核对每个 occurrence 的 GA、Phase 4 collection、terminal mapping与baseline，并核对公开change source、Capability slices、bundle index和final plan一致性。
 - Reviewer 必须确认所有 final Change/Capability 通过共享原则，全部已记录或 late-discovered ambiguity 只由同 GA mapping row裁决，且未执行 semantic dedup 或基于 GA 数量推断 framework。
 - 失败时 workflow `blocked`，不自动repair、重新refit或修改冻结evidence。
-- Handoff 声明 final packet 是未语义去重的完整 evidence mapping；下游可综合多个 GA，但必须保留多对一 trace。
+- Handoff使用`source-aligned-final-packet-index-v3`。每个packet只公开Change依赖、完整owner-scoped冻结原文及direct spec/guard Capability切片；GA、atom、evidence ref和mapping字段仅供上游内部审计，不要求下游映射或保留。
+- `capability-slices`非空时直接表示上游确定的Capability advancement；显式空数组表示可选的首位foundation。foundation最多一个、无依赖且无Capability overlay；其余Change必须至少包含一个slice。Phase 1/5及公开packet均不保存Change类型字段。

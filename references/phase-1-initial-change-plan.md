@@ -138,7 +138,7 @@ coarse source hint只使用source path、heading、section、decision ID、route
 - 独立完成与归档：
 - 拆分/合并判断：
 
-这些字段必须直接回答共享Change gate，不得用模板文本替代source-backed判断。
+这些字段必须直接回答共享Change gate，不得用模板文本替代source-backed判断。不得新增Change类型字段；可选foundation只通过共享foundation例外、roadmap首位、无硬依赖及零overlay表达，其他Change必须在overlay中至少拥有一个direct advancement hypothesis。
 
 #### `## Change-Capability Overlay`
 

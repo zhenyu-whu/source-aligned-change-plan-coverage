@@ -5,6 +5,7 @@ from __future__ import annotations
 
 import json
 import copy
+import shutil
 import subprocess
 import sys
 import tempfile
@@ -23,6 +24,7 @@ from phase5_plan_refit import (  # noqa: E402
     Mapping,
     derive_advancement,
     parse_final_plan,
+    validate_outputs,
     validate_framework_refit,
     validate_mapping,
     write_outputs,
@@ -611,6 +613,167 @@ class SourceAlignedPhase45Test(unittest.TestCase):
 
     def _assert_rule(self, result: dict, rule: str) -> None:
         self.assertIn(rule, [issue["rule_id"] for issue in result["issues"]], result)
+
+    @staticmethod
+    def _foundation_change_block() -> str:
+        return """- Change 名称：`bootstrap-foundation`
+- 单一 intent：建立后续交付不可绕过的工程基础。
+- source-backed outcome：形成可验证、可复用的工程substrate。
+- 来源 evidence hint：Phase 4 原文集合。
+- 范围内：zero-domain tooling与工程准备。
+- 范围外：任何domain behavior和正式Capability。
+- behavior completeness profile：
+  - trigger/context：开始首个业务outcome前。
+  - normative behavior：建立可复用工程substrate。
+  - observable outcome / invariant：后续consumer可稳定使用该substrate。
+  - important exception / error semantics：基础失败时阻断consumer。
+  - acceptance evidence：foundation integration test。
+- 硬依赖：无。
+- 排序理由：首个consumer无法在缺少该substrate时合理启动。
+- 独立完成与归档：工程结果可独立验证并归档。
+- 拆分/合并判断：只保留不可绕过的最小foundation边界。
+
+"""
+
+    def _install_foundation_consumer_phase5(self) -> None:
+        phase1_path = self.orchestrate / "phase-works/phase-1/initial-change-plan.md"
+        phase1 = self._phase1_plan().replace("change-a", "change-consumer")
+        phase1 = phase1.replace("## Change Roadmap\n\n", "## Change Roadmap\n\n" + self._foundation_change_block())
+        phase1_path.write_text(phase1, encoding="utf-8")
+        phase1_trace = self._data("openspec/orchestrate/trace/phase-1.trace.json")
+        phase1_trace["initial-change-plan"]["sha256"] = sha256_file(phase1_path)
+        phase1_trace["review-gate"]["reviews"][-1]["plan-sha256"] = sha256_file(phase1_path)
+        self._write_data("openspec/orchestrate/trace/phase-1.trace.json", phase1_trace)
+
+        render_orchestrate(self.orchestrate, "phase4-evidence-collections", write=True)
+        collection_path = self.orchestrate / "phase-works/phase-4/source-evidence-collections/evidence-collection-index.json"
+        phase4_trace = self._data("openspec/orchestrate/trace/phase-4.trace.json")
+        phase4_trace["assembled"]["evidence-collection-index-sha256"] = sha256_file(collection_path)
+        phase4_trace["assembled"]["renderer-result-summary"]["rendered-files"] = 5
+        self._write_data("openspec/orchestrate/trace/phase-4.trace.json", phase4_trace)
+
+        final_plan = self._final_plan().replace("change-a", "change-consumer")
+        final_plan = final_plan.replace("## Change Roadmap\n\n", "## Change Roadmap\n\n" + self._foundation_change_block())
+        (self.orchestrate / "phase-works/phase-5/change-plan.md").write_text(final_plan, encoding="utf-8")
+
+        refit = self._refit_trace()
+        refit["change-reviews"] = [
+            {
+                "input-change": slug,
+                "evidence-collection-path": (
+                    "openspec/orchestrate/phase-works/phase-4/"
+                    f"source-evidence-collections/by-input-change/{slug}.md"
+                ),
+                "decision": "keep",
+                "final-changes": [slug],
+                "initial-gate-results": self._change_gate_results(),
+                "supporting-global-atom-ids": [],
+                "reason": "冻结原文支持该独立可验收边界。",
+            }
+            for slug in ("bootstrap-foundation", "change-consumer")
+        ]
+        refit["final-framework"] = {
+            "change-order": ["bootstrap-foundation", "change-consumer"],
+            "capabilities": ["cap-a"],
+            "overlay": [{"change": "change-consumer", "capability": "cap-a", "capability-impact": "new"}],
+        }
+        refit["unassigned-and-gap-reviews"].insert(0, {
+            "global-atom-id": "GA-0001",
+            "evidence-ref": self._ref("SA-0001"),
+            "framework-impact": "none",
+            "reason": "Phase 1候选owner变化不影响冻结原文，terminal mapping直接裁决。",
+        })
+        self._write_data("openspec/orchestrate/phase-works/phase-5/framework-refit-trace.json", refit)
+
+        mapping = self._data("openspec/orchestrate/phase-works/phase-5/atom-plan-mapping.json")
+        for index, row in enumerate(mapping["rows"]):
+            if index == 0:
+                row.update({
+                    "final-owner-change": "bootstrap-foundation",
+                    "final-relation": "direct",
+                    "final-artifact-projection": "design-obligation",
+                    "final-capability-impact": "none",
+                    "final-target-capability": "none",
+                })
+            elif index == 1:
+                row.update({
+                    "final-owner-change": "change-consumer",
+                    "final-relation": "direct",
+                    "final-artifact-projection": "spec-guard",
+                    "final-capability-impact": "new",
+                    "final-target-capability": "cap-a",
+                })
+            else:
+                row["final-owner-change"] = "change-consumer"
+        self._write_data("openspec/orchestrate/phase-works/phase-5/atom-plan-mapping.json", mapping)
+        write_outputs(self.orchestrate)
+        self._write_manifest()
+
+    def _install_multi_capability_phase5(self) -> None:
+        phase1_path = self.orchestrate / "phase-works/phase-1/initial-change-plan.md"
+        phase1 = self._phase1_plan().replace(
+            "| `cap-a` | 领域行为 | 规定持久的结果行为。 | 拥有结果行为。 | 不拥有实现细节。 | `docs/source.md` | 实现替换后仍成立。 |",
+            "| `cap-a` | 领域行为 | 规定持久的结果行为。 | 拥有结果行为。 | 不拥有实现细节。 | `docs/source.md` | 实现替换后仍成立。 |\n"
+            "| `cap-b` | 领域保护 | 规定持久的结果保护。 | 拥有结果保护。 | 不拥有主要结果。 | `docs/source.md` | 实现替换后仍成立。 |",
+        ).replace(
+            "| `change-a` | `cap-a` | `first-advancement` | 建立 source-backed 行为。 | `docs/source.md` |",
+            "| `change-a` | `cap-a` | `first-advancement` | 建立 source-backed 行为。 | `docs/source.md` |\n"
+            "| `change-a` | `cap-b` | `first-advancement` | 建立 source-backed guard。 | `docs/source.md` |",
+        )
+        phase1_path.write_text(phase1, encoding="utf-8")
+        phase1_trace = self._data("openspec/orchestrate/trace/phase-1.trace.json")
+        phase1_trace["initial-change-plan"]["sha256"] = sha256_file(phase1_path)
+        phase1_trace["review-gate"]["reviews"][-1]["plan-sha256"] = sha256_file(phase1_path)
+        self._write_data("openspec/orchestrate/trace/phase-1.trace.json", phase1_trace)
+
+        render_orchestrate(self.orchestrate, "phase4-evidence-collections", write=True)
+        collection_path = self.orchestrate / "phase-works/phase-4/source-evidence-collections/evidence-collection-index.json"
+        phase4_trace = self._data("openspec/orchestrate/trace/phase-4.trace.json")
+        phase4_trace["assembled"]["evidence-collection-index-sha256"] = sha256_file(collection_path)
+        phase4_trace["assembled"]["renderer-result-summary"]["rendered-files"] = 5
+        self._write_data("openspec/orchestrate/trace/phase-4.trace.json", phase4_trace)
+
+        final_path = self.orchestrate / "phase-works/phase-5/change-plan.md"
+        final_plan = self._final_plan().replace(
+            "| `cap-a` | 规定持久的结果行为。 | 拥有结果行为。 | 不拥有实现细节。 | 实现替换后仍成立。 |",
+            "| `cap-a` | 规定持久的结果行为。 | 拥有结果行为。 | 不拥有实现细节。 | 实现替换后仍成立。 |\n"
+            "| `cap-b` | 规定持久的结果保护。 | 拥有结果保护。 | 不拥有主要结果。 | 实现替换后仍成立。 |",
+        ).replace(
+            "| `change-a` | `cap-a` | `new` | 建立 source-backed 行为。 |",
+            "| `change-a` | `cap-a` | `new` | 建立 source-backed 行为。 |\n"
+            "| `change-a` | `cap-b` | `new` | 建立 source-backed guard。 |",
+        )
+        final_path.write_text(final_plan, encoding="utf-8")
+
+        refit = self._refit_trace()
+        refit["capability-reviews"].append({
+            "input-capability": "cap-b",
+            "evidence-collection-path": "openspec/orchestrate/phase-works/phase-4/source-evidence-collections/by-input-capability/cap-b.md",
+            "decision": "keep",
+            "final-capabilities": ["cap-b"],
+            "initial-gate-results": self._capability_gate_results(),
+            "supporting-global-atom-ids": [],
+            "reason": "原文集合支持独立的持久保护边界。",
+        })
+        refit["final-framework"] = {
+            "change-order": ["change-a"],
+            "capabilities": ["cap-a", "cap-b"],
+            "overlay": [
+                {"change": "change-a", "capability": "cap-a", "capability-impact": "new"},
+                {"change": "change-a", "capability": "cap-b", "capability-impact": "new"},
+            ],
+        }
+        self._write_data("openspec/orchestrate/phase-works/phase-5/framework-refit-trace.json", refit)
+        mapping = self._data("openspec/orchestrate/phase-works/phase-5/atom-plan-mapping.json")
+        mapping["rows"][1].update({
+            "final-relation": "direct",
+            "final-artifact-projection": "spec-guard",
+            "final-capability-impact": "new",
+            "final-target-capability": "cap-b",
+        })
+        self._write_data("openspec/orchestrate/phase-works/phase-5/atom-plan-mapping.json", mapping)
+        write_outputs(self.orchestrate)
+        self._write_manifest()
 
     def _set_phase1_review_gate(self, gate: dict, *, status: str) -> None:
         relative = "openspec/orchestrate/trace/phase-1.trace.json"
@@ -1492,6 +1655,119 @@ class SourceAlignedPhase45Test(unittest.TestCase):
             repo_root=self.root,
         )
 
+    def test_foundation_is_inferred_from_empty_spec_slices(self) -> None:
+        changes, capabilities, _ = parse_final_plan(
+            self.orchestrate / "phase-works/phase-5/change-plan.md"
+        )
+        ref = self._ref("SA-0001")
+        evidence = {
+            "GA-0001": Evidence(
+                ga="GA-0001", evidence_ref=ref, source_document="docs/source.md",
+                line_ranges=((1, 1),), source_fact="bootstrap tooling",
+                atom_type="architecture-decision", normativity="must",
+            )
+        }
+        mapping = {
+            "GA-0001": Mapping(
+                ga="GA-0001", evidence_ref=ref, owner_change="change-a",
+                relation="direct", projection="design-obligation",
+                capability_impact="none", target_capability="none",
+                related_capabilities=(), reason="首个Change仅建立后续工作所需基础。",
+            )
+        }
+        validate_mapping(evidence, mapping, changes, capabilities, {}, repo_root=self.root)
+
+    def test_empty_spec_slices_are_rejected_for_nonfirst_change(self) -> None:
+        changes, capabilities, _ = parse_final_plan(
+            self.orchestrate / "phase-works/phase-5/change-plan.md"
+        )
+        change_b = replace(changes[0], slug="change-b")
+        refs = [self._ref("SA-0001"), self._ref("SA-0002")]
+        evidence = {
+            f"GA-000{index}": Evidence(
+                ga=f"GA-000{index}", evidence_ref=ref, source_document="docs/source.md",
+                line_ranges=((index, index),), source_fact=f"source {index}", atom_type="behavior", normativity="must",
+            )
+            for index, ref in enumerate(refs, 1)
+        }
+        mapping = {
+            "GA-0001": Mapping(
+                ga="GA-0001", evidence_ref=refs[0], owner_change="change-a", relation="direct",
+                projection="spec-requirement", capability_impact="new", target_capability="cap-a",
+                related_capabilities=(), reason="首个Change推进正式Capability。",
+            ),
+            "GA-0002": Mapping(
+                ga="GA-0002", evidence_ref=refs[1], owner_change="change-b", relation="direct",
+                projection="design-obligation", capability_impact="none", target_capability="none",
+                related_capabilities=(), reason="第二个Change只有设计义务。",
+            ),
+        }
+        with self.assertRaisesRegex(ValueError, "roadmap首个foundation"):
+            validate_mapping(
+                evidence, mapping, [changes[0], change_b], capabilities,
+                {("change-a", "cap-a"): "new"}, repo_root=self.root,
+            )
+
+    def test_foundation_with_dependencies_or_overlay_is_rejected(self) -> None:
+        changes, capabilities, _ = parse_final_plan(
+            self.orchestrate / "phase-works/phase-5/change-plan.md"
+        )
+        foundation = changes[0]
+        ref = self._ref("SA-0001")
+        evidence = {
+            "GA-0001": Evidence(
+                ga="GA-0001", evidence_ref=ref, source_document="docs/source.md",
+                line_ranges=((1, 1),), source_fact="bootstrap", atom_type="architecture-decision", normativity="must",
+            )
+        }
+        mapping = {
+            "GA-0001": Mapping(
+                ga="GA-0001", evidence_ref=ref, owner_change="change-a", relation="direct",
+                projection="design-obligation", capability_impact="none", target_capability="none",
+                related_capabilities=(), reason="该Change只负责基础准备。",
+            )
+        }
+        with self.assertRaisesRegex(ValueError, "不得声明硬依赖"):
+            validate_mapping(
+                evidence, mapping,
+                [replace(foundation, dependencies_raw="base", dependencies=("base",))],
+                capabilities, {}, repo_root=self.root,
+            )
+        with self.assertRaisesRegex(ValueError, "不得拥有Capability overlay"):
+            validate_mapping(
+                evidence, mapping, [foundation], capabilities,
+                {("change-a", "cap-a"): "new"}, repo_root=self.root,
+            )
+
+    def test_multiple_empty_spec_slice_changes_are_rejected(self) -> None:
+        changes, capabilities, _ = parse_final_plan(
+            self.orchestrate / "phase-works/phase-5/change-plan.md"
+        )
+        change_b = replace(changes[0], slug="change-b")
+        refs = [self._ref("SA-0001"), self._ref("SA-0002")]
+        evidence = {
+            f"GA-000{index}": Evidence(
+                ga=f"GA-000{index}", evidence_ref=ref, source_document="docs/source.md",
+                line_ranges=((index, index),), source_fact=f"foundation source {index}",
+                atom_type="architecture-decision", normativity="must",
+            )
+            for index, ref in enumerate(refs, 1)
+        }
+        mapping = {
+            f"GA-000{index}": Mapping(
+                ga=f"GA-000{index}", evidence_ref=ref,
+                owner_change="change-a" if index == 1 else "change-b",
+                relation="direct", projection="design-obligation",
+                capability_impact="none", target_capability="none",
+                related_capabilities=(), reason="该行只表达工程基础义务。",
+            )
+            for index, ref in enumerate(refs, 1)
+        }
+        with self.assertRaisesRegex(ValueError, "唯一的roadmap首个foundation"):
+            validate_mapping(
+                evidence, mapping, [changes[0], change_b], capabilities, {}, repo_root=self.root
+            )
+
     def test_advancement_derivation_distinguishes_absent_and_existing_capability(self) -> None:
         changes, capabilities, _ = parse_final_plan(
             self.orchestrate / "phase-works/phase-5/change-plan.md"
@@ -1646,22 +1922,247 @@ class SourceAlignedPhase45Test(unittest.TestCase):
         self.assertFalse(result["ok"])
         self._assert_rule(result, "rendered-markdown-drift")
 
-    def test_phase5_packet_drift_is_rejected(self) -> None:
-        packet = self.orchestrate / "change-capability-anchors/change-a/change-a.md"
+    def test_phase5_change_source_drift_is_rejected(self) -> None:
+        packet = self.orchestrate / "change-capability-anchors/change-a/change-source.md"
         packet.write_text(packet.read_text(encoding="utf-8").replace("same outcome", "changed outcome"), encoding="utf-8")
         result = self._result("phase-5")
         self.assertFalse(result["ok"])
-        self._assert_rule(result, "phase5-packet-drift")
+        self._assert_rule(result, "phase5-change-source-drift")
 
-    def test_phase5_anchor_and_capability_view_drift_are_rejected(self) -> None:
+    def test_phase5_anchor_and_capability_slice_drift_are_rejected(self) -> None:
         anchor_index = self.orchestrate / "change-capability-anchors/index.md"
-        capability_view = self.orchestrate / "change-capability-anchors/change-a/capability-anchors/cap-a.md"
+        capability_view = self.orchestrate / "change-capability-anchors/change-a/capability-slices/cap-a.md"
         anchor_index.write_text(anchor_index.read_text(encoding="utf-8") + "drift\n", encoding="utf-8")
         capability_view.write_text(capability_view.read_text(encoding="utf-8") + "drift\n", encoding="utf-8")
         result = self._result("phase-5")
         self.assertFalse(result["ok"])
         self._assert_rule(result, "phase5-anchor-index-drift")
-        self._assert_rule(result, "phase5-capability-view-drift")
+        self._assert_rule(result, "phase5-capability-slice-drift")
+
+    def test_phase5_v3_public_bundle_has_exact_schema_and_no_internal_trace_metadata(self) -> None:
+        index = self._data("openspec/orchestrate/phase-works/phase-5/final-packet-index.json")
+        self.assertEqual(index["trace-schema"], "source-aligned-final-packet-index-v3")
+        self.assertEqual(index["trace-contract-version"], "source-aligned-trace-v6")
+        self.assertEqual(set(index), {"trace-schema", "trace-contract-version", "packets"})
+        row = index["packets"][0]
+        self.assertEqual(
+            set(row),
+            {"change", "depends-on", "change-source-path", "change-source-sha256", "capability-slices"},
+        )
+        self.assertEqual(row["depends-on"], [])
+        self.assertEqual(
+            set(row["capability-slices"][0]),
+            {"capability", "capability-impact", "slice-path", "slice-sha256"},
+        )
+        source_text = (self.root / row["change-source-path"]).read_text(encoding="utf-8")
+        slice_text = (self.root / row["capability-slices"][0]["slice-path"]).read_text(encoding="utf-8")
+        for forbidden in ("GA-000", "Evidence reference", "Relation / projection", "Reason："):
+            self.assertNotIn(forbidden, source_text)
+            self.assertNotIn(forbidden, slice_text)
+        self.assertIn("unassigned fact", source_text)
+        self.assertIn("gap must", source_text)
+        self.assertIn("same | requirement", slice_text)
+        self.assertNotIn("unassigned fact", slice_text)
+
+    def test_phase5_v3_rejects_legacy_public_fields(self) -> None:
+        relative = "openspec/orchestrate/phase-works/phase-5/final-packet-index.json"
+        index = self._data(relative)
+        index["packets"][0]["change-kind"] = "foundation"
+        self._write_data(relative, index)
+        result = self._result("phase-5")
+        self.assertFalse(result["ok"])
+        self._assert_rule(result, "phase5-packet-fields")
+
+    def test_phase5_v3_rejects_legacy_public_surface(self) -> None:
+        self._write(
+            "openspec/orchestrate/change-capability-anchors/change-a/change-a.md",
+            "# Legacy Final Change Packet\n",
+        )
+        result = self._result("phase-5")
+        self.assertFalse(result["ok"])
+        self._assert_rule(result, "phase5-public-surface-extra")
+
+    def test_phase5_v3_rejects_symlinked_anchor_root(self) -> None:
+        anchors = self.orchestrate / "change-capability-anchors"
+        target = self.root / "shared-anchors"
+        shutil.copytree(anchors, target)
+        shutil.rmtree(anchors)
+        anchors.symlink_to(target, target_is_directory=True)
+        result = self._result("phase-5")
+        self.assertFalse(result["ok"])
+        self._assert_rule(result, "phase5-public-surface-symlink")
+        with self.assertRaisesRegex(ValueError, "symlink"):
+            validate_outputs(self.orchestrate)
+        with self.assertRaisesRegex(ValueError, "symlink"):
+            write_outputs(self.orchestrate)
+
+    def test_phase5_v3_rejects_symlinked_change_directory(self) -> None:
+        change_dir = self.orchestrate / "change-capability-anchors/change-a"
+        target = self.root / "shared-change-a"
+        shutil.copytree(change_dir, target)
+        shutil.rmtree(change_dir)
+        change_dir.symlink_to(target, target_is_directory=True)
+        result = self._result("phase-5")
+        self.assertFalse(result["ok"])
+        self._assert_rule(result, "phase5-public-surface-symlink")
+        with self.assertRaisesRegex(ValueError, "symlink"):
+            validate_outputs(self.orchestrate)
+
+    def test_phase5_v3_rejects_internal_and_external_slice_directory_symlinks(self) -> None:
+        cap_dir = self.orchestrate / "change-capability-anchors/change-a/capability-slices"
+        internal_target = self.root / "shared-slices"
+        shutil.copytree(cap_dir, internal_target)
+        shutil.rmtree(cap_dir)
+        cap_dir.symlink_to(internal_target, target_is_directory=True)
+        result = self._result("phase-5")
+        self.assertFalse(result["ok"])
+        self._assert_rule(result, "phase5-public-surface-symlink")
+        with self.assertRaisesRegex(ValueError, "symlink"):
+            validate_outputs(self.orchestrate)
+
+        cap_dir.unlink()
+        with tempfile.TemporaryDirectory() as external:
+            external_target = Path(external) / "slices"
+            shutil.copytree(internal_target, external_target)
+            cap_dir.symlink_to(external_target, target_is_directory=True)
+            result = self._result("phase-5")
+            self.assertFalse(result["ok"])
+            self._assert_rule(result, "phase5-public-surface-symlink")
+
+    def test_phase5_v3_rejects_symlinked_slice_file(self) -> None:
+        cap_path = self.orchestrate / "change-capability-anchors/change-a/capability-slices/cap-a.md"
+        target = self.root / "shared-cap-a.md"
+        shutil.copyfile(cap_path, target)
+        cap_path.unlink()
+        cap_path.symlink_to(target)
+        result = self._result("phase-5")
+        self.assertFalse(result["ok"])
+        self._assert_rule(result, "phase5-public-surface-symlink")
+        with self.assertRaisesRegex(ValueError, "symlink"):
+            validate_outputs(self.orchestrate)
+
+    def test_phase5_v3_rejects_root_extra_and_writer_removes_regular_stale_file(self) -> None:
+        extra = self._write(
+            "openspec/orchestrate/change-capability-anchors/legacy-packet.md",
+            "legacy\n",
+        )
+        result = self._result("phase-5")
+        self.assertFalse(result["ok"])
+        self._assert_rule(result, "phase5-public-surface-extra")
+        with self.assertRaisesRegex(ValueError, "额外public surface"):
+            validate_outputs(self.orchestrate)
+        write_outputs(self.orchestrate)
+        self.assertFalse(extra.exists())
+        self.assertTrue(self._result("phase-5")["ok"])
+
+    def test_phase5_v3_rejects_slice_extra_files_and_nested_directories(self) -> None:
+        self._write(
+            "openspec/orchestrate/change-capability-anchors/change-a/capability-slices/legacy.json",
+            "{}\n",
+        )
+        self._write(
+            "openspec/orchestrate/change-capability-anchors/change-a/capability-slices/nested/legacy.md",
+            "legacy\n",
+        )
+        result = self._result("phase-5")
+        self.assertFalse(result["ok"])
+        self._assert_rule(result, "phase5-capability-slice-extra")
+        with self.assertRaisesRegex(ValueError, "额外或非常规"):
+            validate_outputs(self.orchestrate)
+
+    def test_phase5_v3_requires_each_change_bundle_directory(self) -> None:
+        change_dir = self.orchestrate / "change-capability-anchors/change-a"
+        shutil.rmtree(change_dir)
+        result = self._result("phase-5")
+        self.assertFalse(result["ok"])
+        self._assert_rule(result, "phase5-public-surface-missing")
+        with self.assertRaisesRegex(ValueError, "缺少change-a source bundle目录"):
+            validate_outputs(self.orchestrate)
+
+    def test_phase5_v3_requires_empty_foundation_slice_directory(self) -> None:
+        self._install_foundation_consumer_phase5()
+        cap_dir = (
+            self.orchestrate
+            / "change-capability-anchors/bootstrap-foundation/capability-slices"
+        )
+        shutil.rmtree(cap_dir)
+        result = self._result("phase-5")
+        self.assertFalse(result["ok"])
+        self._assert_rule(result, "phase5-public-surface-missing")
+        with self.assertRaisesRegex(ValueError, "public surface字段不精确"):
+            validate_outputs(self.orchestrate)
+
+    def test_phase1_and_phase5_reject_change_type_fields(self) -> None:
+        phase1 = self.orchestrate / "phase-works/phase-1/initial-change-plan.md"
+        final = self.orchestrate / "phase-works/phase-5/change-plan.md"
+        phase1_original = phase1.read_text(encoding="utf-8")
+        final_original = final.read_text(encoding="utf-8")
+        labels = (
+            "change-kind",
+            "changeKind",
+            "change_kind",
+            "Change Kind",
+            "Change Type",
+            "Change 类型",
+            "Spec Mode",
+        )
+        for label in labels:
+            with self.subTest(label=label, shape="field"):
+                phase1.write_text(
+                    phase1_original.replace(
+                        "- 单一 intent：", f"- {label}: foundation\n- 单一 intent：", 1
+                    ),
+                    encoding="utf-8",
+                )
+                result = self._result("phase-1")
+                self.assertFalse(result["ok"])
+                self._assert_rule(result, "phase1-change-type-field")
+                final.write_text(
+                    final_original.replace(
+                        "- 单一 intent：", f"- {label}: foundation\n- 单一 intent：", 1
+                    ),
+                    encoding="utf-8",
+                )
+                with self.assertRaisesRegex(ValueError, "不得保存Change类型字段"):
+                    parse_final_plan(final)
+            with self.subTest(label=label, shape="table-header"):
+                table = f"\n| {label} | Value |\n| --- | --- |\n| foundation | x |\n"
+                phase1.write_text(
+                    phase1_original.replace("## Phase 1 风险检查", table + "\n## Phase 1 风险检查"),
+                    encoding="utf-8",
+                )
+                result = self._result("phase-1")
+                self._assert_rule(result, "phase1-change-type-field")
+                final.write_text(
+                    final_original.replace("## Phase 5 风险检查", table + "\n## Phase 5 风险检查"),
+                    encoding="utf-8",
+                )
+                with self.assertRaisesRegex(ValueError, "不得保存Change类型字段"):
+                    parse_final_plan(final)
+
+    def test_phase5_v3_serializes_and_validates_foundation_then_consumer(self) -> None:
+        self._install_foundation_consumer_phase5()
+        index = self._data("openspec/orchestrate/phase-works/phase-5/final-packet-index.json")
+        self.assertEqual([row["change"] for row in index["packets"]], ["bootstrap-foundation", "change-consumer"])
+        foundation, consumer = index["packets"]
+        self.assertEqual(foundation["depends-on"], [])
+        self.assertEqual(foundation["capability-slices"], [])
+        self.assertTrue((self.root / foundation["change-source-path"]).is_file())
+        self.assertEqual(consumer["capability-slices"][0]["capability"], "cap-a")
+        self.assertEqual(consumer["capability-slices"][0]["capability-impact"], "new")
+        self.assertTrue((self.root / consumer["capability-slices"][0]["slice-path"]).is_file())
+        result = self._result("phase-5")
+        self.assertTrue(result["ok"], result)
+
+    def test_phase5_v3_serializes_multiple_capability_slices_in_framework_order(self) -> None:
+        self._install_multi_capability_phase5()
+        index = self._data("openspec/orchestrate/phase-works/phase-5/final-packet-index.json")
+        slices = index["packets"][0]["capability-slices"]
+        self.assertEqual([item["capability"] for item in slices], ["cap-a", "cap-b"])
+        self.assertEqual([item["capability-impact"] for item in slices], ["new", "new"])
+        self.assertTrue(all((self.root / item["slice-path"]).is_file() for item in slices))
+        result = self._result("phase-5")
+        self.assertTrue(result["ok"], result)
 
     def test_phase5_gap_review_rejects_mapping_authority_fields(self) -> None:
         relative = "openspec/orchestrate/phase-works/phase-5/framework-refit-trace.json"
@@ -1981,7 +2482,7 @@ class SourceAlignedPhase45Test(unittest.TestCase):
     def test_phase5_helper_uses_frozen_evidence_without_source(self) -> None:
         (self.root / "docs/source.md").unlink()
         write_outputs(self.orchestrate)
-        packet = self.orchestrate / "change-capability-anchors/change-a/change-a.md"
+        packet = self.orchestrate / "change-capability-anchors/change-a/change-source.md"
         self.assertIn("same | requirement", packet.read_text(encoding="utf-8"))
         self.assertTrue(self._result("phase-5")["ok"])
 
@@ -2039,10 +2540,10 @@ class SourceAlignedPhase45Test(unittest.TestCase):
         self.assertFalse(result["ok"])
         self._assert_rule(result, "phase5-legacy-artifact")
 
-    def test_trace_contract_v4_is_rejected(self) -> None:
+    def test_trace_contract_v5_is_rejected_without_migration(self) -> None:
         relative = "openspec/orchestrate/trace/phase-1.trace.json"
         trace = self._data(relative)
-        trace["trace-contract-version"] = "source-aligned-trace-v4"
+        trace["trace-contract-version"] = "source-aligned-trace-v5"
         self._write_data(relative, trace)
         self._write_manifest()
         result = self._result("phase-1")
@@ -2061,7 +2562,7 @@ class SourceAlignedPhase45Test(unittest.TestCase):
         self.assertFalse(result["ok"])
         self._assert_rule(result, "phase5-refit-contract")
 
-    def test_v5_rejects_removed_patch_and_checkpoint_artifacts(self) -> None:
+    def test_v6_rejects_removed_patch_and_checkpoint_artifacts(self) -> None:
         self._write(
             "openspec/orchestrate/phase-works/phase-5/evidence-patch-request.json",
             "{}\n",

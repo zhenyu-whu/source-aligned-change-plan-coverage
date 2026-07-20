@@ -192,7 +192,7 @@ Phase 2 不记录 `candidate-capability-impact`、`candidate-related-capabilitie
 
 每份`.atoms.json`使用`source-aligned-source-atoms-v5`，是本Phase provisional extraction内容权威；顶层、context row、atom row、range row、trace source row及Markdown mirror的exact machine/render shape只由`references/trace-sidecar-contract.md`定义。本文件只定义如何按自然语义单位提取及填写这些字段，不复制机器契约。
 
-每个atom仍只对应一个连续evidence range，`source-fact`必须是该range对应source text的逐字连续substring。`.atoms.md`完全由canonical JSON按`source-aligned-render-v9`生成，只用于review，不得直接编辑或补充第二份语义。
+每个atom仍只对应一个连续evidence range，`source-fact`必须是该range对应source text的逐字连续substring。`.atoms.md`完全由canonical JSON按`source-aligned-render-v10`生成，只用于review，不得直接编辑或补充第二份语义。GA与atom接口只供上游内部审计，不进入最终公开source bundle。
 
 ## 索引与报告
 

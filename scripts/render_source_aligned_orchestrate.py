@@ -34,7 +34,7 @@ from source_aligned_trace_lib import (
 )
 
 
-RENDER_CONTRACT_VERSION = "source-aligned-render-v9"
+RENDER_CONTRACT_VERSION = "source-aligned-render-v10"
 SUPPORTED_ARTIFACTS = {
     "phase2-source-atoms",
     "phase2-index",

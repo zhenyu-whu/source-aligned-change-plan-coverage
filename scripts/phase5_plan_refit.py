@@ -38,7 +38,10 @@ from source_aligned_trace_lib import (
     PHASE_TRACE_SCHEMAS,
     SOURCE_ATOMS_SCHEMA,
     TRACE_CONTRACT_VERSION,
+    forbidden_change_classification_fields,
     require_atom_plan_mapping_envelope,
+    lexical_repo_relative_path as lexical_rel,
+    require_no_symlink_in_repo_path,
     cell,
     line_ranges_label,
     normalize_code,
@@ -245,6 +248,12 @@ def parse_dependencies(raw: str) -> Tuple[str, ...]:
 
 def parse_final_plan(path: Path) -> tuple[List[ChangeDef], List[CapabilityDef], Dict[Tuple[str, str], str]]:
     text = path.read_text(encoding="utf-8")
+    forbidden_fields = forbidden_change_classification_fields(text)
+    if forbidden_fields:
+        raise ValueError(
+            "final change plan不得保存Change类型字段："
+            + ", ".join(sorted(set(forbidden_fields)))
+        )
     required_headings = [
         "## 输入",
         "## Source Semantic Landscape",
@@ -852,6 +861,25 @@ def validate_mapping(
     missing_direct = sorted(change_id for change_id in change_ids if direct_by_change.get(change_id, 0) == 0)
     if missing_direct:
         raise ValueError(f"final Change缺少direct evidence：{', '.join(missing_direct)}")
+    spec_targets_by_change = {
+        change.slug: {
+            row.target_capability
+            for row in mapping.values()
+            if row.owner_change == change.slug
+            and row.relation == "direct"
+            and row.projection in SPEC_PROJECTIONS
+        }
+        for change in changes
+    }
+    empty_changes = [change for change in changes if not spec_targets_by_change[change.slug]]
+    if empty_changes:
+        foundation = empty_changes[0]
+        if len(empty_changes) != 1 or foundation.slug != changes[0].slug:
+            raise ValueError("空Capability切片只允许唯一的roadmap首个foundation Change")
+        if foundation.dependencies:
+            raise ValueError("foundation Change不得声明硬依赖")
+        if any(owner == foundation.slug for owner, _ in overlay):
+            raise ValueError("foundation Change不得拥有Capability overlay")
     expected_overlay, _ = derive_advancement(
         repo_root,
         changes,
@@ -936,32 +964,29 @@ def fence(text: str) -> str:
     return f"{marker}text\n{text}\n{marker}"
 
 
-def evidence_section(item: Evidence, row: Mapping) -> str:
+def public_source_section(item: Evidence, ordinal: int) -> str:
+    """Render one frozen occurrence without exposing the internal trace identity."""
     ranges = line_ranges_label([{"start": start, "end": end} for start, end in item.line_ranges])
     return "\n".join([
-        f"### {code(item.ga)}", "",
-        f"- Evidence reference：{code(json.dumps(item.evidence_ref, ensure_ascii=False, sort_keys=True))}",
-        f"- Source：{code(item.source_document)} / {code(ranges)}",
-        f"- Type / normativity：{code(item.atom_type)} / {code(item.normativity)}",
-        f"- Relation / projection：{code(row.relation)} / {code(row.projection)}",
-        f"- Capability：{code(row.capability_impact)} / {code(row.target_capability)}",
-        f"- Reason：{md(row.reason)}", "", fence(item.source_fact), "",
+        f"### Source Occurrence {ordinal}", "",
+        f"- Source Path：{code(item.source_document)}",
+        f"- Source Range：{code(ranges)}", "", fence(item.source_fact), "",
     ])
 
 
-def render_packet(change: ChangeDef, evidence: Dict[str, Evidence], mapping: Dict[str, Mapping]) -> str:
-    direct = sorted(
-        ((evidence[ga], row) for ga, row in mapping.items() if row.owner_change == change.slug and row.relation == "direct"),
-        key=lambda pair: pair[0].ga,
-    )
-    non_direct = sorted(
-        ((evidence[ga], row) for ga, row in mapping.items() if row.owner_change == change.slug and row.relation != "direct"),
-        key=lambda pair: pair[0].ga,
+def _public_source_sort_key(item: Evidence) -> Tuple[object, ...]:
+    return (item.source_document, item.line_ranges, item.ga)
+
+
+def render_change_source(change: ChangeDef, evidence: Dict[str, Evidence], mapping: Dict[str, Mapping]) -> str:
+    items = sorted(
+        (evidence[ga] for ga, row in mapping.items() if row.owner_change == change.slug),
+        key=_public_source_sort_key,
     )
     lines = [
-        f"# Final Change Packet：{change.slug}", "",
-        "> 本 packet 是完整、未做语义去重的 evidence mapping，不是 requirement inventory；下游综合多个 GA 时必须保留多对一 GA trace。", "",
-        "## Change boundary", "",
+        f"# Change Source：{change.slug}", "",
+        "> 本文件是该 Change 的完整 owner-scoped 冻结原文包；不包含上游内部 trace 或 mapping 元数据。", "",
+        "## Change Boundary", "",
         f"- Intent：{md(change.intent)}",
         f"- Outcome：{md(change.outcome)}",
         f"- Scope in：{md(change.scope_in)}",
@@ -969,64 +994,70 @@ def render_packet(change: ChangeDef, evidence: Dict[str, Evidence], mapping: Dic
         f"- Acceptance：{md(change.acceptance)}",
         f"- Hard dependencies：{md(change.dependencies_raw)}",
         f"- Independent archive：{md(change.archive_condition)}", "",
-        "## Direct evidence mapping", "",
+        "## Owner-scoped Frozen Source", "",
     ]
-    if direct:
-        lines.extend(evidence_section(item, row) for item, row in direct)
-    else:
-        lines.append("无 direct evidence occurrence。")
-    lines.extend(["", "## Owner-scoped non-direct evidence", ""])
-    if non_direct:
-        lines.extend(evidence_section(item, row) for item, row in non_direct)
-    else:
-        lines.append("无 owner-scoped non-direct evidence occurrence。")
+    lines.extend(public_source_section(item, index) for index, item in enumerate(items, 1))
     return "\n".join(lines).rstrip() + "\n"
 
 
-def render_capability_view(change: str, capability: str, evidence: Dict[str, Evidence], mapping: Dict[str, Mapping]) -> str:
+def render_capability_slice(
+    change: str,
+    capability: CapabilityDef,
+    impact: str,
+    evidence: Dict[str, Evidence],
+    mapping: Dict[str, Mapping],
+) -> str:
     items = sorted(
         (
-            (evidence[ga], row)
+            evidence[ga]
             for ga, row in mapping.items()
             if row.owner_change == change
             and row.relation == "direct"
-            and row.target_capability == capability
+            and row.target_capability == capability.slug
             and row.projection in SPEC_PROJECTIONS
         ),
-        key=lambda pair: pair[0].ga,
+        key=_public_source_sort_key,
     )
-    lines = [f"# Capability View：{change} / {capability}", "", "> 只包含该Change对Capability的direct spec advancement，未做semantic dedup。", ""]
-    lines.extend(evidence_section(item, row) for item, row in items)
+    lines = [
+        f"# Capability Slice：{change} / {capability.slug}", "",
+        f"- Capability：{code(capability.slug)}",
+        f"- Capability Impact：{code(impact)}",
+        f"- Purpose：{md(capability.purpose)}",
+        f"- Owns：{md(capability.owns)}",
+        f"- Excludes：{md(capability.excludes)}", "",
+        "## Direct Spec/Guard Frozen Source", "",
+    ]
+    lines.extend(public_source_section(item, index) for index, item in enumerate(items, 1))
     return "\n".join(lines).rstrip() + "\n"
 
 
 def render_anchor_index(
     changes: Sequence[ChangeDef],
+    capability_defs: Sequence[CapabilityDef],
     mapping: Dict[str, Mapping],
     repo_root: Path,
     anchors: Path,
 ) -> str:
     lines = [
-        "# Final Change Packet Index", "",
-        "| Change | Packet | Direct GA | Non-direct GA | Capability Views |",
-        "| --- | --- | --- | --- | --- |",
+        "# Change Source Bundle Index", "",
+        "| Change | Depends On | Change Source | Capability Slices |",
+        "| --- | --- | --- | --- |",
     ]
     for change in changes:
-        packet_path = anchors / change.slug / f"{change.slug}.md"
-        direct_ids = sorted(ga for ga, row in mapping.items() if row.owner_change == change.slug and row.relation == "direct")
-        non_direct_ids = sorted(ga for ga, row in mapping.items() if row.owner_change == change.slug and row.relation != "direct")
-        capabilities = sorted({
+        change_source_path = anchors / change.slug / "change-source.md"
+        mapped_capabilities = {
             row.target_capability
             for row in mapping.values()
             if row.owner_change == change.slug and row.relation == "direct" and row.projection in SPEC_PROJECTIONS
-        })
+        }
+        capabilities = [capability.slug for capability in capability_defs if capability.slug in mapped_capabilities]
         cap_paths = [
-            rel(anchors / change.slug / "capability-anchors" / f"{capability}.md", repo_root)
+            lexical_rel(anchors / change.slug / "capability-slices" / f"{capability}.md", repo_root)
             for capability in capabilities
         ]
         lines.append(
-            f"| {code(change.slug)} | {code(rel(packet_path, repo_root))} | "
-            f"{md(', '.join(direct_ids))} | {md(', '.join(non_direct_ids))} | {md(', '.join(cap_paths))} |"
+            f"| {code(change.slug)} | {md(', '.join(change.dependencies))} | "
+            f"{code(lexical_rel(change_source_path, repo_root))} | {md(', '.join(cap_paths))} |"
         )
     return "\n".join(lines).rstrip() + "\n"
 
@@ -1131,8 +1162,83 @@ def clean_legacy(orchestrate_dir: Path) -> None:
             path.unlink()
 
 
+ANCHOR_ROOT_FILES = {
+    "obligation-atom-index.json",
+    "obligation-atom-index.md",
+    "index.md",
+}
+
+
+def _prepare_anchor_root_for_write(anchors: Path, repo_root: Path) -> None:
+    """Reject symlinks, preserve internal indexes, and clear the generated public surface."""
+    require_no_symlink_in_repo_path(anchors, repo_root, "change-capability-anchors")
+    anchors.mkdir(parents=True, exist_ok=True)
+    for candidate in anchors.rglob("*"):
+        if candidate.is_symlink():
+            raise ValueError(f"public source bundle不得包含symlink：{candidate}")
+    preserved = {"obligation-atom-index.json", "obligation-atom-index.md"}
+    for child in anchors.iterdir():
+        if child.is_dir():
+            shutil.rmtree(child)
+        elif child.is_file():
+            if child.name not in preserved:
+                child.unlink()
+        else:
+            raise ValueError(f"change-capability-anchors包含非常规文件：{child}")
+
+
+def _validate_public_anchor_surface(
+    anchors: Path,
+    repo_root: Path,
+    changes: Sequence[ChangeDef],
+    expected_caps_by_change: Dict[str, Sequence[str]],
+) -> None:
+    """Validate the exact v3 public tree without following symlinks."""
+    require_no_symlink_in_repo_path(anchors, repo_root, "change-capability-anchors")
+    if not anchors.is_dir():
+        raise ValueError("change-capability-anchors必须是普通目录")
+    expected_change_names = {change.slug for change in changes}
+    for child in anchors.iterdir():
+        require_no_symlink_in_repo_path(child, repo_root, "public source bundle")
+        if child.name in ANCHOR_ROOT_FILES:
+            if not child.is_file():
+                raise ValueError(f"anchor root固定文件不是regular file：{child}")
+        elif child.name in expected_change_names:
+            if not child.is_dir():
+                raise ValueError(f"Change source bundle不是普通目录：{child}")
+        else:
+            raise ValueError(f"anchor root存在额外public surface：{child}")
+    for change in changes:
+        change_dir = anchors / change.slug
+        require_no_symlink_in_repo_path(change_dir, repo_root, f"{change.slug} source bundle")
+        if not change_dir.is_dir():
+            raise ValueError(f"缺少{change.slug} source bundle目录")
+        children = {child.name: child for child in change_dir.iterdir()}
+        if set(children) != {"change-source.md", "capability-slices"}:
+            raise ValueError(f"{change.slug} public surface字段不精确：{sorted(children)}")
+        source_path = children["change-source.md"]
+        cap_dir = children["capability-slices"]
+        require_no_symlink_in_repo_path(source_path, repo_root, f"{change.slug} change source")
+        require_no_symlink_in_repo_path(cap_dir, repo_root, f"{change.slug} capability slices")
+        if not source_path.is_file() or not cap_dir.is_dir():
+            raise ValueError(f"{change.slug} public source bundle类型非法")
+        expected_names = {f"{capability}.md" for capability in expected_caps_by_change.get(change.slug, ())}
+        actual_names: set[str] = set()
+        for child in cap_dir.iterdir():
+            require_no_symlink_in_repo_path(child, repo_root, f"{change.slug} capability slice")
+            actual_names.add(child.name)
+            if child.name not in expected_names or not child.is_file():
+                raise ValueError(f"{change.slug} capability-slices存在额外或非常规文件：{child}")
+        if actual_names != expected_names:
+            raise ValueError(
+                f"{change.slug} capability-slices集合不一致；"
+                f"expected={sorted(expected_names)} actual={sorted(actual_names)}"
+            )
+
+
 def _remove_terminal_outputs(orchestrate_dir: Path) -> None:
     """移除 Phase 5 terminal surface，保留 refit authority 与其 review mirror。"""
+    repo_root = repo_root_for(orchestrate_dir)
     work = orchestrate_dir / "phase-works/phase-5"
     for name in (
         "change-plan.md",
@@ -1149,10 +1255,21 @@ def _remove_terminal_outputs(orchestrate_dir: Path) -> None:
     if root_plan.exists():
         root_plan.unlink()
     anchors = orchestrate_dir / "change-capability-anchors"
-    if anchors.exists():
+    if anchors.exists() or anchors.is_symlink():
+        require_no_symlink_in_repo_path(anchors, repo_root, "change-capability-anchors")
+        for candidate in anchors.rglob("*"):
+            if candidate.is_symlink():
+                raise ValueError(f"public source bundle不得包含symlink：{candidate}")
         for child in anchors.iterdir():
             if child.is_dir():
                 shutil.rmtree(child)
+            elif child.is_file() and child.name not in {
+                "obligation-atom-index.json",
+                "obligation-atom-index.md",
+            }:
+                child.unlink()
+            elif not child.is_file():
+                raise ValueError(f"change-capability-anchors包含非常规文件：{child}")
         final_index = anchors / "index.md"
         if final_index.exists():
             final_index.unlink()
@@ -1197,6 +1314,8 @@ def _write_blocked_outputs(
 
 def write_outputs(orchestrate_dir: Path) -> None:
     repo_root = repo_root_for(orchestrate_dir)
+    anchors = orchestrate_dir / "change-capability-anchors"
+    require_no_symlink_in_repo_path(anchors, repo_root, "change-capability-anchors")
     work = orchestrate_dir / "phase-works/phase-5"
     plan_path = work / "change-plan.md"
     refit_path = work / "framework-refit-trace.json"
@@ -1234,42 +1353,78 @@ def write_outputs(orchestrate_dir: Path) -> None:
 
     root_plan = orchestrate_dir / "change-plan.md"
     shutil.copyfile(plan_path, root_plan)
-    anchors = orchestrate_dir / "change-capability-anchors"
-    anchors.mkdir(parents=True, exist_ok=True)
-    for child in anchors.iterdir():
-        if child.is_dir():
-            shutil.rmtree(child)
+    _prepare_anchor_root_for_write(anchors, repo_root)
     packets: List[Dict[str, object]] = []
+    capability_defs = {capability.slug: capability for capability in capabilities}
     for change in changes:
         change_dir = anchors / change.slug
-        cap_dir = change_dir / "capability-anchors"
+        cap_dir = change_dir / "capability-slices"
         cap_dir.mkdir(parents=True, exist_ok=True)
-        packet_path = change_dir / f"{change.slug}.md"
-        packet_path.write_text(render_packet(change, evidence, mapping), encoding="utf-8")
-        direct_ids = sorted(ga for ga, row in mapping.items() if row.owner_change == change.slug and row.relation == "direct")
-        non_direct_ids = sorted(ga for ga, row in mapping.items() if row.owner_change == change.slug and row.relation != "direct")
-        caps = sorted({row.target_capability for row in mapping.values() if row.owner_change == change.slug and row.relation == "direct" and row.projection in SPEC_PROJECTIONS})
-        cap_paths: List[str] = []
+        change_source_path = change_dir / "change-source.md"
+        require_no_symlink_in_repo_path(change_source_path, repo_root, f"{change.slug} change source")
+        require_no_symlink_in_repo_path(cap_dir, repo_root, f"{change.slug} capability slices")
+        change_source_path.write_text(render_change_source(change, evidence, mapping), encoding="utf-8")
+        cap_impacts = {
+            row.target_capability: row.capability_impact
+            for row in mapping.values()
+            if row.owner_change == change.slug
+            and row.relation == "direct"
+            and row.projection in SPEC_PROJECTIONS
+        }
+        caps = [capability.slug for capability in capabilities if capability.slug in cap_impacts]
+        slices: List[Dict[str, object]] = []
         for capability in caps:
             cap_path = cap_dir / f"{capability}.md"
-            cap_path.write_text(render_capability_view(change.slug, capability, evidence, mapping), encoding="utf-8")
-            cap_paths.append(rel(cap_path, repo_root))
+            require_no_symlink_in_repo_path(cap_path, repo_root, f"{change.slug}/{capability} capability slice")
+            cap_path.write_text(
+                render_capability_slice(
+                    change.slug,
+                    capability_defs[capability],
+                    cap_impacts[capability],
+                    evidence,
+                    mapping,
+                ),
+                encoding="utf-8",
+            )
+            slices.append({
+                "capability": capability,
+                "capability-impact": cap_impacts[capability],
+                "slice-path": lexical_rel(cap_path, repo_root),
+                "slice-sha256": sha256_file(cap_path),
+            })
         packets.append({
             "change": change.slug,
-            "change-kind": "business",
-            "packet-path": rel(packet_path, repo_root),
-            "packet-digest": sha256_file(packet_path),
-            "direct-atom-ids": direct_ids,
-            "owner-scoped-non-direct-atom-ids": non_direct_ids,
-            "capability-view-paths": cap_paths,
+            "depends-on": list(change.dependencies),
+            "change-source-path": lexical_rel(change_source_path, repo_root),
+            "change-source-sha256": sha256_file(change_source_path),
+            "capability-slices": slices,
         })
-    (anchors / "index.md").write_text(render_anchor_index(changes, mapping, repo_root, anchors), encoding="utf-8")
+    (anchors / "index.md").write_text(render_anchor_index(changes, capabilities, mapping, repo_root, anchors), encoding="utf-8")
     packet_index_path = work / "final-packet-index.json"
     write_json(packet_index_path, {
         "trace-schema": FINAL_PACKET_INDEX_SCHEMA,
         "trace-contract-version": TRACE_CONTRACT_VERSION,
         "packets": packets,
     })
+    _validate_public_anchor_surface(
+        anchors,
+        repo_root,
+        changes,
+        {
+            change.slug: [
+                capability.slug
+                for capability in capabilities
+                if any(
+                    row.owner_change == change.slug
+                    and row.relation == "direct"
+                    and row.projection in SPEC_PROJECTIONS
+                    and row.target_capability == capability.slug
+                    for row in mapping.values()
+                )
+            ]
+            for change in changes
+        },
+    )
     trace_path = orchestrate_dir / "trace/phase-5.trace.json"
     write_json(trace_path, {
         "trace-schema": PHASE_TRACE_SCHEMAS["phase-5"],
@@ -1292,6 +1447,8 @@ def write_outputs(orchestrate_dir: Path) -> None:
 
 def validate_outputs(orchestrate_dir: Path) -> None:
     repo_root = repo_root_for(orchestrate_dir)
+    anchors = orchestrate_dir / "change-capability-anchors"
+    require_no_symlink_in_repo_path(anchors, repo_root, "change-capability-anchors")
     work = orchestrate_dir / "phase-works/phase-5"
     refit_path = work / "framework-refit-trace.json"
     refit = load_framework_refit(refit_path)
@@ -1364,37 +1521,85 @@ def validate_outputs(orchestrate_dir: Path) -> None:
     if (work / "capability-baseline-reconciliation.md").read_text(encoding="utf-8") != render_capability_baseline(orchestrate_dir, baseline_path):
         raise ValueError("Capability baseline Markdown drift")
     packet_index = require_json(work / "final-packet-index.json", FINAL_PACKET_INDEX_SCHEMA)
+    if set(packet_index) != {"trace-schema", "trace-contract-version", "packets"}:
+        raise ValueError("final packet index顶层字段非法")
+    if not isinstance(packet_index.get("packets"), list):
+        raise ValueError("final packet index packets必须是array")
     indexed_changes: set[str] = set()
-    for packet in packet_index.get("packets", []):
-        if not isinstance(packet, dict):
+    capability_defs = {capability.slug: capability for capability in capabilities}
+    expected_caps_by_change = {
+        change.slug: [
+            capability.slug
+            for capability in capabilities
+            if any(
+                row.owner_change == change.slug
+                and row.relation == "direct"
+                and row.projection in SPEC_PROJECTIONS
+                and row.target_capability == capability.slug
+                for row in mapping.values()
+            )
+        ]
+        for change in changes
+    }
+    _validate_public_anchor_surface(anchors, repo_root, changes, expected_caps_by_change)
+    for position, packet in enumerate(packet_index.get("packets", [])):
+        if not isinstance(packet, dict) or set(packet) != {
+            "change", "depends-on", "change-source-path", "change-source-sha256", "capability-slices",
+        }:
             raise ValueError("final packet index row非法")
-        packet_path = repo_root / str(packet.get("packet-path", ""))
-        if not packet_path.is_file() or sha256_file(packet_path) != packet.get("packet-digest"):
-            raise ValueError(f"final packet缺失或digest drift：{packet_path}")
         slug = normalize_code(packet.get("change"))
         indexed_changes.add(slug)
         change = next((item for item in changes if item.slug == slug), None)
-        if change is None or packet_path.read_text(encoding="utf-8") != render_packet(change, evidence, mapping):
-            raise ValueError(f"final packet内容drift：{packet_path}")
-        expected_caps = sorted({
-            row.target_capability
+        if change is None or packet.get("depends-on") != list(change.dependencies):
+            raise ValueError(f"final packet Change或依赖drift：{slug}")
+        change_source_path = orchestrate_dir / "change-capability-anchors" / slug / "change-source.md"
+        require_no_symlink_in_repo_path(change_source_path, repo_root, f"{slug} change source")
+        if packet.get("change-source-path") != lexical_rel(change_source_path, repo_root):
+            raise ValueError(f"change source path drift：{slug}")
+        if not change_source_path.is_file() or sha256_file(change_source_path) != packet.get("change-source-sha256"):
+            raise ValueError(f"change source缺失或digest drift：{change_source_path}")
+        if change_source_path.read_text(encoding="utf-8") != render_change_source(change, evidence, mapping):
+            raise ValueError(f"change source内容drift：{change_source_path}")
+        cap_impacts = {
+            row.target_capability: row.capability_impact
             for row in mapping.values()
             if row.owner_change == slug and row.relation == "direct" and row.projection in SPEC_PROJECTIONS
-        })
-        expected_cap_paths = [
-            rel(packet_path.parent / "capability-anchors" / f"{capability}.md", repo_root)
-            for capability in expected_caps
-        ]
-        if packet.get("capability-view-paths") != expected_cap_paths:
-            raise ValueError(f"Capability view index drift：{slug}")
-        for capability, cap_rel in zip(expected_caps, expected_cap_paths):
-            cap_path = repo_root / cap_rel
-            if not cap_path.is_file() or cap_path.read_text(encoding="utf-8") != render_capability_view(slug, capability, evidence, mapping):
-                raise ValueError(f"Capability view drift：{cap_path}")
+        }
+        expected_caps = expected_caps_by_change[slug]
+        slices = packet.get("capability-slices")
+        if not isinstance(slices, list):
+            raise ValueError(f"{slug} capability-slices必须是array")
+        if position > 0 and not slices:
+            raise ValueError(f"只有roadmap首个Change可使用空capability-slices：{slug}")
+        if not slices and change.dependencies:
+            raise ValueError(f"foundation Change不得声明依赖：{slug}")
+        actual_caps: List[str] = []
+        for item in slices:
+            if not isinstance(item, dict) or set(item) != {
+                "capability", "capability-impact", "slice-path", "slice-sha256",
+            }:
+                raise ValueError(f"{slug} capability slice row非法")
+            capability = normalize_code(item.get("capability"))
+            actual_caps.append(capability)
+            if item.get("capability-impact") != cap_impacts.get(capability):
+                raise ValueError(f"{slug}/{capability} Capability impact drift")
+            cap_path = change_source_path.parent / "capability-slices" / f"{capability}.md"
+            require_no_symlink_in_repo_path(cap_path, repo_root, f"{slug}/{capability} capability slice")
+            if item.get("slice-path") != lexical_rel(cap_path, repo_root):
+                raise ValueError(f"{slug}/{capability} slice path drift")
+            if not cap_path.is_file() or sha256_file(cap_path) != item.get("slice-sha256"):
+                raise ValueError(f"{slug}/{capability} slice缺失或digest drift")
+            if cap_path.read_text(encoding="utf-8") != render_capability_slice(
+                slug, capability_defs[capability], cap_impacts[capability], evidence, mapping
+            ):
+                raise ValueError(f"{slug}/{capability} slice内容drift")
+        if actual_caps != expected_caps:
+            raise ValueError(f"{slug} capability slice顺序或集合drift")
     if indexed_changes != {item.slug for item in changes}:
         raise ValueError("final packet index Change集合与final plan不一致")
-    anchors = orchestrate_dir / "change-capability-anchors"
-    if (anchors / "index.md").read_text(encoding="utf-8") != render_anchor_index(changes, mapping, repo_root, anchors):
+    if [normalize_code(row.get("change")) for row in packet_index["packets"]] != [item.slug for item in changes]:
+        raise ValueError("final packet index顺序与roadmap不一致")
+    if (anchors / "index.md").read_text(encoding="utf-8") != render_anchor_index(changes, capabilities, mapping, repo_root, anchors):
         raise ValueError("anchor index Markdown drift")
 
 

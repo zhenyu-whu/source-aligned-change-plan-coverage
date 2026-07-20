@@ -26,6 +26,9 @@ from source_aligned_trace_lib import (
     PHASE_TRACE_SCHEMAS,
     SOURCE_ATOMS_SCHEMA,
     TRACE_CONTRACT_VERSION,
+    first_symlink_in_repo_path,
+    forbidden_change_classification_fields,
+    lexical_repo_relative_path as lexical_rel,
     IssueReporter,
     atom_plan_mapping_markdown_path,
     cell,
@@ -63,8 +66,8 @@ from phase5_plan_refit import (
     parse_mapping_rows as parse_phase5_mapping_rows,
     parse_final_plan,
     render_anchor_index,
-    render_capability_view,
-    render_packet,
+    render_capability_slice,
+    render_change_source,
     validate_framework_refit,
     validate_gap_framework_impacts,
     validate_mapping as validate_phase5_mapping,
@@ -243,6 +246,13 @@ def validate_phase1_plan_structure(path: Path, reporter: IssueReporter) -> None:
     if not path.exists():
         return
     text = path.read_text(encoding="utf-8")
+    forbidden_fields = forbidden_change_classification_fields(text)
+    if forbidden_fields:
+        reporter.error(
+            "phase1-change-type-field",
+            path,
+            "Phase 1不得保存Change类型字段：" + ", ".join(sorted(set(forbidden_fields))),
+        )
     lines = text.splitlines()
     required_headings = [
         "## 输入",
@@ -306,6 +316,23 @@ def validate_phase1_plan_structure(path: Path, reporter: IssueReporter) -> None:
                 path,
                 f"Change-Capability Overlay 的 Roadmap Role 非法：{role}",
             )
+    change_order = [
+        normalize_code(match.group(1) or match.group(2))
+        for match in re.finditer(r"(?m)^- Change 名称[：:]\s*(?:`([^`]+)`|([^\s。]+))", roadmap)
+    ]
+    overlay_changes = {normalize_code(cell(row, "Change")) for row in overlay_rows}
+    empty_changes = [change for change in change_order if change not in overlay_changes]
+    if empty_changes:
+        if len(empty_changes) != 1 or not change_order or empty_changes[0] != change_order[0]:
+            reporter.error(
+                "phase1-foundation-cardinality",
+                path,
+                "零overlay只允许唯一的roadmap首个foundation Change",
+            )
+        first_block = roadmap.split("- Change 名称", 2)[1] if "- Change 名称" in roadmap else ""
+        dependency = re.search(r"(?m)^- 硬依赖[：:]\s*(.*)$", "- Change 名称" + first_block)
+        if dependency and normalize_code(dependency.group(1)).strip("。.;；").lower() not in {"无", "none", "`none`"}:
+            reporter.error("phase1-foundation-dependencies", path, "foundation Change不得声明硬依赖")
 
     risk_end = lines.index("## Phase 1 语言自检") if "## Phase 1 语言自检" in lines else len(lines)
     risk_lines = lines[risk_start + 1 : risk_end]
@@ -2355,6 +2382,118 @@ def _validate_phase5_refit(
     return status
 
 
+def _phase5_public_path_is_safe(
+    path: Path,
+    repo_root: Path,
+    reporter: IssueReporter,
+    rule_id: str,
+) -> bool:
+    try:
+        symlink = first_symlink_in_repo_path(path, repo_root)
+    except ValueError as exc:
+        reporter.error(rule_id, path, str(exc))
+        return False
+    if symlink is not None:
+        reporter.error(rule_id, symlink, f"public source bundle路径链不得包含symlink：{symlink}")
+        return False
+    return True
+
+
+def _validate_phase5_public_surface(
+    orchestrate_dir: Path,
+    repo_root: Path,
+    reporter: IssueReporter,
+    changes: List[object],
+    capabilities: List[object],
+    mapping: Dict[str, object],
+) -> None:
+    anchors = orchestrate_dir / "change-capability-anchors"
+    if not _phase5_public_path_is_safe(
+        anchors, repo_root, reporter, "phase5-public-surface-symlink"
+    ):
+        return
+    if not anchors.is_dir():
+        reporter.error("phase5-public-surface-root", anchors, "change-capability-anchors必须是普通目录")
+        return
+    root_files = {"obligation-atom-index.json", "obligation-atom-index.md", "index.md"}
+    expected_changes = {getattr(change, "slug", "") for change in changes}
+    for child in anchors.iterdir():
+        if not _phase5_public_path_is_safe(
+            child, repo_root, reporter, "phase5-public-surface-symlink"
+        ):
+            continue
+        if child.name in root_files:
+            if not child.is_file():
+                reporter.error("phase5-public-surface-extra", child, "anchor root固定文件不是regular file")
+        elif child.name in expected_changes:
+            if not child.is_dir():
+                reporter.error("phase5-public-surface-extra", child, "Change source bundle不是普通目录")
+        else:
+            reporter.error("phase5-public-surface-extra", child, "anchor root存在额外public surface")
+    capability_order = [getattr(capability, "slug", "") for capability in capabilities]
+    for change in changes:
+        slug = getattr(change, "slug", "")
+        change_dir = anchors / slug
+        change_dir_safe = _phase5_public_path_is_safe(
+            change_dir, repo_root, reporter, "phase5-public-surface-symlink"
+        )
+        if not change_dir_safe:
+            continue
+        if not change_dir.exists():
+            reporter.error("phase5-public-surface-missing", change_dir, f"缺少{slug} source bundle目录")
+            continue
+        if not change_dir.is_dir():
+            reporter.error("phase5-public-surface-extra", change_dir, f"{slug} source bundle必须是普通目录")
+            continue
+        children = {child.name: child for child in change_dir.iterdir()}
+        for name, child in children.items():
+            if name not in {"change-source.md", "capability-slices"}:
+                reporter.error("phase5-public-surface-extra", child, f"{slug}存在旧版或额外公开surface")
+        source_path = change_dir / "change-source.md"
+        cap_dir = change_dir / "capability-slices"
+        source_safe = _phase5_public_path_is_safe(
+            source_path, repo_root, reporter, "phase5-public-surface-symlink"
+        )
+        cap_dir_safe = _phase5_public_path_is_safe(
+            cap_dir, repo_root, reporter, "phase5-public-surface-symlink"
+        )
+        if source_safe and not source_path.exists():
+            reporter.error("phase5-public-surface-missing", source_path, f"缺少{slug} change-source.md")
+        elif source_safe and not source_path.is_file():
+            reporter.error("phase5-public-surface-extra", source_path, "change-source.md必须是regular file")
+        expected_caps = {
+            capability
+            for capability in capability_order
+            if any(
+                getattr(row, "owner_change", "") == slug
+                and getattr(row, "relation", "") == "direct"
+                and getattr(row, "projection", "") in SPEC_PROJECTIONS
+                and getattr(row, "target_capability", "") == capability
+                for row in mapping.values()
+            )
+        }
+        if not cap_dir_safe:
+            continue
+        if not cap_dir.exists():
+            reporter.error("phase5-public-surface-missing", cap_dir, f"缺少{slug} capability-slices目录")
+            continue
+        if not cap_dir.is_dir():
+            reporter.error("phase5-public-surface-extra", cap_dir, "capability-slices必须是普通目录")
+            continue
+        for child in cap_dir.iterdir():
+            if not _phase5_public_path_is_safe(
+                child, repo_root, reporter, "phase5-public-surface-symlink"
+            ):
+                continue
+            expected_name = child.name.endswith(".md") and child.stem in expected_caps
+            if not expected_name or not child.is_file():
+                reporter.error(
+                    "phase5-capability-slice-extra",
+                    child,
+                    f"{slug}存在额外、嵌套或非常规Capability slice surface",
+                )
+
+
 def _validate_phase5_derived_outputs(
     orchestrate_dir: Path,
     repo_root: Path,
@@ -2364,6 +2503,11 @@ def _validate_phase5_derived_outputs(
     overlay: Dict[tuple[str, str], str],
 ) -> None:
     work = orchestrate_dir / "phase-works/phase-5"
+    anchors = orchestrate_dir / "change-capability-anchors"
+    if not _phase5_public_path_is_safe(
+        anchors, repo_root, reporter, "phase5-public-surface-symlink"
+    ):
+        return
     mapping_path = work / "atom-plan-mapping.json"
     mapping_data = json_obj(mapping_path, reporter, ATOM_PLAN_MAPPING_SCHEMA)
     exact_fields(
@@ -2393,6 +2537,15 @@ def _validate_phase5_derived_outputs(
     except (OSError, ValueError, json.JSONDecodeError) as exc:
         reporter.error("phase5-mapping-contract", mapping_path, str(exc))
         return
+
+    _validate_phase5_public_surface(
+        orchestrate_dir,
+        repo_root,
+        reporter,
+        changes,
+        capabilities,
+        mapping,
+    )
 
     validate_mapping_mirror(orchestrate_dir, reporter)
     baseline_path = work / "capability-baseline-reconciliation.json"
@@ -2424,11 +2577,12 @@ def _validate_phase5_derived_outputs(
     if not isinstance(packets, list):
         reporter.error("phase5-packet-index", packet_index_path, "packets必须是array")
         return
-    by_change = {normalize_code(row.get("change")): row for row in packets if isinstance(row, dict)}
     change_ids = [getattr(change, "slug", "") for change in changes]
     if [normalize_code(row.get("change")) for row in packets if isinstance(row, dict)] != change_ids:
         reporter.error("phase5-packet-order", packet_index_path, "packet顺序必须与final roadmap一致且每个Change恰好一行")
-    for change in changes:
+    by_change = {normalize_code(row.get("change")): row for row in packets if isinstance(row, dict)}
+    capability_defs = {getattr(capability, "slug", ""): capability for capability in capabilities}
+    for position, change in enumerate(changes):
         slug = getattr(change, "slug", "")
         row = by_change.get(slug)
         if not isinstance(row, dict):
@@ -2436,54 +2590,83 @@ def _validate_phase5_derived_outputs(
             continue
         exact_fields(
             row,
-            {"change", "change-kind", "packet-path", "packet-digest", "direct-atom-ids", "owner-scoped-non-direct-atom-ids", "capability-view-paths"},
+            {"change", "depends-on", "change-source-path", "change-source-sha256", "capability-slices"},
             packet_index_path,
             reporter,
             "phase5-packet-fields",
             slug,
         )
-        if row.get("change-kind") != "business":
-            reporter.error("phase5-packet-kind", packet_index_path, f"{slug} change-kind必须是business")
-        expected_direct = sorted(ga for ga, item in mapping.items() if item.owner_change == slug and item.relation == "direct")
-        expected_non_direct = sorted(ga for ga, item in mapping.items() if item.owner_change == slug and item.relation != "direct")
-        if row.get("direct-atom-ids") != expected_direct or row.get("owner-scoped-non-direct-atom-ids") != expected_non_direct:
-            reporter.error("phase5-packet-ga-drift", packet_index_path, f"{slug} packet GA集合与mapping不一致")
-        expected_packet = orchestrate_dir / "change-capability-anchors" / slug / f"{slug}.md"
-        if row.get("packet-path") != rel(expected_packet, repo_root):
-            reporter.error("phase5-packet-path", packet_index_path, f"{slug} packet-path非法")
-        if not expected_packet.exists():
-            reporter.error("phase5-packet-missing", expected_packet, f"缺少{slug} packet")
-        else:
-            if expected_packet.read_text(encoding="utf-8") != render_packet(change, evidence, mapping):
-                reporter.error("phase5-packet-drift", expected_packet, "packet与frozen source-fact、final plan或mapping不一致")
-            if row.get("packet-digest") != sha256_file(expected_packet):
-                reporter.error("phase5-packet-digest", packet_index_path, f"{slug} packet digest不一致")
-        expected_caps = sorted({item.target_capability for item in mapping.values() if item.owner_change == slug and item.relation == "direct" and item.projection in SPEC_PROJECTIONS})
-        expected_paths = [rel(expected_packet.parent / "capability-anchors" / f"{cap}.md", repo_root) for cap in expected_caps]
-        if row.get("capability-view-paths") != expected_paths:
-            reporter.error("phase5-capability-view-index", packet_index_path, f"{slug} Capability view index与mapping不一致")
-        for cap, cap_rel in zip(expected_caps, expected_paths):
-            cap_path = repo_root / cap_rel
-            if not cap_path.exists():
-                reporter.error("phase5-capability-view-missing", cap_path, f"缺少{slug}/{cap} Capability view")
-            elif cap_path.read_text(encoding="utf-8") != render_capability_view(slug, cap, evidence, mapping):
-                reporter.error("phase5-capability-view-drift", cap_path, "Capability view与frozen source-fact或mapping不一致")
-        cap_dir = expected_packet.parent / "capability-anchors"
-        actual_cap_paths = {path.resolve() for path in cap_dir.glob("*.md")} if cap_dir.exists() else set()
-        expected_cap_paths = {(repo_root / path).resolve() for path in expected_paths}
-        for stale in sorted(actual_cap_paths - expected_cap_paths):
-            reporter.error("phase5-capability-view-extra", stale, f"{slug}存在stale Capability view")
+        if row.get("depends-on") != list(getattr(change, "dependencies", ())):
+            reporter.error("phase5-packet-dependencies", packet_index_path, f"{slug} depends-on与roadmap不一致")
+        expected_source = orchestrate_dir / "change-capability-anchors" / slug / "change-source.md"
+        if row.get("change-source-path") != lexical_rel(expected_source, repo_root):
+            reporter.error("phase5-change-source-path", packet_index_path, f"{slug} change-source-path非法")
+        source_safe = _phase5_public_path_is_safe(
+            expected_source, repo_root, reporter, "phase5-change-source-symlink"
+        )
+        if source_safe and not expected_source.exists():
+            reporter.error("phase5-change-source-missing", expected_source, f"缺少{slug} change source")
+        elif source_safe:
+            if expected_source.read_text(encoding="utf-8") != render_change_source(change, evidence, mapping):
+                reporter.error("phase5-change-source-drift", expected_source, "change source与frozen source-fact或final plan不一致")
+            if row.get("change-source-sha256") != sha256_file(expected_source):
+                reporter.error("phase5-change-source-digest", packet_index_path, f"{slug} change source digest不一致")
+        cap_impacts = {
+            item.target_capability: item.capability_impact
+            for item in mapping.values()
+            if item.owner_change == slug and item.relation == "direct" and item.projection in SPEC_PROJECTIONS
+        }
+        expected_caps = [getattr(capability, "slug", "") for capability in capabilities if getattr(capability, "slug", "") in cap_impacts]
+        slices = row.get("capability-slices")
+        if not isinstance(slices, list):
+            reporter.error("phase5-capability-slices", packet_index_path, f"{slug} capability-slices必须是array")
+            slices = []
+        if position > 0 and not slices:
+            reporter.error("phase5-foundation-position", packet_index_path, f"只有roadmap首个Change可使用空capability-slices：{slug}")
+        if not slices and getattr(change, "dependencies", ()):
+            reporter.error("phase5-foundation-dependencies", packet_index_path, f"foundation Change不得有依赖：{slug}")
+        actual_caps: List[str] = []
+        for item in slices:
+            if not isinstance(item, dict):
+                reporter.error("phase5-capability-slice-row", packet_index_path, f"{slug} capability slice必须是object")
+                continue
+            exact_fields(
+                item,
+                {"capability", "capability-impact", "slice-path", "slice-sha256"},
+                packet_index_path,
+                reporter,
+                "phase5-capability-slice-fields",
+                f"{slug} capability slice",
+            )
+            cap = normalize_code(item.get("capability"))
+            actual_caps.append(cap)
+            if item.get("capability-impact") != cap_impacts.get(cap):
+                reporter.error("phase5-capability-slice-impact", packet_index_path, f"{slug}/{cap} impact与terminal mapping不一致")
+            cap_path = expected_source.parent / "capability-slices" / f"{cap}.md"
+            if item.get("slice-path") != lexical_rel(cap_path, repo_root):
+                reporter.error("phase5-capability-slice-path", packet_index_path, f"{slug}/{cap} slice-path非法")
+            cap_safe = _phase5_public_path_is_safe(
+                cap_path, repo_root, reporter, "phase5-capability-slice-symlink"
+            )
+            if cap_safe and not cap_path.exists():
+                reporter.error("phase5-capability-slice-missing", cap_path, f"缺少{slug}/{cap} Capability slice")
+            elif cap_safe and cap in capability_defs:
+                expected_text = render_capability_slice(slug, capability_defs[cap], cap_impacts.get(cap, ""), evidence, mapping)
+                if cap_path.read_text(encoding="utf-8") != expected_text:
+                    reporter.error("phase5-capability-slice-drift", cap_path, "Capability slice与terminal mapping或frozen source-fact不一致")
+                if item.get("slice-sha256") != sha256_file(cap_path):
+                    reporter.error("phase5-capability-slice-digest", packet_index_path, f"{slug}/{cap} slice digest不一致")
+        if actual_caps != expected_caps:
+            reporter.error("phase5-capability-slice-order", packet_index_path, f"{slug} capability slice集合或顺序与terminal mapping不一致")
     anchors = orchestrate_dir / "change-capability-anchors"
     anchor_index = anchors / "index.md"
-    if anchor_index.exists():
-        expected_anchor_index = render_anchor_index(changes, mapping, repo_root, anchors)
+    anchor_index_safe = _phase5_public_path_is_safe(
+        anchor_index, repo_root, reporter, "phase5-public-surface-symlink"
+    )
+    if anchor_index_safe and anchor_index.exists():
+        expected_anchor_index = render_anchor_index(changes, capabilities, mapping, repo_root, anchors)
         if anchor_index.read_text(encoding="utf-8") != expected_anchor_index:
-            reporter.error("phase5-anchor-index-drift", anchor_index, "anchor index与final plan、mapping及Capability views不一致")
-    expected_change_dirs = {getattr(change, "slug", "") for change in changes}
-    if anchors.exists():
-        for child in anchors.iterdir():
-            if child.is_dir() and child.name not in expected_change_dirs:
-                reporter.error("phase5-stale-change-anchor", child, "存在不属于final roadmap的stale Change anchor")
+            reporter.error("phase5-anchor-index-drift", anchor_index, "anchor index与final plan及source bundle不一致")
 
 
 def validate_phase_5(
@@ -2506,7 +2689,7 @@ def validate_phase_5(
     for name in legacy_names:
         path = work / name
         if path.exists():
-            reporter.error("phase5-legacy-artifact", path, "旧Phase 5或patch/checkpoint artifact已废弃，v5必须拒绝")
+            reporter.error("phase5-legacy-artifact", path, "旧Phase 5或patch/checkpoint artifact已废弃，v6 workflow必须拒绝")
 
     final_plan_path = work / "change-plan.md"
     final_changes: List[object] | None = None
@@ -2561,7 +2744,7 @@ def validate_phase_5(
         if anchors_dir.exists():
             for child in anchors_dir.iterdir():
                 if child.is_dir():
-                    reporter.error("phase5-blocked-terminal-artifact", child, "blocked状态不得保留final Change packet或Capability view")
+                    reporter.error("phase5-blocked-terminal-artifact", child, "blocked状态不得保留change source或Capability slice")
         if complete:
             reporter.error("phase5-complete-status", trace_path, "--complete要求accepted/adjusted，实际为blocked")
         return
@@ -2635,7 +2818,7 @@ def validate(
         orchestrate_dir / "phase-works/phase-5/phase-5-checkpoint.json",
     ):
         if legacy.exists():
-            reporter.error("legacy-patch-artifact", legacy, "trace-v5显式拒绝patch request/checkpoint artifact")
+            reporter.error("legacy-patch-artifact", legacy, "trace-v6 contract显式拒绝patch request/checkpoint artifact")
 
     if not preflight:
         validate_manifest(orchestrate_dir, repo_root, reporter, complete=complete)

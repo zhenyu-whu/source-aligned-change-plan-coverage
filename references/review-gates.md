@@ -104,8 +104,8 @@ main agent 运行 all-phase complete validator
 ```
 
 - final integration reviewer 是 workflow-level 只读 gate，不是 Phase 5 reviewer，只运行一次，不得修改 artifact、执行 repair、重新启动 refit或回写冻结evidence。
-- Reviewer必须核对Phase 3 global atom index与potential mapping ambiguities、Phase 4 collections/index、framework refit、作为唯一ambiguity resolution的terminal atom mapping、baseline、final packets、Capability views、anchor index和根`change-plan.md`。
+- Reviewer必须核对Phase 3 global atom index与potential mapping ambiguities、Phase 4 collections/index、framework refit、作为唯一ambiguity resolution的terminal atom mapping、baseline、公开change sources、Capability slices、bundle index、anchor index和根`change-plan.md`。
 - Reviewer必须直接使用共享framework原则确认每个final Capability通过全部8项标准、每个final Change通过全部6项标准，并确认roadmap dependency、minimality和overlay成立；不得要求refit JSON复制第二套final gate数组。
 - Phase 3 `mapping-ambiguities[]`是冻结的pre-refit observation，不是terminal completeness authority；不得要求把Phase 5 late-discovered ambiguity回填Phase 3。完整性以每个GA恰好一个有效terminal mapping row、且已记录ambiguity均由同GA row裁决为准。
-- 每个 evidence occurrence 从 frozen source fact 到 GA、collection、final mapping 和 packet 必须保持一对一 identity；语义相同 occurrence 不得丢失或合并。
+- 每个 evidence occurrence 从 frozen source fact 到GA、collection、final mapping及owner-scoped change source必须完整；每个direct spec/guard occurrence还必须进入唯一对应slice。公开文件不暴露GA或mapping元数据，但validator必须由内部authority重算内容、顺序、路径与digest。
 - complete validator 或 final integration reviewer 未通过时不得 handoff；workflow 返回 `blocked` 并报告最小用户决定，不进入自动 repair loop。
