@@ -17,21 +17,23 @@ from pathlib import Path
 from typing import Dict, Iterable, List, Optional, Sequence, Tuple
 
 
-TRACE_CONTRACT_VERSION = "source-aligned-trace-v6"
-MANIFEST_SCHEMA = "source-aligned-orchestrate-manifest-v2"
+TRACE_CONTRACT_VERSION = "source-aligned-trace-v7"
+MANIFEST_SCHEMA = "source-aligned-orchestrate-manifest-v3"
 PHASE_TRACE_SCHEMAS = {
-    "phase-1": "source-aligned-phase-1-trace-v3",
-    "phase-2": "source-aligned-phase-2-trace-v5",
-    "phase-3": "source-aligned-phase-3-trace-v4",
-    "phase-4": "source-aligned-phase-4-trace-v5",
-    "phase-5": "source-aligned-phase-5-trace-v5",
+    "phase-1": "source-aligned-phase-1-trace-v4",
+    "phase-2": "source-aligned-phase-2-trace-v6",
+    "phase-3": "source-aligned-phase-3-trace-v5",
+    "phase-4": "source-aligned-phase-4-trace-v6",
+    "phase-5": "source-aligned-phase-5-trace-v6",
 }
-SOURCE_ATOMS_SCHEMA = "source-aligned-source-atoms-v5"
-GLOBAL_ATOM_INDEX_SCHEMA = "source-aligned-global-atom-index-v3"
-PHASE3_COVERAGE_REVIEW_SCHEMA = "source-aligned-phase-3-coverage-review-v2"
-EVIDENCE_COLLECTION_INDEX_SCHEMA = "source-aligned-evidence-collection-index-v2"
-FRAMEWORK_REFIT_TRACE_SCHEMA = "source-aligned-framework-refit-trace-v4"
-ATOM_PLAN_MAPPING_SCHEMA = "source-aligned-atom-plan-mapping-v4"
+SOURCE_ATOMS_SCHEMA = "source-aligned-source-atoms-v6"
+GLOBAL_ATOM_INDEX_SCHEMA = "source-aligned-global-atom-index-v4"
+PHASE3_COVERAGE_REVIEW_SCHEMA = "source-aligned-phase-3-coverage-review-v3"
+EVIDENCE_COLLECTION_INDEX_SCHEMA = "source-aligned-evidence-collection-index-v3"
+INITIAL_FRAMEWORK_SCHEMA = "source-aligned-initial-framework-v1"
+FRAMEWORK_REFIT_TRACE_SCHEMA = "source-aligned-framework-refit-trace-v5"
+FINAL_ROADMAP_SCHEMA = "source-aligned-final-roadmap-v1"
+ATOM_PLAN_MAPPING_SCHEMA = "source-aligned-atom-plan-mapping-v5"
 ATOM_PLAN_MAPPING_TOP_LEVEL_FIELDS = {
     "trace-schema",
     "trace-contract-version",
@@ -39,7 +41,88 @@ ATOM_PLAN_MAPPING_TOP_LEVEL_FIELDS = {
     "rows",
 }
 FINAL_PACKET_INDEX_SCHEMA = "source-aligned-final-packet-index-v3"
-CAPABILITY_BASELINE_SCHEMA = "source-aligned-capability-baseline-v1"
+CAPABILITY_BASELINE_SCHEMA = "source-aligned-capability-baseline-v2"
+FINAL_INTEGRATION_REVIEW_SCHEMA = "source-aligned-final-integration-review-v1"
+FINAL_INTEGRATION_REVIEW_ATTEMPT_SCHEMA = (
+    "source-aligned-final-integration-review-attempt-v1"
+)
+FINAL_INTEGRATION_REVIEW_ATTEMPT_RESULT_SCHEMA = (
+    "source-aligned-final-integration-review-attempt-result-v1"
+)
+FINAL_INTEGRATION_REVIEW_ATTEMPT_RELATIVE_PATH = (
+    "trace/final-integration-review-attempt.trace.json"
+)
+FINAL_INTEGRATION_REVIEW_ATTEMPT_RESULT_RELATIVE_PATH = (
+    "trace/final-integration-review-attempt-result.trace.json"
+)
+WORKFLOW_COMPLETION_SCHEMA = "source-aligned-workflow-completion-v1"
+
+DELIVERY_DIRECTIVES = (
+    "explicit-deferred",
+    "explicit-precedence",
+    "milestone-scope",
+)
+CAPABILITY_GATE_NAMES = (
+    "domain-basis",
+    "purpose",
+    "behavior-first",
+    "cohesion",
+    "owns-excludes",
+    "implementation-substitution",
+    "archive-durability",
+    "delta-feasibility",
+)
+CHANGE_GATE_NAMES = (
+    "one-intent",
+    "scope-cohesion",
+    "independent-decision-archive",
+    "indivisibility",
+    "acceptance",
+    "implementation-readiness",
+    "prefix-utility",
+    "consumer-closure",
+)
+ROADMAP_GATE_NAMES = (
+    "delivery-directive-resolution",
+    "dependency-strength",
+    "prefix-viability",
+    "guard-co-delivery",
+    "foundation-like-content",
+    "order-selection",
+)
+PHASE1_REVIEW_CHECKS = (
+    "capability-change-independence",
+    "source-delivery-semantics",
+    "prefix-utility",
+    "consumer-closure",
+    "hard-dependency-proof",
+    "guard-co-delivery",
+    "foundation-like-content",
+    "order-selection",
+    "overlay-directness",
+)
+PHASE5_REVIEW_CHECKS = (
+    "final-capability-gates",
+    "final-change-gates",
+    "delivery-directive-resolution",
+    "dependency-strength",
+    "prefix-viability",
+    "guard-co-delivery",
+    "foundation-like-content",
+    "order-selection",
+    "mapping-overlay-consistency",
+)
+DEPENDENCY_KINDS = (
+    "behavior-availability",
+    "compatibility-contract",
+    "lifecycle-state",
+    "safety-invariant",
+)
+CONSUMER_MODES = (
+    "existing-baseline",
+    "foundation-first-outcome",
+    "same-change-outcome",
+)
 
 GLOBAL_ATOM_ID_RE = re.compile(r"^GA-\d{4}$")
 GLOBAL_ATOM_ID_FIND_RE = re.compile(r"GA-\d{4}")
@@ -447,7 +530,7 @@ def require_no_symlink_in_repo_path(path: Path, repo_root: Path, where: str) -> 
 
 
 def atom_plan_mapping_markdown_path(json_path: Path, repo_root: Path) -> str:
-    """Return the canonical Markdown mirror path declared by mapping v4."""
+    """Return the canonical Markdown mirror path declared by mapping v5."""
     return repo_relative_path(json_path.with_suffix(".md"), repo_root)
 
 
@@ -456,13 +539,13 @@ def require_atom_plan_mapping_envelope(
     json_path: Path,
     repo_root: Path,
 ) -> None:
-    """Reject a mapping v4 envelope that cannot identify its Markdown mirror."""
+    """Reject a mapping v5 envelope that cannot identify its Markdown mirror."""
     actual_fields = set(data)
     if actual_fields != ATOM_PLAN_MAPPING_TOP_LEVEL_FIELDS:
         missing = sorted(ATOM_PLAN_MAPPING_TOP_LEVEL_FIELDS - actual_fields)
         extra = sorted(actual_fields - ATOM_PLAN_MAPPING_TOP_LEVEL_FIELDS)
         raise ValueError(
-            "atom-plan-mapping v4顶层字段非法；"
+            "atom-plan-mapping v5顶层字段非法；"
             f"missing={missing}，extra={extra}"
         )
     if data.get("trace-schema") != ATOM_PLAN_MAPPING_SCHEMA:
@@ -501,6 +584,7 @@ def evidence_authority_payload(
         raise ValueError(f"{phase1_trace_path} source-documents必须是array")
 
     source_rows: List[Dict[str, str]] = []
+    seen_source_documents: set[str] = set()
     for item in source_documents:
         if not isinstance(item, dict):
             raise ValueError(f"{phase1_trace_path} source-documents[]必须是object")
@@ -508,12 +592,39 @@ def evidence_authority_payload(
         if not source_document:
             raise ValueError(f"{phase1_trace_path} source-document不得为空")
         source_path = repo_root / source_document
-        source_digest = normalize_code(item.get("sha256") or item.get("source-sha256"))
-        if not re.fullmatch(r"[0-9a-f]{64}", source_digest):
+        canonical_source_document = lexical_repo_relative_path(
+            source_path,
+            repo_root,
+        )
+        if (
+            canonical_source_document != source_document
+            or source_document in seen_source_documents
+        ):
+            raise ValueError(
+                f"{phase1_trace_path} source-document非法或重复："
+                f"{source_document}"
+            )
+        seen_source_documents.add(source_document)
+        require_no_symlink_in_repo_path(
+            source_path,
+            repo_root,
+            f"source document {source_document}",
+        )
+        if not source_path.is_file():
+            raise ValueError(f"source document不存在或不是普通文件：{source_document}")
+        recorded_digest = normalize_code(
+            item.get("sha256") or item.get("source-sha256")
+        )
+        if not re.fullmatch(r"[0-9a-f]{64}", recorded_digest):
             raise ValueError(f"{phase1_trace_path} {source_document} source digest非法")
+        actual_digest = sha256_file(source_path)
+        if recorded_digest != actual_digest:
+            raise ValueError(
+                f"{phase1_trace_path} {source_document} source digest已漂移"
+            )
         source_rows.append({
-            "source-document": repo_relative_path(source_path, repo_root),
-            "sha256": source_digest,
+            "source-document": canonical_source_document,
+            "sha256": actual_digest,
         })
     source_rows.sort(key=lambda row: row["source-document"])
 
@@ -557,6 +668,458 @@ def evidence_authority_sha256(
     return canonical_json_sha256(
         evidence_authority_payload(orchestrate_dir, repo_root, include_phase3=include_phase3)
     )
+
+
+def require_phase3_frozen_evidence(
+    orchestrate_dir: Path,
+    repo_root: Path,
+) -> Dict[str, str]:
+    """Require the terminal Phase 3 freeze marker and return its bound digests.
+
+    Phase 5 deliberately does not consume Phase 4 collection membership.  Its
+    only admissible source authority is therefore the Phase 2/3 evidence set
+    committed by a terminal, independently reviewed Phase 3 trace.  This
+    helper performs the fail-closed check needed by every Phase 5 entry point.
+    The local validator import is intentionally deferred until call time: this
+    module is a dependency of the validator, while Phase 5 must still reuse the
+    exact Phase 1/2/3 canonical checks rather than maintain a weaker duplicate.
+    """
+
+    phase1_trace_path = orchestrate_dir / "trace/phase-1.trace.json"
+    phase3_trace_path = orchestrate_dir / "trace/phase-3.trace.json"
+    require_no_symlink_in_repo_path(
+        phase1_trace_path,
+        repo_root,
+        "Phase 1 trace",
+    )
+    require_no_symlink_in_repo_path(
+        phase3_trace_path,
+        repo_root,
+        "Phase 3 freeze trace",
+    )
+    phase1_trace = read_json(phase1_trace_path)
+    expected_phase1_fields = {
+        "trace-schema",
+        "trace-contract-version",
+        "status",
+        "source-documents",
+        "initial-framework",
+        "initial-change-plan",
+        "review-gate",
+    }
+    if set(phase1_trace) != expected_phase1_fields:
+        raise ValueError("terminal Phase 1 trace字段不符合v7契约")
+    if (
+        phase1_trace.get("trace-schema") != PHASE_TRACE_SCHEMAS["phase-1"]
+        or phase1_trace.get("trace-contract-version") != TRACE_CONTRACT_VERSION
+        or normalize_code(phase1_trace.get("status"))
+        != "initial-plan-written"
+    ):
+        raise ValueError(
+            "Phase 5要求terminal Phase 1："
+            "status=initial-plan-written且使用当前trace contract"
+        )
+    phase1_gate = phase1_trace.get("review-gate")
+    if (
+        not isinstance(phase1_gate, dict)
+        or set(phase1_gate)
+        != {"status", "writer-id", "reviews", "repairs"}
+        or normalize_code(phase1_gate.get("status")) != "passed"
+        or not phase1_gate.get("reviews")
+    ):
+        raise ValueError(
+            "Phase 5要求canonical Phase 1 passed review-gate"
+        )
+    for field, path in (
+        (
+            "initial-framework",
+            orchestrate_dir / "phase-works/phase-1/initial-framework.json",
+        ),
+        (
+            "initial-change-plan",
+            orchestrate_dir / "phase-works/phase-1/initial-change-plan.md",
+        ),
+    ):
+        ref = phase1_trace.get(field)
+        if (
+            not isinstance(ref, dict)
+            or set(ref) != {"artifact-path", "sha256"}
+            or ref.get("artifact-path")
+            != lexical_repo_relative_path(path, repo_root)
+            or not path.is_file()
+            or ref.get("sha256") != sha256_file(path)
+        ):
+            raise ValueError(f"Phase 1 {field} authority drift")
+
+    phase2_trace_path = orchestrate_dir / "trace/phase-2.trace.json"
+    require_no_symlink_in_repo_path(
+        phase2_trace_path,
+        repo_root,
+        "Phase 2 trace",
+    )
+    phase2_trace = read_json(phase2_trace_path)
+    expected_phase2_fields = {
+        "trace-schema",
+        "trace-contract-version",
+        "status",
+        "work-queue-path",
+        "sources",
+        "phase-report-path",
+    }
+    if (
+        set(phase2_trace) != expected_phase2_fields
+        or phase2_trace.get("trace-schema")
+        != PHASE_TRACE_SCHEMAS["phase-2"]
+        or phase2_trace.get("trace-contract-version")
+        != TRACE_CONTRACT_VERSION
+        or normalize_code(phase2_trace.get("status"))
+        != "source-atoms-written"
+    ):
+        raise ValueError(
+            "Phase 5要求canonical source-atoms-written Phase 2 trace"
+        )
+    phase2_sources = phase2_trace.get("sources")
+    if not isinstance(phase2_sources, list) or not phase2_sources:
+        raise ValueError("Phase 2 trace.sources必须是非空array")
+    phase2_by_source: Dict[str, Dict[str, object]] = {}
+    expected_phase2_source_fields = {
+        "source-document",
+        "atom-json-path",
+        "atom-json-sha256",
+        "atom-markdown-path",
+        "canonical-owner",
+        "read-status",
+        "atom-count",
+        "delivery-directive-atom-count",
+        "blockers",
+    }
+    for row in phase2_sources:
+        if (
+            not isinstance(row, dict)
+            or set(row) != expected_phase2_source_fields
+        ):
+            raise ValueError("Phase 2 trace source row字段非法")
+        source_document = normalize_code(row.get("source-document"))
+        if not source_document or source_document in phase2_by_source:
+            raise ValueError("Phase 2 trace source重复或为空")
+        phase2_by_source[source_document] = row
+
+    atom_root = (
+        orchestrate_dir / "phase-works/phase-2/source-obligation-atoms"
+    )
+    require_no_symlink_in_repo_path(
+        atom_root,
+        repo_root,
+        "Phase 2 atom authority root",
+    )
+    if not atom_root.is_dir():
+        raise ValueError("Phase 2 atom authority root必须是directory")
+    phase2_owner_ids: List[str] = []
+    atom_sources: set[str] = set()
+    expected_atom_top_fields = {
+        "trace-schema",
+        "trace-contract-version",
+        "source-document",
+        "source-sha256",
+        "read-status",
+        "canonical-owner",
+        "source-role",
+        "phase-1-candidate-changes-capabilities-considered",
+        "source-atoms",
+        "blockers",
+        "language-self-check",
+    }
+    expected_atom_fields = {
+        "source-atom-id",
+        "line-ranges",
+        "atom-type",
+        "source-fact",
+        "normativity",
+        "candidate-status",
+        "candidate-artifact-projection",
+        "candidate-owner-change",
+        "candidate-target-capability",
+        "delivery-directives",
+        "rationale",
+    }
+    for atom_path in sorted(atom_root.glob("*.atoms.json")):
+        require_no_symlink_in_repo_path(
+            atom_path,
+            repo_root,
+            "Phase 2 atom authority",
+        )
+        atom_data = read_json(atom_path)
+        if (
+            set(atom_data) != expected_atom_top_fields
+            or atom_data.get("trace-schema") != SOURCE_ATOMS_SCHEMA
+            or atom_data.get("trace-contract-version")
+            != TRACE_CONTRACT_VERSION
+        ):
+            raise ValueError(f"Phase 2 atom envelope非法：{atom_path}")
+        source_document = normalize_code(atom_data.get("source-document"))
+        source_path = repo_root / source_document
+        owner = squash(atom_data.get("canonical-owner"))
+        atoms = atom_data.get("source-atoms")
+        if (
+            not source_document
+            or source_document in atom_sources
+            or not owner
+            or not source_path.is_file()
+            or atom_data.get("source-sha256") != sha256_file(source_path)
+            or not isinstance(atoms, list)
+            or not atoms
+            or any(
+                not isinstance(atom, dict)
+                or set(atom) != expected_atom_fields
+                for atom in atoms
+            )
+        ):
+            raise ValueError(
+                f"Phase 2 atom source/owner/rows非法：{atom_path}"
+            )
+        atom_sources.add(source_document)
+        if owner not in phase2_owner_ids:
+            phase2_owner_ids.append(owner)
+        trace_row = phase2_by_source.get(source_document)
+        directive_count = sum(
+            1
+            for atom in atoms
+            if isinstance(atom.get("delivery-directives"), list)
+            and atom.get("delivery-directives")
+        )
+        if (
+            trace_row is None
+            or trace_row.get("atom-json-path")
+            != lexical_repo_relative_path(atom_path, repo_root)
+            or trace_row.get("atom-json-sha256") != sha256_file(atom_path)
+            or trace_row.get("canonical-owner") != owner
+            or trace_row.get("atom-count") != len(atoms)
+            or trace_row.get("delivery-directive-atom-count")
+            != directive_count
+        ):
+            raise ValueError(
+                f"Phase 2 trace未绑定当前atom authority：{source_document}"
+            )
+    if atom_sources != set(phase2_by_source):
+        raise ValueError("Phase 2 trace sources与atom authorities不一致")
+
+    phase3_trace = read_json(phase3_trace_path)
+    expected_phase3_fields = {
+        "trace-schema",
+        "trace-contract-version",
+        "decision",
+        "global-atom-index-path",
+        "global-atom-index-sha256",
+        "coverage-review-path",
+        "coverage-review-sha256",
+        "review-gate",
+        "issues",
+    }
+    if set(phase3_trace) != expected_phase3_fields:
+        missing = sorted(expected_phase3_fields - set(phase3_trace))
+        extra = sorted(set(phase3_trace) - expected_phase3_fields)
+        raise ValueError(
+            "terminal Phase 3 trace字段非法；"
+            f"missing={missing}，extra={extra}"
+        )
+    if (
+        phase3_trace.get("trace-schema") != PHASE_TRACE_SCHEMAS["phase-3"]
+        or phase3_trace.get("trace-contract-version")
+        != TRACE_CONTRACT_VERSION
+        or normalize_code(phase3_trace.get("decision"))
+        != "coverage-complete"
+    ):
+        raise ValueError(
+            "Phase 5只接受coverage-complete的当前v7 Phase 3 freeze"
+        )
+    if phase3_trace.get("issues") != []:
+        raise ValueError("coverage-complete Phase 3 trace要求issues=[]")
+
+    global_index_path = (
+        orchestrate_dir
+        / "change-capability-anchors/obligation-atom-index.json"
+    )
+    coverage_review_path = (
+        orchestrate_dir / "phase-works/phase-3/coverage-review.json"
+    )
+    for label, path, path_field, digest_field in (
+        (
+            "global atom index",
+            global_index_path,
+            "global-atom-index-path",
+            "global-atom-index-sha256",
+        ),
+        (
+            "coverage review",
+            coverage_review_path,
+            "coverage-review-path",
+            "coverage-review-sha256",
+        ),
+    ):
+        require_no_symlink_in_repo_path(path, repo_root, label)
+        if (
+            phase3_trace.get(path_field)
+            != lexical_repo_relative_path(path, repo_root)
+        ):
+            raise ValueError(f"Phase 3 {label} path drift")
+        if (
+            not path.is_file()
+            or phase3_trace.get(digest_field) != sha256_file(path)
+        ):
+            raise ValueError(f"Phase 3 {label} digest drift")
+
+    coverage_review = read_json(coverage_review_path)
+    if (
+        set(coverage_review)
+        != {
+            "trace-schema",
+            "trace-contract-version",
+            "artifact-path",
+            "documents",
+            "gap-atoms",
+            "remainder-dispositions",
+            "mapping-ambiguities",
+            "summary",
+            "decision",
+            "language-self-check",
+        }
+        or coverage_review.get("artifact-path")
+        != lexical_repo_relative_path(
+            coverage_review_path.with_suffix(".md"),
+            repo_root,
+        )
+        or coverage_review.get("trace-schema")
+        != PHASE3_COVERAGE_REVIEW_SCHEMA
+        or coverage_review.get("trace-contract-version")
+        != TRACE_CONTRACT_VERSION
+        or normalize_code(coverage_review.get("decision"))
+        != "coverage-complete"
+    ):
+        raise ValueError(
+            "Phase 3 coverage review必须是coverage-complete的当前v7 authority"
+        )
+
+    gate = phase3_trace.get("review-gate")
+    if (
+        not isinstance(gate, dict)
+        or set(gate)
+        != {
+            "status",
+            "phase-2-canonical-owner-ids",
+            "phase-2-aggregate-writer-id",
+            "phase-3-writer-id",
+            "reviews",
+            "repairs",
+        }
+        or normalize_code(gate.get("status")) != "passed"
+    ):
+        raise ValueError("Phase 5要求canonical Phase 3 passed review-gate")
+    owner_ids = gate.get("phase-2-canonical-owner-ids")
+    aggregate_writer = squash(gate.get("phase-2-aggregate-writer-id"))
+    phase3_writer = squash(gate.get("phase-3-writer-id"))
+    if (
+        owner_ids != phase2_owner_ids
+        or not aggregate_writer
+        or not phase3_writer
+        or len(set(phase2_owner_ids + [aggregate_writer, phase3_writer]))
+        != len(phase2_owner_ids) + 2
+    ):
+        raise ValueError("Phase 3 producer identities或Phase 2 owners漂移")
+    reviews = gate.get("reviews")
+    repairs = gate.get("repairs")
+    if (
+        not isinstance(reviews, list)
+        or not reviews
+        or not isinstance(repairs, list)
+        or len(repairs) != len(reviews) - 1
+        or not isinstance(reviews[-1], dict)
+    ):
+        raise ValueError("Phase 3 passed review history不完整")
+    final_review = reviews[-1]
+    expected_review_fields = {
+        "round",
+        "stage",
+        "reviewer-id",
+        "phase-2-validator-status",
+        "phase-3-validator-status",
+        "delivery-directive-status",
+        "evidence-authority-sha256",
+        "finding-fingerprints",
+    }
+    if any(
+        not isinstance(review, dict)
+        or set(review) != expected_review_fields
+        or review.get("round") != index
+        for index, review in enumerate(reviews, start=1)
+    ):
+        raise ValueError("Phase 3 review history字段或round非法")
+    reviewer_ids = [squash(review.get("reviewer-id")) for review in reviews]
+    if (
+        any(not reviewer for reviewer in reviewer_ids)
+        or len(reviewer_ids) != len(set(reviewer_ids))
+        or set(reviewer_ids).intersection(
+            set(phase2_owner_ids + [aggregate_writer, phase3_writer])
+        )
+    ):
+        raise ValueError("Phase 3 reviewer identity不独立")
+    if (
+        normalize_code(final_review.get("stage")) != "phase-3-closure"
+        or normalize_code(final_review.get("phase-2-validator-status"))
+        != "passed"
+        or normalize_code(final_review.get("phase-3-validator-status"))
+        != "passed"
+        or normalize_code(final_review.get("delivery-directive-status"))
+        != "passed"
+        or final_review.get("finding-fingerprints") != []
+    ):
+        raise ValueError(
+            "Phase 3 terminal review必须完成双validator与directive audit，"
+            "且不得保留finding"
+        )
+
+    # Reuse the canonical validators after the compact authority checks above.
+    # The deferred import avoids a module-import cycle while ensuring Phase 5
+    # cannot accept a digest-consistent but structurally forged Phase 1/2/3
+    # generation (missing mirrors, incomplete coverage, dangling GA refs, etc).
+    from validate_source_aligned_orchestrate import (  # noqa: PLC0415
+        validate_phase_1,
+        validate_phase_2,
+        validate_phase_3,
+    )
+
+    canonical_reporter = IssueReporter()
+    validate_phase_1(orchestrate_dir, repo_root, canonical_reporter)
+    validate_phase_2(orchestrate_dir, repo_root, canonical_reporter)
+    validate_phase_3(orchestrate_dir, repo_root, canonical_reporter)
+    if canonical_reporter.error_count:
+        error_rows = [
+            f"{issue.rule_id}: {issue.message}"
+            for issue in canonical_reporter.issues
+            if issue.severity == "error"
+        ]
+        details = "；".join(error_rows[:8])
+        if len(error_rows) > 8:
+            details += f"；其余{len(error_rows) - 8}项"
+        raise ValueError(
+            "Phase 1/2/3 frozen evidence未通过canonical validator："
+            + details
+        )
+
+    evidence_digest = evidence_authority_sha256(
+        orchestrate_dir,
+        repo_root,
+    )
+    if (
+        normalize_code(final_review.get("evidence-authority-sha256"))
+        != evidence_digest
+    ):
+        raise ValueError(
+            "Phase 3 terminal review未绑定当前frozen evidence authority"
+        )
+    return {
+        "frozen-evidence-authority-sha256": evidence_digest,
+        "phase-3-freeze-trace-sha256": sha256_file(phase3_trace_path),
+    }
 
 
 def read_json(path: Path) -> Dict[str, object]:

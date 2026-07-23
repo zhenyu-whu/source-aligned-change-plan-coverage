@@ -1,0 +1,109 @@
+{
+  "schema": "source-aligned-neutral-sequencing-oracle-v1",
+  "trials-per-case": 3,
+  "required-pass-count": 3,
+  "cases": [
+    {
+      "id": "case-01",
+      "category": "valid-foundation",
+      "required-invariants": [
+        "允许至多一个首位、无Capability advancement、无hard dependency的最小foundation。",
+        "foundation由紧邻的摘要outcome Change直接消费。",
+        "不得在foundation与首个outcome之间插入第二个enabler。"
+      ],
+      "forbidden-outcomes": [
+        "把领域解析、提交或摘要行为放入foundation。",
+        "形成foundation到enabler再到outcome的链。"
+      ]
+    },
+    {
+      "id": "case-02",
+      "category": "shadow-enabler",
+      "required-invariants": [
+        "请求边界与持久化适配器的最小必要部分并入提交、回执和保存记录的同一outcome Change。",
+        "首个普通Change产生可观察提交结果并拥有direct Capability requirement。"
+      ],
+      "forbidden-outcomes": [
+        "保留只让未来功能开始的独立接口骨架Change。",
+        "以technical Capability slice为shadow enabler豁免。"
+      ]
+    },
+    {
+      "id": "case-03",
+      "category": "planned-guard",
+      "required-invariants": [
+        "草稿编辑与其最小所有权校验、拒绝语义和审计在同一Change交付。",
+        "身份或授权Capability只推进当前编辑outcome所需的最小normative slice。"
+      ],
+      "forbidden-outcomes": [
+        "在被保护编辑表面出现前先独立建设完整guard框架。",
+        "用安全重要性制造hard dependency。"
+      ]
+    },
+    {
+      "id": "case-04",
+      "category": "existing-baseline-guard",
+      "required-invariants": [
+        "允许其作为独立Change，因为它保护当前baseline的既有运行表面。",
+        "Change必须以可测延迟隔离、拒绝语义和告警作为自己的operational outcome与acceptance。",
+        "必须产生相应security、reliability或operations Capability requirement slice。"
+      ],
+      "forbidden-outcomes": [
+        "仅把它描述为未来接口的guard enabler。",
+        "只有design或verification slice而无normative operational behavior。"
+      ]
+    },
+    {
+      "id": "case-05",
+      "category": "explicit-milestone-and-deferred",
+      "required-invariants": [
+        "提取milestone-scope与explicit-deferred directive。",
+        "导入Change位于导出Change之前，导出不得阻塞里程碑一prefix。",
+        "排序理由来自source明示而非Capability或技术层。"
+      ],
+      "forbidden-outcomes": [
+        "按候选列表原顺序先做导出。",
+        "把导入导出强行合并为一个当前里程碑Change。"
+      ]
+    },
+    {
+      "id": "case-06",
+      "category": "directive-false-positive",
+      "required-invariants": [
+        "steady-state调用链不得提取为explicit precedence。",
+        "将当前查询与可视化outcome所需的最小存储、服务、API和页面切片按cohesion组合。",
+        "顺序只能由真实outcome、acceptance和hard dependency proof决定。"
+      ],
+      "forbidden-outcomes": [
+        "按存储到服务到API到页面的技术层次生成roadmap。",
+        "把架构调用方向当作source delivery directive。"
+      ]
+    },
+    {
+      "id": "case-07",
+      "category": "existing-baseline-engineering-outcome",
+      "required-invariants": [
+        "允许独立Change，因为它立即改善既有任务的可靠性和运维结果。",
+        "Change包含重试边界、不重复结算、最终失败告警与故障注入验收。",
+        "至少推进一个reliability或operations Capability requirement。"
+      ],
+      "forbidden-outcomes": [
+        "把它降级为纯design、tooling或verification Change。",
+        "因没有新增终端用户页面而判定无outcome。"
+      ]
+    },
+    {
+      "id": "case-08",
+      "category": "no-foundation-thin-outcome",
+      "required-invariants": [
+        "已有运行baseline时不创建foundation。",
+        "实体、仓储和命令的最小必要部分并入创建清单outcome Change。",
+        "首项Change直接交付创建、即时可见和空标题错误语义。"
+      ],
+      "forbidden-outcomes": [
+        "保留独立领域骨架或仓储Change。",
+        "把未来共享、归档或搜索提前纳入。"
+      ]
+    }
+  ]
+}
