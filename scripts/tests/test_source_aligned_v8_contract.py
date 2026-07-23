@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
-"""source_aligned_v7_contract 的聚焦单元测试。
+"""source_aligned_v8_contract 的聚焦单元测试。
 
 所有 fixture 都位于 tempfile；不得读取或修改 repository 中现存的
 openspec/orchestrate generation。
@@ -31,7 +31,7 @@ from source_aligned_trace_lib import (  # noqa: E402
     TRACE_CONTRACT_VERSION,
     WORKFLOW_COMPLETION_SCHEMA,
 )
-from source_aligned_v7_contract import (  # noqa: E402
+from source_aligned_v8_contract import (  # noqa: E402
     DEPENDENCY_TERMINAL_PATHS,
     load_final_integration_review,
     load_final_roadmap,
@@ -781,6 +781,11 @@ def _review(digest: str, *, status: str = "passed") -> Dict[str, object]:
                 "note": "依赖边具有稳定产出与消费关系",
             }
         ],
+        "dependency-set-result": {
+            "result": "passed",
+            "evidence-ga-ids": ["GA-0001", "GA-0005"],
+            "note": "逐Change消费者闭包未发现遗漏的hard dependency边",
+        },
         "guard-link-results": [
             {
                 "guard-link-id": "notice-access-guard",

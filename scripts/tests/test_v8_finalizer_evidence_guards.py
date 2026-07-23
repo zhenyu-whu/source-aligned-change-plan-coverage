@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
-"""v7 finalizer one-shot gate 与 final review evidence 归属负例。"""
+"""v8 finalizer one-shot gate 与 final review evidence 归属负例。"""
 
 from __future__ import annotations
 
@@ -28,8 +28,8 @@ from source_aligned_trace_lib import (  # noqa: E402
     sha256_file,
     write_json,
 )
-import test_v7_phase5_handoff as handoff  # noqa: E402
-from test_v7_phase5_handoff import V7HandoffFixture  # noqa: E402
+import test_v8_phase5_handoff as handoff  # noqa: E402
+from test_v8_phase5_handoff import V8HandoffFixture  # noqa: E402
 from validate_source_aligned_orchestrate import (  # noqa: E402
     validate_change_outcome_evidence_alignment,
     validate_final_integration_review_candidate,
@@ -191,7 +191,7 @@ class FinalizerOneShotTests(unittest.TestCase):
     def test_successful_blocked_finalization_is_one_shot(self) -> None:
         with tempfile.TemporaryDirectory() as raw:
             root = Path(raw)
-            fixture = V7HandoffFixture(root)
+            fixture = V8HandoffFixture(root)
             fixture.publish()
             handoff.WorkflowCompletionTests()._publish_workflow(
                 fixture,
@@ -312,8 +312,8 @@ class FinalReviewEvidenceScopeTests(unittest.TestCase):
     @staticmethod
     def _published_review(
         root: Path,
-    ) -> tuple[V7HandoffFixture, Path, dict[str, object]]:
-        fixture = V7HandoffFixture(root)
+    ) -> tuple[V8HandoffFixture, Path, dict[str, object]]:
+        fixture = V8HandoffFixture(root)
         initial_path = (
             fixture.orchestrate
             / "phase-works/phase-1/initial-framework.json"
@@ -344,7 +344,7 @@ class FinalReviewEvidenceScopeTests(unittest.TestCase):
 
     def _assert_review_scope_error(
         self,
-        fixture: V7HandoffFixture,
+        fixture: V8HandoffFixture,
     ) -> None:
         reporter = IssueReporter()
         validate_final_integration_review_candidate(
@@ -390,7 +390,7 @@ class FinalReviewEvidenceScopeTests(unittest.TestCase):
         self,
     ) -> None:
         with tempfile.TemporaryDirectory() as raw:
-            fixture = V7HandoffFixture(Path(raw))
+            fixture = V8HandoffFixture(Path(raw))
             roadmap = copy.deepcopy(fixture.roadmap)
             roadmap["changes"][0]["outcome-ga-ids"] = ["GA-0003"]
             reporter = IssueReporter()

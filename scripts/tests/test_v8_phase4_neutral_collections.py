@@ -28,6 +28,7 @@ from source_aligned_trace_lib import (  # noqa: E402
     source_atom_file_name,
     write_json,
 )
+from review_fixture_v8 import write_review_result  # noqa: E402
 
 
 class Phase4NeutralCollectionsTest(unittest.TestCase):
@@ -270,7 +271,7 @@ class Phase4NeutralCollectionsTest(unittest.TestCase):
             )
         return reporter
 
-    def test_delivery_directive_order_and_summary_match_v7_contract(self) -> None:
+    def test_delivery_directive_order_and_summary_match_v8_contract(self) -> None:
         self.assertTrue(
             validator._delivery_directives_are_canonical(
                 [
@@ -317,26 +318,24 @@ class Phase4NeutralCollectionsTest(unittest.TestCase):
     def test_phase3_terminal_review_requires_directive_audit_status(
         self,
     ) -> None:
+        review = write_review_result(
+            self.orchestrate,
+            self.repo,
+            phase="phase-3",
+            round_number=1,
+            reviewer_id="reviewer-terminal",
+            authority={"evidence-authority-sha256": "a" * 64},
+        )
         gate = {
             "status": "passed",
+            "terminal-reason": "none",
             "phase-2-canonical-owner-ids": [
                 "writer-alpha",
                 "writer-zeta",
             ],
             "phase-2-aggregate-writer-id": "writer-phase2-aggregate",
             "phase-3-writer-id": "writer-phase3",
-            "reviews": [
-                {
-                    "round": 1,
-                    "stage": "phase-3-closure",
-                    "reviewer-id": "reviewer-terminal",
-                    "phase-2-validator-status": "passed",
-                    "phase-3-validator-status": "passed",
-                    "delivery-directive-status": "passed",
-                    "evidence-authority-sha256": "a" * 64,
-                    "finding-fingerprints": [],
-                }
-            ],
+            "reviews": [review],
             "repairs": [],
         }
         trace_path = self.orchestrate / "trace/phase-3.trace.json"
@@ -356,7 +355,18 @@ class Phase4NeutralCollectionsTest(unittest.TestCase):
         self.assertEqual(status, "passed")
         self.assertEqual(reporter.error_count, 0)
 
-        del gate["reviews"][0]["delivery-directive-status"]
+        review_path = (
+            self.orchestrate
+            / "phase-works/phase-3/reviews/review-round-01.json"
+        )
+        review_payload = json.loads(
+            review_path.read_text(encoding="utf-8")
+        )
+        del review_payload["delivery-directive-status"]
+        write_json(review_path, review_payload)
+        gate["reviews"][0]["review-result-sha256"] = sha256_file(
+            review_path
+        )
         missing_reporter = IssueReporter()
         with mock.patch.object(
             validator,
@@ -374,8 +384,7 @@ class Phase4NeutralCollectionsTest(unittest.TestCase):
             issue.rule_id
             for issue in missing_reporter.issues
         }
-        self.assertIn("phase3-review-row-fields", rule_ids)
-        self.assertIn("phase3-review-directive-status", rule_ids)
+        self.assertIn("phase3-review-result", rule_ids)
         self.assertIn("phase3-review-terminal-review", rule_ids)
 
     def test_neutral_surface_is_source_scoped_and_hides_candidate_routing(self) -> None:

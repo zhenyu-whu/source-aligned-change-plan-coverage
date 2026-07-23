@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
-"""source-aligned v7 framework/roadmap 的严格机器契约。
+"""source-aligned v8 framework/roadmap 的严格机器契约。
 
 本模块只验证结构、引用、图、顺序和 evidence closure；它不使用关键词判断
 outcome 是否“像业务”，该语义判断属于 independent writer/reviewer。
@@ -182,7 +182,7 @@ def _load(path: Path, schema: str, fields: Set[str]) -> Dict[str, object]:
     try:
         data = json.loads(path.read_text(encoding="utf-8"))
     except FileNotFoundError as exc:
-        raise ValueError(f"缺少v7 authority：{path}") from exc
+        raise ValueError(f"缺少v8 authority：{path}") from exc
     except json.JSONDecodeError as exc:
         raise ValueError(f"{path}不是合法JSON：{exc}") from exc
     data = _exact(data, fields, str(path))
@@ -1078,6 +1078,7 @@ def load_final_integration_review(
         "change-results",
         "outcome-thread-results",
         "dependency-edge-results",
+        "dependency-set-result",
         "guard-link-results",
         "occurrence-chain-result",
         "findings",
@@ -1158,6 +1159,24 @@ def load_final_integration_review(
     unit_results("outcome-thread-results", "outcome-thread-id")
     unit_results("dependency-edge-results", "dependency-id")
     unit_results("guard-link-results", "guard-link-id")
+    dependency_set = _exact(
+        data.get("dependency-set-result"),
+        {"result", "note", "evidence-ga-ids"},
+        "dependency-set-result",
+    )
+    if dependency_set.get("result") not in {"passed", "failed"}:
+        raise ValueError("dependency-set-result.result非法")
+    _text(
+        dependency_set.get("note"),
+        "dependency-set-result.note",
+        chinese=True,
+    )
+    _ga_ids(
+        dependency_set.get("evidence-ga-ids"),
+        "dependency-set-result.evidence-ga-ids",
+        known_ga_ids=None,
+        allow_empty=False,
+    )
     occurrence = _exact(
         data.get("occurrence-chain-result"),
         {"result", "note", "evidence-ga-ids"},
@@ -1193,6 +1212,10 @@ def load_final_integration_review(
                 raise ValueError(f"passed final integration review含failed {field}")
         if occurrence.get("result") != "passed":
             raise ValueError("passed final integration review要求occurrence chain passed")
+        if dependency_set.get("result") != "passed":
+            raise ValueError(
+                "passed final integration review要求dependency set completeness passed"
+            )
     return data
 
 

@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
-"""Publish the v7 workflow completion marker after an independent final review."""
+"""Publish the v8 workflow completion marker after an independent final review."""
 
 from __future__ import annotations
 
@@ -31,7 +31,7 @@ from source_aligned_trace_lib import (
     sha256_file,
     write_json,
 )
-from source_aligned_v7_contract import (
+from source_aligned_v8_contract import (
     load_final_integration_review,
     terminal_authority_sha256,
 )
@@ -298,7 +298,7 @@ def _pre_completion_validation(
         reporter.error(
             "finalizer-pending-manifest",
             manifest_path,
-            "finalizer要求现有合法manifest v3且workflow-status=pending",
+            "finalizer要求现有合法manifest v4且workflow-status=pending",
         )
     validate_manifest(
         orchestrate_dir,

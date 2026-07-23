@@ -30,10 +30,17 @@ from source_aligned_trace_lib import (
     KEBAB_CASE_RE,
     INITIAL_FRAMEWORK_SCHEMA,
     MANIFEST_SCHEMA,
+    MAX_BOUNDED_REPAIRS,
+    MAX_BOUNDED_REVIEWS,
     PHASE3_COVERAGE_REVIEW_SCHEMA,
     PHASE_TRACE_SCHEMAS,
     PHASE1_REVIEW_CHECKS,
+    PHASE1_REVIEW_RESULT_SCHEMA,
+    PHASE3_REVIEW_CHECKS,
+    PHASE3_REVIEW_RESULT_SCHEMA,
+    PHASE5_REVIEW_RESULT_SCHEMA,
     PHASE5_REVIEW_CHECKS,
+    REVIEW_GATE_TERMINAL_REASONS,
     SOURCE_ATOMS_SCHEMA,
     TRACE_CONTRACT_VERSION,
     WORKFLOW_COMPLETION_SCHEMA,
@@ -41,9 +48,11 @@ from source_aligned_trace_lib import (
     lexical_repo_relative_path as lexical_rel,
     IssueReporter,
     atom_plan_mapping_markdown_path,
+    bounded_review_result_path,
     cell,
     evidence_authority_sha256,
     line_range_label,
+    load_bounded_review_result,
     merge_line_ranges,
     range_covered_by,
     read_json,
@@ -89,7 +98,7 @@ from phase5_plan_refit import (
     validate_gap_framework_impacts,
     validate_mapping as validate_phase5_mapping,
 )
-from source_aligned_v7_contract import (
+from source_aligned_v8_contract import (
     load_final_integration_review_attempt,
     load_final_integration_review_attempt_result,
     load_final_integration_review,
@@ -185,7 +194,7 @@ DELIVERY_DIRECTIVE_ORDER = (
 
 
 def _delivery_directives_are_canonical(value: object) -> bool:
-    """Require the v7 source-facing enum and its declared semantic order."""
+    """Require the v8 source-facing enum and its declared semantic order."""
     if not isinstance(value, list):
         return False
     if any(not isinstance(item, str) or item not in DELIVERY_DIRECTIVES for item in value):
@@ -530,6 +539,23 @@ def expected_manifest_artifacts(
         )
     atom_root = orchestrate_dir / "phase-works/phase-2/source-obligation-atoms"
     specs.extend((path, SOURCE_ATOMS_SCHEMA, "phase-2", "semantic", "source-atoms") for path in sorted(atom_root.glob("*.atoms.json")))
+    review_schemas = {
+        "phase-1": PHASE1_REVIEW_RESULT_SCHEMA,
+        "phase-3": PHASE3_REVIEW_RESULT_SCHEMA,
+        "phase-5": PHASE5_REVIEW_RESULT_SCHEMA,
+    }
+    for phase, schema in review_schemas.items():
+        review_root = orchestrate_dir / f"phase-works/{phase}/reviews"
+        specs.extend(
+            (
+                review_path,
+                schema,
+                phase,
+                "control",
+                "bounded-review-result",
+            )
+            for review_path in sorted(review_root.glob("review-round-*.json"))
+        )
     return {
         rel(path, repo_root): (schema, phase, authority, role)
         for path, schema, phase, authority, role in specs
@@ -564,10 +590,10 @@ def validate_manifest(
         path,
         reporter,
         "manifest-fields",
-        "manifest v3",
+        "manifest v4",
     )
     if data.get("authority") != "control":
-        reporter.error("manifest-authority", path, "manifest v3 authority必须是control")
+        reporter.error("manifest-authority", path, "manifest v4 authority必须是control")
     if data.get("orchestrate-dir") != rel(orchestrate_dir, repo_root):
         reporter.error("manifest-orchestrate-dir", path, "orchestrate-dir 与 CLI --orchestrate-dir 不一致")
     phase_statuses = data.get("phase-statuses")
@@ -767,142 +793,181 @@ def _validate_phase1_review_gate(
         return ""
     exact_fields(
         gate,
-        {"status", "writer-id", "reviews", "repairs"},
+        {"status", "terminal-reason", "writer-id", "reviews", "repairs"},
         trace_path,
         reporter,
         "phase1-review-gate-fields",
         "review-gate",
     )
     status = normalize_code(gate.get("status"))
+    terminal_reason = normalize_code(gate.get("terminal-reason"))
     if status not in {"pending", "passed", "blocked"}:
         reporter.error(
             "phase1-review-gate-status",
             trace_path,
             "review-gate.status只允许pending|passed|blocked",
         )
+    if terminal_reason not in REVIEW_GATE_TERMINAL_REASONS:
+        reporter.error(
+            "phase1-review-gate-terminal-reason",
+            trace_path,
+            "review-gate.terminal-reason非法",
+        )
+    if status in {"pending", "passed"} and terminal_reason != "none":
+        reporter.error(
+            "phase1-review-gate-terminal-reason",
+            trace_path,
+            "pending|passed要求terminal-reason=none",
+        )
+    if status == "blocked" and terminal_reason == "none":
+        reporter.error(
+            "phase1-review-gate-terminal-reason",
+            trace_path,
+            "blocked要求非none terminal-reason",
+        )
+
     writer_id = squash(gate.get("writer-id"))
     if not writer_id:
-        reporter.error("phase1-review-gate-writer", trace_path, "review-gate.writer-id不得为空")
+        reporter.error(
+            "phase1-review-gate-writer",
+            trace_path,
+            "review-gate.writer-id不得为空",
+        )
     reviews = gate.get("reviews")
-    if (
-        not isinstance(reviews, list)
-        or len(reviews) > 3
-        or (status in {"passed", "blocked"} and len(reviews) < 1)
-    ):
+    if not isinstance(reviews, list) or len(reviews) > MAX_BOUNDED_REVIEWS:
         reporter.error(
             "phase1-review-gate-reviews",
             trace_path,
-            (
-                "pending的reviews必须是0..3轮；"
-                "passed|blocked的reviews必须是1..3轮"
-            ),
+            f"reviews必须是0..{MAX_BOUNDED_REVIEWS}轮",
         )
         reviews = []
+    repairs = gate.get("repairs")
+    if not isinstance(repairs, list) or len(repairs) > MAX_BOUNDED_REPAIRS:
+        reporter.error(
+            "phase1-review-gate-repairs",
+            trace_path,
+            f"repairs必须是0..{MAX_BOUNDED_REPAIRS}轮",
+        )
+        repairs = []
+
+    orchestrate_dir = trace_path.parent.parent
+    repo_root = repo_root_for_path(trace_path)
     reviewer_ids: Set[str] = set()
     review_by_round: Dict[int, Dict[str, object]] = {}
-    for index, review in enumerate(reviews, start=1):
-        if not isinstance(review, dict):
-            reporter.error("phase1-review-row", trace_path, f"reviews[{index}]必须是object")
+    review_ref_by_round: Dict[int, Dict[str, object]] = {}
+    authority_integrity_violation = False
+    identity_reuse_violation = False
+    for index, review_ref in enumerate(reviews, start=1):
+        if not isinstance(review_ref, dict):
+            reporter.error(
+                "phase1-review-row",
+                trace_path,
+                f"reviews[{index}]必须是object",
+            )
             continue
         exact_fields(
-            review,
-            {
-                "round",
-                "reviewer-id",
-                "validator-status",
-                "initial-framework-sha256",
-                "initial-change-plan-sha256",
-                "semantic-checks",
-                "finding-fingerprints",
-            },
+            review_ref,
+            {"round", "review-result-path", "review-result-sha256"},
             trace_path,
             reporter,
             "phase1-review-row-fields",
             f"reviews[{index}]",
         )
-        round_number = review.get("round")
-        if round_number != index:
-            reporter.error("phase1-review-round", trace_path, "review round必须从1连续递增")
+        if review_ref.get("round") != index:
+            reporter.error(
+                "phase1-review-round",
+                trace_path,
+                "review round必须从1连续递增",
+            )
             continue
-        reviewer_id = squash(review.get("reviewer-id"))
-        if not reviewer_id or reviewer_id == writer_id or reviewer_id in reviewer_ids:
-            reporter.error("phase1-reviewer-independence", trace_path, f"round {index} reviewer必须fresh且不同于writer")
-        reviewer_ids.add(reviewer_id)
-        if normalize_code(review.get("validator-status")) not in {"passed", "failed"}:
-            reporter.error("phase1-review-validator-status", trace_path, f"round {index} validator-status非法")
-        for digest_field in (
-            "initial-framework-sha256",
-            "initial-change-plan-sha256",
-        ):
-            if not _is_sha256(review.get(digest_field)):
+        result_path = bounded_review_result_path(
+            orchestrate_dir,
+            "phase-1",
+            index,
+        )
+        expected_path = rel(result_path, repo_root)
+        if review_ref.get("review-result-path") != expected_path:
+            authority_integrity_violation = True
+            if not (
+                status == "blocked"
+                and terminal_reason == "authority-integrity"
+            ):
                 reporter.error(
-                    "phase1-review-authority-sha",
+                    "phase1-review-result-path",
                     trace_path,
-                    f"round {index} {digest_field}非法",
+                    f"round {index} review result path非法",
                 )
-        semantic_checks = review.get("semantic-checks")
-        if not isinstance(semantic_checks, list):
-            reporter.error(
-                "phase1-review-semantic-checks",
-                trace_path,
-                f"round {index} semantic-checks必须是array",
-            )
-            semantic_checks = []
-        actual_checks: List[str] = []
-        for check_index, check in enumerate(semantic_checks):
-            if not isinstance(check, dict):
-                reporter.error(
-                    "phase1-review-semantic-check",
-                    trace_path,
-                    f"round {index} semantic-checks[{check_index}]必须是object",
-                )
-                continue
-            exact_fields(
-                check,
-                {"check", "result"},
-                trace_path,
-                reporter,
-                "phase1-review-semantic-check-fields",
-                f"round {index} semantic-checks[{check_index}]",
-            )
-            actual_checks.append(normalize_code(check.get("check")))
-            if check.get("result") not in {"passed", "failed"}:
-                reporter.error(
-                    "phase1-review-semantic-check-result",
-                    trace_path,
-                    f"round {index} semantic check result非法",
-                )
-        if tuple(actual_checks) != PHASE1_REVIEW_CHECKS:
-            reporter.error(
-                "phase1-review-semantic-check-order",
-                trace_path,
-                f"round {index} semantic-checks必须按固定九项排列",
-            )
-        findings = review.get("finding-fingerprints")
         if (
-            not isinstance(findings, list)
-            or any(not _is_sha256(item) for item in findings)
-            or len(findings) != len(set(findings))
+            not result_path.is_file()
+            or review_ref.get("review-result-sha256")
+            != sha256_file(result_path)
         ):
-            reporter.error("phase1-review-findings", trace_path, f"round {index} finding-fingerprints必须是唯一SHA-256 array")
-        review_by_round[index] = review
-    repairs = gate.get("repairs")
-    if not isinstance(repairs, list) or len(repairs) > 2:
-        reporter.error("phase1-review-gate-repairs", trace_path, "repairs必须是0..2条")
-        repairs = []
+            authority_integrity_violation = True
+            if not (
+                status == "blocked"
+                and terminal_reason == "authority-integrity"
+            ):
+                reporter.error(
+                    "phase1-review-result-digest",
+                    trace_path,
+                    f"round {index} review result缺失或digest漂移",
+                )
+            continue
+        try:
+            result = load_bounded_review_result(
+                result_path,
+                "phase-1",
+                expected_round=index,
+            )
+        except Exception as exc:  # noqa: BLE001
+            authority_integrity_violation = True
+            if not (
+                status == "blocked"
+                and terminal_reason == "authority-integrity"
+            ):
+                reporter.error(
+                    "phase1-review-result",
+                    result_path,
+                    str(exc),
+                )
+            continue
+        reviewer_id = squash(result.get("reviewer-id"))
+        if (
+            not reviewer_id
+            or reviewer_id == writer_id
+            or reviewer_id in reviewer_ids
+        ):
+            identity_reuse_violation = True
+            if not (
+                status == "blocked"
+                and terminal_reason == "identity-reuse"
+            ):
+                reporter.error(
+                    "phase1-reviewer-independence",
+                    result_path,
+                    f"round {index} reviewer必须fresh且不同于writer",
+                )
+        reviewer_ids.add(reviewer_id)
+        review_by_round[index] = result
+        review_ref_by_round[index] = review_ref
+
     repair_by_round: Dict[int, Dict[str, object]] = {}
     repair_writer_ids: Set[str] = set()
-    forced_block_rounds: Set[int] = set()
+    no_op_rounds: Set[int] = set()
     for index, repair in enumerate(repairs, start=1):
         if not isinstance(repair, dict):
-            reporter.error("phase1-repair-row", trace_path, f"repairs[{index}]必须是object")
+            reporter.error(
+                "phase1-repair-row",
+                trace_path,
+                f"repairs[{index}]必须是object",
+            )
             continue
         exact_fields(
             repair,
             {
                 "round",
                 "repair-writer-id",
-                "finding-fingerprints",
+                "source-review-result-sha256",
                 "before-initial-framework-sha256",
                 "after-initial-framework-sha256",
             },
@@ -912,8 +977,16 @@ def _validate_phase1_review_gate(
             f"repairs[{index}]",
         )
         round_number = repair.get("round")
-        if not isinstance(round_number, int) or round_number not in review_by_round or round_number > len(reviews) or round_number in repair_by_round:
-            reporter.error("phase1-repair-round", trace_path, f"repair round必须唯一对应已存在review：{round_number}")
+        if (
+            round_number != index
+            or round_number not in review_by_round
+            or round_number in repair_by_round
+        ):
+            reporter.error(
+                "phase1-repair-round",
+                trace_path,
+                "repair round必须连续且唯一对应同轮review",
+            )
             continue
         repair_by_round[round_number] = repair
         repair_writer = squash(repair.get("repair-writer-id"))
@@ -923,42 +996,81 @@ def _validate_phase1_review_gate(
             or repair_writer in reviewer_ids
             or repair_writer in repair_writer_ids
         ):
-            reporter.error("phase1-repair-independence", trace_path, f"round {round_number} repair writer身份不独立")
+            identity_reuse_violation = True
+            if not (
+                status == "blocked"
+                and terminal_reason == "identity-reuse"
+            ):
+                reporter.error(
+                    "phase1-repair-independence",
+                    trace_path,
+                    f"round {round_number} repair writer身份不独立",
+                )
         repair_writer_ids.add(repair_writer)
-        findings = repair.get("finding-fingerprints")
-        review_findings = review_by_round[round_number].get("finding-fingerprints")
+        review_result = review_by_round[round_number]
+        review_ref = review_ref_by_round[round_number]
+        if review_result.get("decision") != "repair-required":
+            reporter.error(
+                "phase1-repair-source-decision",
+                trace_path,
+                f"round {round_number} 只有repair-required review可以repair",
+            )
         if (
-            not isinstance(findings, list)
-            or not findings
-            or any(not _is_sha256(item) for item in findings)
-            or len(findings) != len(set(findings))
+            repair.get("source-review-result-sha256")
+            != review_ref.get("review-result-sha256")
         ):
-            reporter.error("phase1-repair-findings", trace_path, f"round {round_number} repair findings必须是非空唯一SHA-256 array")
-        elif isinstance(review_findings, list) and not set(findings).issubset(set(review_findings)):
-            reporter.error("phase1-repair-findings", trace_path, f"round {round_number} repair不得消费review之外的finding")
+            authority_integrity_violation = True
+            if not (
+                status == "blocked"
+                and terminal_reason == "authority-integrity"
+            ):
+                reporter.error(
+                    "phase1-repair-source-review",
+                    trace_path,
+                    f"round {round_number} repair未绑定完整review result",
+                )
         before_sha = repair.get("before-initial-framework-sha256")
         after_sha = repair.get("after-initial-framework-sha256")
         if not _is_sha256(before_sha) or not _is_sha256(after_sha):
-            reporter.error("phase1-repair-plan-sha", trace_path, f"round {round_number} repair plan digest非法")
-        if before_sha != review_by_round[round_number].get(
-            "initial-framework-sha256"
-        ):
-            reporter.error("phase1-repair-before", trace_path, f"round {round_number} before digest与review不一致")
+            authority_integrity_violation = True
+            if not (
+                status == "blocked"
+                and terminal_reason == "authority-integrity"
+            ):
+                reporter.error(
+                    "phase1-repair-plan-sha",
+                    trace_path,
+                    f"round {round_number} repair authority digest非法",
+                )
+        if before_sha != review_result.get("initial-framework-sha256"):
+            authority_integrity_violation = True
+            if not (
+                status == "blocked"
+                and terminal_reason == "authority-integrity"
+            ):
+                reporter.error(
+                    "phase1-repair-before",
+                    trace_path,
+                    f"round {round_number} before digest与review result不一致",
+                )
         next_review = review_by_round.get(round_number + 1)
-        if next_review and after_sha != next_review.get(
-            "initial-framework-sha256"
+        if (
+            next_review is not None
+            and after_sha != next_review.get("initial-framework-sha256")
         ):
-            reporter.error("phase1-repair-after", trace_path, f"round {round_number} after digest与下一轮review不一致")
+            authority_integrity_violation = True
+            if not (
+                status == "blocked"
+                and terminal_reason == "authority-integrity"
+            ):
+                reporter.error(
+                    "phase1-repair-after",
+                    trace_path,
+                    f"round {round_number} after digest与下一轮review不一致",
+                )
         if before_sha == after_sha:
-            forced_block_rounds.add(round_number)
+            no_op_rounds.add(round_number)
 
-    terminal_repair = repair_by_round.get(len(reviews))
-    terminal_noop_repair = (
-        status == "blocked"
-        and isinstance(terminal_repair, dict)
-        and terminal_repair.get("before-initial-framework-sha256")
-        == terminal_repair.get("after-initial-framework-sha256")
-    )
     reviews_after_latest_repair = len(reviews) == len(repairs)
     reviews_after_latest_review = len(reviews) == len(repairs) + 1
     if status == "pending":
@@ -966,136 +1078,195 @@ def _validate_phase1_review_gate(
             reporter.error(
                 "phase1-review-gate-cardinality",
                 trace_path,
-                (
-                    "pending只允许reviews==repairs（等待fresh review）或"
-                    "reviews==repairs+1（等待repair或terminalization）"
-                ),
+                "pending只允许reviews==repairs或reviews==repairs+1",
             )
-    elif not (
-        reviews_after_latest_review
-        or (reviews_after_latest_repair and terminal_noop_repair)
-    ):
+        if len(reviews) >= MAX_BOUNDED_REVIEWS:
+            reporter.error(
+                "phase1-review-budget",
+                trace_path,
+                "第五轮review后不得保持pending",
+            )
+    elif terminal_reason == "no-op-repair":
+        if not reviews_after_latest_repair or not no_op_rounds:
+            reporter.error(
+                "phase1-review-gate-cardinality",
+                trace_path,
+                "no-op-repair blocked要求reviews==repairs且最后repair为no-op",
+            )
+    elif terminal_reason in {"identity-reuse", "authority-integrity"}:
+        if not (reviews_after_latest_repair or reviews_after_latest_review):
+            reporter.error(
+                "phase1-review-gate-cardinality",
+                trace_path,
+                "identity/authority blocked history cardinality非法",
+            )
+    elif not reviews_after_latest_review:
         reporter.error(
             "phase1-review-gate-cardinality",
             trace_path,
-            "terminal gate通常要求reviews==repairs+1；仅blocked的terminal no-op repair允许两者等长",
+            "review terminal要求reviews==repairs+1",
         )
 
     for round_number in range(1, len(reviews)):
-        repair = repair_by_round.get(round_number)
-        if repair is None:
-            reporter.error("phase1-repair-missing", trace_path, f"round {round_number}与下一轮review之间缺少repair")
+        if round_number not in repair_by_round:
+            reporter.error(
+                "phase1-repair-missing",
+                trace_path,
+                f"round {round_number}与下一轮review之间缺少repair",
+            )
     if (
         status == "pending"
         and reviews_after_latest_repair
         and reviews
-        and terminal_repair is None
+        and len(reviews) not in repair_by_round
     ):
         reporter.error(
             "phase1-repair-missing",
             trace_path,
-            "reviews==repairs的pending状态必须由最后一轮repair结束并等待fresh review",
+            "reviews==repairs的pending必须由最后一轮repair结束",
         )
 
     current_framework_sha = (
         sha256_file(framework_path) if framework_path.exists() else ""
     )
     current_plan_sha = sha256_file(plan_path) if plan_path.exists() else ""
-    if reviews_after_latest_review and reviews:
-        last_review = reviews[-1]
+    if reviews_after_latest_review and review_by_round:
+        last_result = review_by_round.get(len(reviews))
+        if isinstance(last_result, dict):
+            if (
+                current_framework_sha
+                and last_result.get("initial-framework-sha256")
+                != current_framework_sha
+            ):
+                authority_integrity_violation = True
+                if not (
+                    status == "blocked"
+                    and terminal_reason == "authority-integrity"
+                ):
+                    reporter.error(
+                        "phase1-review-current-framework",
+                        trace_path,
+                        "最后review result未绑定当前initial framework",
+                    )
+            if (
+                current_plan_sha
+                and last_result.get("initial-change-plan-sha256")
+                != current_plan_sha
+            ):
+                authority_integrity_violation = True
+                if not (
+                    status == "blocked"
+                    and terminal_reason == "authority-integrity"
+                ):
+                    reporter.error(
+                        "phase1-review-current-plan",
+                        trace_path,
+                        "最后review result未绑定当前initial plan mirror",
+                    )
+    elif reviews_after_latest_repair and repairs:
+        terminal_repair = repair_by_round.get(len(reviews))
         if (
-            current_framework_sha
-            and last_review.get("initial-framework-sha256")
-            != current_framework_sha
-        ):
-            reporter.error(
-                "phase1-review-current-framework",
-                trace_path,
-                "等待repair/terminalization时最后一轮review必须绑定当前initial framework digest",
-            )
-        if (
-            current_plan_sha
-            and last_review.get("initial-change-plan-sha256")
-            != current_plan_sha
-        ):
-            reporter.error(
-                "phase1-review-current-plan",
-                trace_path,
-                "等待repair/terminalization时最后一轮review必须绑定当前initial plan mirror digest",
-            )
-    elif reviews_after_latest_repair and reviews and isinstance(terminal_repair, dict):
-        if (
-            current_framework_sha
+            isinstance(terminal_repair, dict)
+            and current_framework_sha
             and terminal_repair.get("after-initial-framework-sha256")
             != current_framework_sha
         ):
+            authority_integrity_violation = True
+            if not (
+                status == "blocked"
+                and terminal_reason == "authority-integrity"
+            ):
+                reporter.error(
+                    "phase1-repair-current-framework",
+                    trace_path,
+                    "最后repair.after未绑定当前initial framework",
+                )
+
+    if no_op_rounds:
+        last_no_op = min(no_op_rounds)
+        if status != "blocked" or terminal_reason != "no-op-repair":
             reporter.error(
-                "phase1-repair-current-framework",
+                "phase1-review-no-progress",
                 trace_path,
-                "等待fresh review时最后一轮repair.after digest必须绑定当前initial framework",
+                "no-op repair要求立即blocked且terminal-reason=no-op-repair",
             )
-    seen_findings: Set[str] = set()
-    for round_number in range(1, len(reviews) + 1):
-        review = review_by_round.get(round_number, {})
-        findings = review.get("finding-fingerprints") if isinstance(review, dict) else []
-        if not isinstance(findings, list) or not all(_is_sha256(item) for item in findings):
-            continue
-        if seen_findings.intersection(findings):
-            forced_block_rounds.add(round_number)
-        seen_findings.update(findings)
-    if len(reviews) == 3:
-        terminal_review = reviews[-1] if isinstance(reviews[-1], dict) else {}
-        terminal_checks = terminal_review.get("semantic-checks")
-        terminal_checks_passed = isinstance(terminal_checks, list) and all(
-            isinstance(check, dict) and check.get("result") == "passed"
-            for check in terminal_checks
-        )
-        if (
-            normalize_code(terminal_review.get("validator-status")) != "passed"
-            or terminal_review.get("finding-fingerprints") != []
-            or not terminal_checks_passed
-        ):
-            forced_block_rounds.add(3)
-    if forced_block_rounds and status != "blocked":
+        if len(reviews) > last_no_op or len(repairs) > last_no_op:
+            reporter.error(
+                "phase1-review-continued-after-block",
+                trace_path,
+                "no-op repair后不得继续review或repair",
+            )
+
+    if (
+        terminal_reason == "identity-reuse"
+        and not identity_reuse_violation
+    ):
         reporter.error(
-            "phase1-review-no-progress",
+            "phase1-reviewer-independence",
             trace_path,
-            "repair未改变plan、finding重复或第三次review未通过时review-gate只能blocked",
+            "identity-reuse缺少对应身份违规",
         )
-    if forced_block_rounds and len(reviews) > min(forced_block_rounds):
+    if (
+        terminal_reason == "authority-integrity"
+        and not authority_integrity_violation
+    ):
         reporter.error(
-            "phase1-review-continued-after-block",
+            "phase1-review-result-digest",
             trace_path,
-            "重复finding或no-op repair一经确认必须立即blocked，不得继续repair/review",
+            "authority-integrity缺少对应完整性违规",
         )
-    if status == "passed" and reviews:
-        last = reviews[-1]
-        checks = last.get("semantic-checks")
-        checks_passed = isinstance(checks, list) and all(
-            isinstance(check, dict) and check.get("result") == "passed"
-            for check in checks
+
+    last_result = review_by_round.get(len(reviews))
+    if (
+        status == "pending"
+        and reviews_after_latest_review
+        and isinstance(last_result, dict)
+        and last_result.get("decision") == "blocked"
+    ):
+        reporter.error(
+            "phase1-review-block-reason",
+            trace_path,
+            "blocked review decision要求立即terminal blocked",
         )
-        if (
-            last.get("finding-fingerprints") != []
-            or normalize_code(last.get("validator-status")) != "passed"
-            or not checks_passed
-        ):
+    if status == "passed":
+        if not isinstance(last_result, dict) or last_result.get("decision") != "passed":
             reporter.error(
                 "phase1-review-pass",
                 trace_path,
-                "passed要求最后review无finding、validator通过且九项semantic check全部passed",
+                "passed要求最后review result decision=passed",
             )
-    if status == "blocked" and reviews and not forced_block_rounds:
-        last = reviews[-1]
-        if last.get("finding-fingerprints") == [] and normalize_code(last.get("validator-status")) == "passed":
+    if status == "blocked":
+        if (
+            len(reviews) == MAX_BOUNDED_REVIEWS
+            and isinstance(last_result, dict)
+            and last_result.get("decision") == "blocked"
+            and terminal_reason == "review-blocked"
+        ):
+            reporter.error(
+                "phase1-review-budget",
+                trace_path,
+                "第五轮finding/check/validator failure必须使用budget-exhausted",
+            )
+        if terminal_reason == "review-blocked" and (
+            not isinstance(last_result, dict)
+            or last_result.get("decision") != "blocked"
+        ):
             reporter.error(
                 "phase1-review-block-reason",
                 trace_path,
-                "blocked必须由当前blocking finding、validator failure、重复finding或no-op repair支持",
+                "review-blocked要求最后review decision=blocked",
+            )
+        if terminal_reason == "budget-exhausted" and (
+            len(reviews) != MAX_BOUNDED_REVIEWS
+            or not isinstance(last_result, dict)
+            or last_result.get("decision") != "blocked"
+        ):
+            reporter.error(
+                "phase1-review-budget",
+                trace_path,
+                "budget-exhausted要求第五轮review decision=blocked",
             )
     return status
-
-
 def validate_phase_1(orchestrate_dir: Path, repo_root: Path, reporter: IssueReporter) -> None:
     path = orchestrate_dir / "trace/phase-1.trace.json"
     data = json_obj(path, reporter, PHASE_TRACE_SCHEMAS["phase-1"])
@@ -1784,7 +1955,7 @@ def load_phase3_gap_atoms(
 
 def repo_root_for_path(path: Path) -> Path:
     for parent in path.parents:
-        if parent.name == "orchestrate" and parent.parent.name == "openspec":
+        if parent.parent.name == "openspec":
             return parent.parent.parent
     return Path.cwd()
 
@@ -1802,8 +1973,13 @@ def _validate_phase3_review_gate(
     exact_fields(
         gate,
         {
-            "status", "phase-2-canonical-owner-ids", "phase-2-aggregate-writer-id",
-            "phase-3-writer-id", "reviews", "repairs",
+            "status",
+            "terminal-reason",
+            "phase-2-canonical-owner-ids",
+            "phase-2-aggregate-writer-id",
+            "phase-3-writer-id",
+            "reviews",
+            "repairs",
         },
         trace_path,
         reporter,
@@ -1811,8 +1987,31 @@ def _validate_phase3_review_gate(
         "review-gate",
     )
     status = normalize_code(gate.get("status"))
+    terminal_reason = normalize_code(gate.get("terminal-reason"))
     if status not in {"pending", "passed", "blocked"}:
-        reporter.error("phase3-review-gate-status", trace_path, "review-gate.status只允许pending|passed|blocked")
+        reporter.error(
+            "phase3-review-gate-status",
+            trace_path,
+            "review-gate.status只允许pending|passed|blocked",
+        )
+    if terminal_reason not in REVIEW_GATE_TERMINAL_REASONS:
+        reporter.error(
+            "phase3-review-gate-terminal-reason",
+            trace_path,
+            "review-gate.terminal-reason非法",
+        )
+    if status in {"pending", "passed"} and terminal_reason != "none":
+        reporter.error(
+            "phase3-review-gate-terminal-reason",
+            trace_path,
+            "pending|passed要求terminal-reason=none",
+        )
+    if status == "blocked" and terminal_reason == "none":
+        reporter.error(
+            "phase3-review-gate-terminal-reason",
+            trace_path,
+            "blocked要求非none terminal-reason",
+        )
 
     owner_ids = gate.get("phase-2-canonical-owner-ids")
     if (
@@ -1848,114 +2047,167 @@ def _validate_phase3_review_gate(
     aggregate_writer = squash(gate.get("phase-2-aggregate-writer-id"))
     phase3_writer = squash(gate.get("phase-3-writer-id"))
     if not aggregate_writer or not phase3_writer:
-        reporter.error("phase3-review-gate-writers", trace_path, "Phase 2 aggregate与Phase 3 writer ID不得为空")
+        reporter.error(
+            "phase3-review-gate-writers",
+            trace_path,
+            "Phase 2 aggregate与Phase 3 writer ID不得为空",
+        )
     producer_ids = set(owner_ids) | {aggregate_writer, phase3_writer}
     if "" in producer_ids or len(producer_ids) != len(owner_ids) + 2:
-        reporter.error("phase3-review-gate-producer-identity", trace_path, "全部producer identity必须互不相同")
+        reporter.error(
+            "phase3-review-gate-producer-identity",
+            trace_path,
+            "全部producer identity必须互不相同",
+        )
 
     reviews = gate.get("reviews")
     repairs = gate.get("repairs")
-    if not isinstance(reviews, list) or len(reviews) > 3:
-        reporter.error("phase3-review-gate-reviews", trace_path, "reviews必须是最多3轮的array")
+    if not isinstance(reviews, list) or len(reviews) > MAX_BOUNDED_REVIEWS:
+        reporter.error(
+            "phase3-review-gate-reviews",
+            trace_path,
+            f"reviews必须是0..{MAX_BOUNDED_REVIEWS}轮",
+        )
         reviews = []
-    if not isinstance(repairs, list) or len(repairs) > 2:
-        reporter.error("phase3-review-gate-repairs", trace_path, "repairs必须是最多2轮的array")
+    if not isinstance(repairs, list) or len(repairs) > MAX_BOUNDED_REPAIRS:
+        reporter.error(
+            "phase3-review-gate-repairs",
+            trace_path,
+            f"repairs必须是0..{MAX_BOUNDED_REPAIRS}轮",
+        )
         repairs = []
-    if status == "passed" and not reviews:
-        reporter.error("phase3-review-gate-terminal-review", trace_path, "passed要求至少一轮review")
 
     reviewer_ids: Set[str] = set()
-    review_rows: Dict[int, Dict[str, object]] = {}
-    seen_fingerprints: Set[str] = set()
-    repeated_fingerprint = False
-    for index, row in enumerate(reviews, start=1):
-        if not isinstance(row, dict):
-            reporter.error("phase3-review-row", trace_path, f"reviews[{index}]必须是object")
+    review_results: Dict[int, Dict[str, object]] = {}
+    review_refs: Dict[int, Dict[str, object]] = {}
+    authority_integrity_violation = False
+    identity_reuse_violation = False
+    for index, review_ref in enumerate(reviews, start=1):
+        if not isinstance(review_ref, dict):
+            reporter.error(
+                "phase3-review-row",
+                trace_path,
+                f"reviews[{index}]必须是object",
+            )
             continue
         exact_fields(
-            row,
-            {
-                "round", "stage", "reviewer-id", "phase-2-validator-status",
-                "phase-3-validator-status", "delivery-directive-status",
-                "evidence-authority-sha256", "finding-fingerprints",
-            },
+            review_ref,
+            {"round", "review-result-path", "review-result-sha256"},
             trace_path,
             reporter,
             "phase3-review-row-fields",
             f"reviews[{index}]",
         )
-        round_number = row.get("round")
-        if round_number != index:
-            reporter.error("phase3-review-round", trace_path, "review round必须从1开始连续且与array顺序一致")
-        if isinstance(round_number, int):
-            review_rows[round_number] = row
-        stage = normalize_code(row.get("stage"))
-        if stage not in {"phase-2-preflight", "phase-3-closure"}:
-            reporter.error("phase3-review-stage", trace_path, f"reviews[{index}].stage非法：{stage}")
-        phase2_status = normalize_code(row.get("phase-2-validator-status"))
-        phase3_status = normalize_code(row.get("phase-3-validator-status"))
-        if phase2_status not in {"passed", "failed"}:
-            reporter.error("phase3-review-validator-status", trace_path, "Phase 2 validator status只允许passed|failed")
-        if phase3_status not in {"passed", "failed", "not-run"}:
-            reporter.error("phase3-review-validator-status", trace_path, "Phase 3 validator status只允许passed|failed|not-run")
-        directive_status = normalize_code(row.get("delivery-directive-status"))
-        if directive_status not in {"passed", "failed"}:
+        if review_ref.get("round") != index:
             reporter.error(
-                "phase3-review-directive-status",
+                "phase3-review-round",
                 trace_path,
-                "delivery-directive-status只允许passed|failed",
+                "review round必须从1连续递增",
             )
-        if stage == "phase-2-preflight" and phase3_status != "not-run":
-            reporter.error("phase3-review-validator-stage", trace_path, "phase-2-preflight要求Phase 3 validator status=not-run")
-        if stage == "phase-3-closure" and phase3_status == "not-run":
-            reporter.error("phase3-review-validator-stage", trace_path, "phase-3-closure不允许Phase 3 validator status=not-run")
-        reviewer_id = squash(row.get("reviewer-id"))
-        if not reviewer_id or reviewer_id in reviewer_ids or reviewer_id in producer_ids:
-            reporter.error("phase3-reviewer-identity", trace_path, "fresh reviewer ID必须非空、唯一且不得与producer重用")
-        reviewer_ids.add(reviewer_id)
-        digest = normalize_code(row.get("evidence-authority-sha256"))
-        if not _is_sha256(digest):
-            reporter.error("phase3-review-authority-digest", trace_path, f"reviews[{index}] authority digest非法")
-        findings = row.get("finding-fingerprints")
+            continue
+        result_path = bounded_review_result_path(
+            orchestrate_dir,
+            "phase-3",
+            index,
+        )
+        if review_ref.get("review-result-path") != rel(result_path, repo_root):
+            authority_integrity_violation = True
+            if not (
+                status == "blocked"
+                and terminal_reason == "authority-integrity"
+            ):
+                reporter.error(
+                    "phase3-review-result-path",
+                    trace_path,
+                    f"round {index} review result path非法",
+                )
         if (
-            not isinstance(findings, list)
-            or any(not isinstance(item, str) or not _is_sha256(item) for item in findings)
-            or len(findings) != len(set(findings))
+            not result_path.is_file()
+            or review_ref.get("review-result-sha256")
+            != sha256_file(result_path)
         ):
-            reporter.error("phase3-review-findings", trace_path, "finding-fingerprints必须是唯一SHA-256 array")
-            findings = []
-        normalized_findings = set(findings)
-        if seen_fingerprints.intersection(normalized_findings):
-            repeated_fingerprint = True
-        seen_fingerprints.update(normalized_findings)
+            authority_integrity_violation = True
+            if not (
+                status == "blocked"
+                and terminal_reason == "authority-integrity"
+            ):
+                reporter.error(
+                    "phase3-review-result-digest",
+                    trace_path,
+                    f"round {index} review result缺失或digest漂移",
+                )
+            continue
+        try:
+            result = load_bounded_review_result(
+                result_path,
+                "phase-3",
+                expected_round=index,
+            )
+        except Exception as exc:  # noqa: BLE001
+            authority_integrity_violation = True
+            if not (
+                status == "blocked"
+                and terminal_reason == "authority-integrity"
+            ):
+                reporter.error(
+                    "phase3-review-result",
+                    result_path,
+                    str(exc),
+                )
+            continue
+        reviewer_id = squash(result.get("reviewer-id"))
+        if (
+            not reviewer_id
+            or reviewer_id in reviewer_ids
+            or reviewer_id in producer_ids
+        ):
+            identity_reuse_violation = True
+            if not (
+                status == "blocked"
+                and terminal_reason == "identity-reuse"
+            ):
+                reporter.error(
+                    "phase3-reviewer-identity",
+                    result_path,
+                    "fresh reviewer必须唯一且不得与producer重用",
+                )
+        reviewer_ids.add(reviewer_id)
+        review_results[index] = result
+        review_refs[index] = review_ref
 
     repair_ids: Set[str] = set()
-    no_op_repair = False
+    repair_rows: Dict[int, Dict[str, object]] = {}
+    no_op_rounds: Set[int] = set()
     for index, row in enumerate(repairs, start=1):
         if not isinstance(row, dict):
-            reporter.error("phase3-repair-row", trace_path, f"repairs[{index}]必须是object")
+            reporter.error(
+                "phase3-repair-row",
+                trace_path,
+                f"repairs[{index}]必须是object",
+            )
             continue
         exact_fields(
             row,
             {
-                "round", "repair-writer-id", "finding-fingerprints",
-                "before-evidence-authority-sha256", "after-evidence-authority-sha256",
+                "round",
+                "repair-writer-id",
+                "source-review-result-sha256",
+                "before-evidence-authority-sha256",
+                "after-evidence-authority-sha256",
             },
             trace_path,
             reporter,
             "phase3-repair-row-fields",
             f"repairs[{index}]",
         )
-        round_number = row.get("round")
-        if round_number != index:
-            reporter.error("phase3-repair-round", trace_path, "repair round必须从1开始连续且与array顺序一致")
-        review = review_rows.get(round_number) if isinstance(round_number, int) else None
-        findings = row.get("finding-fingerprints")
-        if not isinstance(findings, list) or not findings or any(not _is_sha256(item) for item in findings):
-            reporter.error("phase3-repair-findings", trace_path, "repair finding-fingerprints必须是非空SHA-256 array")
-            findings = []
-        if review is None or findings != review.get("finding-fingerprints"):
-            reporter.error("phase3-repair-finding-coverage", trace_path, "repair必须恰好消费同轮review的全部findings")
+        if row.get("round") != index or index not in review_results:
+            reporter.error(
+                "phase3-repair-round",
+                trace_path,
+                "repair round必须连续且对应同轮review",
+            )
+            continue
+        repair_rows[index] = row
         writer_id = squash(row.get("repair-writer-id"))
         if (
             not writer_id
@@ -1963,32 +2215,167 @@ def _validate_phase3_review_gate(
             or writer_id in producer_ids
             or writer_id in reviewer_ids
         ):
-            reporter.error("phase3-repair-writer-identity", trace_path, "fresh repair writer ID必须与producer/reviewer/其他repair互不相同")
+            identity_reuse_violation = True
+            if not (
+                status == "blocked"
+                and terminal_reason == "identity-reuse"
+            ):
+                reporter.error(
+                    "phase3-repair-writer-identity",
+                    trace_path,
+                    "fresh repair writer必须与producer/reviewer/其他repair不同",
+                )
         repair_ids.add(writer_id)
+        review_result = review_results[index]
+        review_ref = review_refs[index]
+        if review_result.get("decision") != "repair-required":
+            reporter.error(
+                "phase3-repair-source-decision",
+                trace_path,
+                "只有repair-required review可以repair",
+            )
+        if (
+            row.get("source-review-result-sha256")
+            != review_ref.get("review-result-sha256")
+        ):
+            authority_integrity_violation = True
+            if not (
+                status == "blocked"
+                and terminal_reason == "authority-integrity"
+            ):
+                reporter.error(
+                    "phase3-repair-source-review",
+                    trace_path,
+                    "repair必须绑定完整上一轮review result",
+                )
         before = normalize_code(row.get("before-evidence-authority-sha256"))
         after = normalize_code(row.get("after-evidence-authority-sha256"))
         if not _is_sha256(before) or not _is_sha256(after):
-            reporter.error("phase3-repair-authority-digest", trace_path, "repair before/after digest必须是SHA-256")
-        if review is not None and before != normalize_code(review.get("evidence-authority-sha256")):
-            reporter.error("phase3-repair-before-digest", trace_path, "repair before digest必须绑定同轮review authority")
+            authority_integrity_violation = True
+            if not (
+                status == "blocked"
+                and terminal_reason == "authority-integrity"
+            ):
+                reporter.error(
+                    "phase3-repair-authority-digest",
+                    trace_path,
+                    "repair before/after必须是SHA-256",
+                )
+        if before != review_result.get("evidence-authority-sha256"):
+            authority_integrity_violation = True
+            if not (
+                status == "blocked"
+                and terminal_reason == "authority-integrity"
+            ):
+                reporter.error(
+                    "phase3-repair-before-digest",
+                    trace_path,
+                    "repair before digest必须绑定同轮review authority",
+                )
+        next_review = review_results.get(index + 1)
+        if (
+            next_review is not None
+            and after != next_review.get("evidence-authority-sha256")
+        ):
+            authority_integrity_violation = True
+            if not (
+                status == "blocked"
+                and terminal_reason == "authority-integrity"
+            ):
+                reporter.error(
+                    "phase3-repair-after-digest",
+                    trace_path,
+                    "repair after digest必须绑定下一轮review authority",
+                )
         if before == after:
-            no_op_repair = True
+            no_op_rounds.add(index)
 
-    if len(repairs) > max(0, len(reviews)):
-        reporter.error("phase3-review-repair-cardinality", trace_path, "repair不得多于已完成review")
-    if (repeated_fingerprint or no_op_repair) and status != "blocked":
-        reporter.error("phase3-review-terminal-block", trace_path, "finding重复或no-op repair要求review-gate.status=blocked")
+    reviews_after_latest_repair = len(reviews) == len(repairs)
+    reviews_after_latest_review = len(reviews) == len(repairs) + 1
+    if status == "pending":
+        if not (reviews_after_latest_repair or reviews_after_latest_review):
+            reporter.error(
+                "phase3-review-repair-cardinality",
+                trace_path,
+                "pending只允许reviews==repairs或reviews==repairs+1",
+            )
+        if len(reviews) >= MAX_BOUNDED_REVIEWS:
+            reporter.error(
+                "phase3-review-budget",
+                trace_path,
+                "第五轮review后不得保持pending",
+            )
+    elif terminal_reason == "no-op-repair":
+        if not reviews_after_latest_repair or not no_op_rounds:
+            reporter.error(
+                "phase3-review-repair-cardinality",
+                trace_path,
+                "no-op-repair blocked要求最后repair为no-op",
+            )
+    elif terminal_reason in {"identity-reuse", "authority-integrity"}:
+        if not (reviews_after_latest_repair or reviews_after_latest_review):
+            reporter.error(
+                "phase3-review-repair-cardinality",
+                trace_path,
+                "identity/authority blocked history cardinality非法",
+            )
+    elif not reviews_after_latest_review:
+        reporter.error(
+            "phase3-review-repair-cardinality",
+            trace_path,
+            "review terminal要求reviews==repairs+1",
+        )
+    for round_number in range(1, len(reviews)):
+        if round_number not in repair_rows:
+            reporter.error(
+                "phase3-repair-missing",
+                trace_path,
+                f"round {round_number}与下一轮review之间缺少repair",
+            )
 
-    current_full_digest = ""
-    if status == "passed":
+    if (
+        status == "blocked"
+        and terminal_reason == "authority-integrity"
+        and reviews
+    ):
+        last_result_for_integrity = review_results.get(len(reviews))
+        include_phase3 = (
+            isinstance(last_result_for_integrity, dict)
+            and last_result_for_integrity.get("stage") == "phase-3-closure"
+        )
         try:
-            current_full_digest = evidence_authority_sha256(orchestrate_dir, repo_root)
-        except Exception as exc:  # noqa: BLE001
-            reporter.error("phase3-review-authority", trace_path, f"无法计算evidence authority digest：{exc}")
+            current_stage_digest = evidence_authority_sha256(
+                orchestrate_dir,
+                repo_root,
+                include_phase3=include_phase3,
+            )
+        except Exception:  # noqa: BLE001
+            authority_integrity_violation = True
+        else:
+            if reviews_after_latest_repair and repairs:
+                latest = repair_rows.get(len(reviews))
+                recorded = (
+                    latest.get("after-evidence-authority-sha256")
+                    if isinstance(latest, dict)
+                    else ""
+                )
+            else:
+                recorded = (
+                    last_result_for_integrity.get(
+                        "evidence-authority-sha256"
+                    )
+                    if isinstance(last_result_for_integrity, dict)
+                    else ""
+                )
+            if recorded != current_stage_digest:
+                authority_integrity_violation = True
+
     if status == "pending" and reviews:
-        latest_review = reviews[-1] if isinstance(reviews[-1], dict) else {}
-        latest_stage = normalize_code(latest_review.get("stage"))
-        include_phase3 = latest_stage == "phase-3-closure"
+        last_result = review_results.get(len(reviews))
+        include_phase3 = (
+            isinstance(last_result, dict)
+            and last_result.get("stage") == "phase-3-closure"
+        )
         try:
             current_stage_digest = evidence_authority_sha256(
                 orchestrate_dir,
@@ -1996,42 +2383,133 @@ def _validate_phase3_review_gate(
                 include_phase3=include_phase3,
             )
         except Exception as exc:  # noqa: BLE001
-            reporter.error("phase3-review-authority", trace_path, f"无法计算当前stage authority digest：{exc}")
+            reporter.error(
+                "phase3-review-authority",
+                trace_path,
+                f"无法计算当前stage authority digest：{exc}",
+            )
             current_stage_digest = ""
-        if len(repairs) == len(reviews):
-            latest_repair = repairs[-1] if isinstance(repairs[-1], dict) else {}
-            recorded = normalize_code(latest_repair.get("after-evidence-authority-sha256"))
+        if reviews_after_latest_repair and repairs:
+            latest = repair_rows.get(len(reviews))
+            recorded = (
+                latest.get("after-evidence-authority-sha256")
+                if isinstance(latest, dict)
+                else ""
+            )
         else:
-            recorded = normalize_code(latest_review.get("evidence-authority-sha256"))
+            recorded = (
+                last_result.get("evidence-authority-sha256")
+                if isinstance(last_result, dict)
+                else ""
+            )
         if recorded != current_stage_digest:
-            reporter.error("phase3-review-current-authority", trace_path, "pending gate的最新review/repair digest必须绑定当前stage authority")
-    if status == "passed" and reviews:
-        final_review = reviews[-1] if isinstance(reviews[-1], dict) else {}
+            reporter.error(
+                "phase3-review-current-authority",
+                trace_path,
+                "pending gate最新review/repair未绑定当前stage authority",
+            )
+
+    if no_op_rounds:
+        first_no_op = min(no_op_rounds)
+        if status != "blocked" or terminal_reason != "no-op-repair":
+            reporter.error(
+                "phase3-review-terminal-block",
+                trace_path,
+                "no-op repair要求立即blocked",
+            )
+        if len(reviews) > first_no_op or len(repairs) > first_no_op:
+            reporter.error(
+                "phase3-review-continued-after-block",
+                trace_path,
+                "no-op repair后不得继续review或repair",
+            )
+    if (
+        terminal_reason == "identity-reuse"
+        and not identity_reuse_violation
+    ):
+        reporter.error(
+            "phase3-reviewer-identity",
+            trace_path,
+            "identity-reuse缺少对应身份违规",
+        )
+    if (
+        terminal_reason == "authority-integrity"
+        and not authority_integrity_violation
+    ):
+        reporter.error(
+            "phase3-review-result-digest",
+            trace_path,
+            "authority-integrity缺少对应完整性违规",
+        )
+
+    last_result = review_results.get(len(reviews))
+    if (
+        status == "pending"
+        and reviews_after_latest_review
+        and isinstance(last_result, dict)
+        and last_result.get("decision") == "blocked"
+    ):
+        reporter.error(
+            "phase3-review-terminal-review",
+            trace_path,
+            "blocked review decision要求立即terminal blocked",
+        )
+    if status == "passed":
+        try:
+            current_full_digest = evidence_authority_sha256(
+                orchestrate_dir,
+                repo_root,
+            )
+        except Exception as exc:  # noqa: BLE001
+            reporter.error(
+                "phase3-review-authority",
+                trace_path,
+                f"无法计算evidence authority digest：{exc}",
+            )
+            current_full_digest = ""
         if (
-            normalize_code(final_review.get("stage")) != "phase-3-closure"
-            or normalize_code(final_review.get("phase-2-validator-status")) != "passed"
-            or normalize_code(final_review.get("phase-3-validator-status")) != "passed"
-            or normalize_code(final_review.get("delivery-directive-status")) != "passed"
-            or final_review.get("finding-fingerprints") != []
+            not isinstance(last_result, dict)
+            or last_result.get("decision") != "passed"
+            or last_result.get("evidence-authority-sha256")
+            != current_full_digest
         ):
             reporter.error(
                 "phase3-review-terminal-review",
                 trace_path,
-                "terminal review必须是phase-3-closure、双validator passed、delivery directive audit passed且无finding",
+                "passed要求最后review decision=passed并绑定当前完整evidence authority",
             )
-        if normalize_code(final_review.get("evidence-authority-sha256")) != current_full_digest:
-            reporter.error("phase3-review-terminal-authority", trace_path, "terminal review digest必须绑定当前完整evidence authority")
-        if len(repairs) != len(reviews) - 1:
-            reporter.error("phase3-review-repair-cardinality", trace_path, "passed要求每轮非terminal review后恰好一次repair")
-        if final_review.get("finding-fingerprints"):
+    if status == "blocked":
+        if (
+            len(reviews) == MAX_BOUNDED_REVIEWS
+            and isinstance(last_result, dict)
+            and last_result.get("decision") == "blocked"
+            and terminal_reason == "review-blocked"
+        ):
             reporter.error(
-                "phase3-review-repair-cardinality",
+                "phase3-review-budget",
                 trace_path,
-                "存在terminal finding时不得冻结；必须repair后由fresh reviewer形成无finding terminal round",
+                "第五轮finding/check/validator failure必须使用budget-exhausted",
+            )
+        if terminal_reason == "review-blocked" and (
+            not isinstance(last_result, dict)
+            or last_result.get("decision") != "blocked"
+        ):
+            reporter.error(
+                "phase3-review-terminal-review",
+                trace_path,
+                "review-blocked要求最后review decision=blocked",
+            )
+        if terminal_reason == "budget-exhausted" and (
+            len(reviews) != MAX_BOUNDED_REVIEWS
+            or not isinstance(last_result, dict)
+            or last_result.get("decision") != "blocked"
+        ):
+            reporter.error(
+                "phase3-review-budget",
+                trace_path,
+                "budget-exhausted要求第五轮review decision=blocked",
             )
     return status
-
-
 def validate_phase_3(
     orchestrate_dir: Path,
     repo_root: Path,
@@ -2054,7 +2532,7 @@ def validate_phase_3(
             trace_path,
             reporter,
             "phase3-trace-fields",
-            "blocked Phase 3 v5 trace",
+            "blocked Phase 3 v6 trace",
         )
         gate_status = _validate_phase3_review_gate(
             trace.get("review-gate"), trace_path, orchestrate_dir, repo_root, reporter,
@@ -2074,7 +2552,7 @@ def validate_phase_3(
         trace_path,
         reporter,
         "phase3-trace-fields",
-        "Phase 3 v5 trace",
+        "Phase 3 v6 trace",
     )
     expected_trace = {
         "global-atom-index-path": rel(index_path, repo_root),
@@ -2159,10 +2637,22 @@ def validate_phase_3(
         (phase3_dir / "phase-3-reviewer-report.md").resolve(),
         (phase3_dir / "phase-3-repair-report.md").resolve(),
     }
+    allowed_phase3_files.update(
+        bounded_review_result_path(
+            orchestrate_dir,
+            "phase-3",
+            round_number,
+        ).resolve()
+        for round_number in range(1, MAX_BOUNDED_REVIEWS + 1)
+    )
     if phase3_dir.exists():
         for path in phase3_dir.rglob("*"):
             if path.is_file() and path.resolve() not in allowed_phase3_files:
-                reporter.error("phase3-unexpected-artifact", path, "Phase 3 固定五产物契约不允许此文件")
+                reporter.error(
+                    "phase3-unexpected-artifact",
+                    path,
+                    "Phase 3 canonical authority/review-result契约不允许此文件",
+                )
 
     phase2_atoms = load_phase2_atoms(orchestrate_dir, reporter)
     read_full = read_full_sources(orchestrate_dir, repo_root)
@@ -3209,7 +3699,7 @@ def validate_phase_5(
     for name in legacy_names:
         path = work / name
         if path.exists():
-            reporter.error("phase5-legacy-artifact", path, "旧Phase 5或patch/checkpoint artifact已废弃，v7 workflow必须拒绝且不得迁移")
+            reporter.error("phase5-legacy-artifact", path, "旧Phase 5或patch/checkpoint artifact已废弃，v8 workflow必须拒绝且不得迁移")
 
     final_plan_path = work / "change-plan.md"
     final_changes: List[object] | None = None
@@ -3286,7 +3776,7 @@ def validate_phase_5(
             trace_path,
             reporter,
             "phase5-candidate-trace-fields",
-            "review-pending Phase 5 v6 trace",
+            "review-pending Phase 5 v7 trace",
         )
         candidate_paths = (
             ("framework-refit-trace", refit_path),
@@ -3370,6 +3860,8 @@ def validate_phase_5(
                     )
                 validate_phase5_review_gate(
                     trace.get("review-gate"),
+                    orchestrate_dir=orchestrate_dir,
+                    repo_root=repo_root,
                     current_digests=current_digests,
                 )
                 mapping_data = json_obj(
@@ -3439,7 +3931,7 @@ def validate_phase_5(
                 trace_path,
                 reporter,
                 "phase5-trace-fields",
-                "framework-refit blocked Phase 5 v6 trace",
+                "framework-refit blocked Phase 5 v7 trace",
             )
             if refit_status != "blocked":
                 reporter.error(
@@ -3523,7 +4015,7 @@ def validate_phase_5(
                 trace_path,
                 reporter,
                 "phase5-trace-fields",
-                "bounded-review blocked Phase 5 v6 trace",
+                "bounded-review blocked Phase 5 v7 trace",
             )
             if refit_status not in FINAL_PHASE5_STATUSES:
                 reporter.error(
@@ -3594,6 +4086,8 @@ def validate_phase_5(
                         )
                     gate_status = validate_phase5_review_gate(
                         trace.get("review-gate"),
+                        orchestrate_dir=orchestrate_dir,
+                        repo_root=repo_root,
                         current_digests=current_digests,
                     )
                     if gate_status != "blocked":
@@ -3607,7 +4101,10 @@ def validate_phase_5(
                         raise ValueError(
                             "bounded-review blocked review-gate必须是object"
                         )
-                    expected_issues = phase5_bounded_review_issues(gate)
+                    expected_issues = phase5_bounded_review_issues(
+                        gate,
+                        orchestrate_dir=orchestrate_dir,
+                    )
                     if trace.get("issues") != expected_issues:
                         reporter.error(
                             "phase5-trace-issues",
@@ -3740,7 +4237,7 @@ def validate_phase_5(
             "candidate-handoff-sha256",
             "review-gate",
         },
-        trace_path, reporter, "phase5-trace-fields", "terminal Phase 5 v6 trace",
+        trace_path, reporter, "phase5-trace-fields", "terminal Phase 5 v7 trace",
     )
     required = [
         work / "final-roadmap.json", final_plan_path, refit_path, review_path, work / "atom-plan-mapping.json",
@@ -3786,6 +4283,8 @@ def validate_phase_5(
             if (
                 validate_phase5_review_gate(
                     trace.get("review-gate"),
+                    orchestrate_dir=orchestrate_dir,
+                    repo_root=repo_root,
                     current_digests=current_digests,
                 )
                 != "passed"
@@ -4201,8 +4700,27 @@ def validate_final_integration_review_candidate(
                                 normalize_code(gate_row.get("gate"))
                                 if isinstance(gate_row, dict)
                                 else ""
-                            ),
+                                ),
                         )
+        dependency_set = review.get("dependency-set-result")
+        dependency_set_ids = (
+            dependency_set.get("evidence-ga-ids")
+            if isinstance(dependency_set, dict)
+            else None
+        )
+        if (
+            not isinstance(dependency_set_ids, list)
+            or not dependency_set_ids
+            or any(
+                normalize_code(item) not in evidence
+                for item in dependency_set_ids
+            )
+        ):
+            reporter.error(
+                "workflow-dependency-set-evidence",
+                review_path,
+                "dependency-set-result必须使用已冻结GA证明consumer closure",
+            )
         occurrence = review.get("occurrence-chain-result")
         actual_ga_ids = (
             occurrence.get("evidence-ga-ids")
@@ -4473,7 +4991,7 @@ def validate(
         orchestrate_dir / "phase-works/phase-5/phase-5-checkpoint.json",
     ):
         if legacy.exists():
-            reporter.error("legacy-patch-artifact", legacy, "trace-v7 contract显式拒绝patch request/checkpoint artifact")
+            reporter.error("legacy-patch-artifact", legacy, "trace-v8 contract显式拒绝patch request/checkpoint artifact")
 
     if not preflight:
         validate_manifest(orchestrate_dir, repo_root, reporter, complete=complete)

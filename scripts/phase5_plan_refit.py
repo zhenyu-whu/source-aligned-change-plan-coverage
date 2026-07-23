@@ -2,7 +2,7 @@
 # -*- coding: utf-8 -*-
 """Phase 5 refit/mapping 机械派生器。
 
-v7语义权威是final-roadmap.json、framework-refit-trace.json和
+v8语义权威是final-roadmap.json、framework-refit-trace.json和
 atom-plan-mapping.json；change-plan.md与plan-refit-review.md都是确定性mirror。
 本脚本不接受 semantic config，不推断 framework，不补写 acceptance/dependency/archive 文案。
 blocked 状态只在clean generation中原子发布review与最小trace，绝不清理结果。
@@ -40,12 +40,19 @@ from source_aligned_trace_lib import (
     GLOBAL_ATOM_ID_RE,
     GLOBAL_ATOM_INDEX_SCHEMA,
     KEBAB_CASE_RE,
+    MAX_BOUNDED_REPAIRS,
+    MAX_BOUNDED_REVIEWS,
+    PHASE5_CANDIDATE_DIGEST_FIELDS,
     PHASE3_COVERAGE_REVIEW_SCHEMA,
     PHASE_TRACE_SCHEMAS,
+    PHASE5_REVIEW_RESULT_SCHEMA,
     PHASE5_REVIEW_CHECKS,
+    REVIEW_GATE_TERMINAL_REASONS,
     SOURCE_ATOMS_SCHEMA,
     TRACE_CONTRACT_VERSION,
     canonical_json_sha256,
+    bounded_review_result_path,
+    load_bounded_review_result,
     require_atom_plan_mapping_envelope,
     require_phase3_frozen_evidence,
     lexical_repo_relative_path as lexical_rel,
@@ -57,7 +64,7 @@ from source_aligned_trace_lib import (
     source_atom_file_name,
     write_json,
 )
-from source_aligned_v7_contract import load_final_roadmap, load_initial_framework
+from source_aligned_v8_contract import load_final_roadmap, load_initial_framework
 
 
 DIRECT_PROJECTIONS = {"spec-requirement", "spec-guard", "design-obligation", "verification-obligation"}
@@ -250,7 +257,7 @@ def load_final_roadmap_defs(
     List[CapabilityDef],
     Dict[Tuple[str, str], str],
 ]:
-    """Load v7 final-roadmap authority and project it to existing render types."""
+    """Load v8 final-roadmap authority and project it to existing render types."""
     roadmap_path = orchestrate_dir / "phase-works/phase-5/final-roadmap.json"
     evidence_directives = {
         ga: list(item.delivery_directives)
@@ -483,7 +490,7 @@ def render_final_plan_from_roadmap(
             "",
             "## Phase 5 风险检查",
             "",
-            "1. final Change/Capability、dependency、guard、directive 与 prefix review 已由 v7 authority 约束。",
+            "1. final Change/Capability、dependency、guard、directive 与 prefix review 已由 v8 authority 约束。",
             "2. 公开 handoff 仅由 frozen evidence 与 terminal mapping 派生。",
             "",
             "## Phase 5 语言自检",
@@ -605,7 +612,7 @@ def validate_framework_refit(
     capabilities: Optional[Sequence[CapabilityDef]] = None,
     overlay: Optional[Dict[Tuple[str, str], str]] = None,
 ) -> str:
-    """校验 v7 refit lineage；Change order只由final-roadmap负责，不受keep保护。"""
+    """校验 v8 refit lineage；Change order只由final-roadmap负责，不受keep保护。"""
     _require_exact_fields(
         data,
         {
@@ -1656,17 +1663,6 @@ def _phase5_framework_block_forbidden_surfaces(
     ]
 
 
-PHASE5_CANDIDATE_DIGEST_FIELDS = (
-    "framework-refit-sha256",
-    "final-roadmap-sha256",
-    "atom-plan-mapping-sha256",
-    "final-change-plan-sha256",
-    "frozen-evidence-authority-sha256",
-    "phase-3-freeze-trace-sha256",
-    "candidate-handoff-sha256",
-)
-
-
 def _raw_text_sha256(text: str) -> str:
     return hashlib.sha256(text.encode("utf-8")).hexdigest()
 
@@ -2023,99 +2019,105 @@ def phase5_candidate_authority_sha256(digests: Dict[str, str]) -> str:
 def validate_phase5_review_gate(
     gate: object,
     *,
+    orchestrate_dir: Path,
+    repo_root: Path,
     current_digests: Dict[str, str],
 ) -> str:
-    """Validate the independent 3-review/2-repair Phase 5 bounded gate."""
+    """Validate the independent 5-review/4-repair Phase 5 bounded gate."""
     if not isinstance(gate, dict):
         raise ValueError("Phase 5 review-gate必须是object")
     _require_exact_fields(
         gate,
-        {"status", "writer-id", "reviews", "repairs"},
+        {
+            "status",
+            "terminal-reason",
+            "writer-id",
+            "reviews",
+            "repairs",
+        },
         "Phase 5 review-gate",
     )
     status = normalize_code(gate.get("status"))
+    terminal_reason = normalize_code(gate.get("terminal-reason"))
     if status not in {"pending", "passed", "blocked"}:
         raise ValueError("Phase 5 review-gate.status非法")
+    if terminal_reason not in REVIEW_GATE_TERMINAL_REASONS:
+        raise ValueError("Phase 5 review-gate.terminal-reason非法")
+    if status in {"pending", "passed"} and terminal_reason != "none":
+        raise ValueError("Phase 5 pending|passed要求terminal-reason=none")
+    if status == "blocked" and terminal_reason == "none":
+        raise ValueError("Phase 5 blocked要求非none terminal-reason")
     writer_id = squash(gate.get("writer-id"))
     if not writer_id:
         raise ValueError("Phase 5 review-gate.writer-id不得为空")
+
     reviews = gate.get("reviews")
     repairs = gate.get("repairs")
-    if not isinstance(reviews, list) or len(reviews) > 3:
-        raise ValueError("Phase 5 reviews必须是0..3条")
-    if not isinstance(repairs, list) or len(repairs) > 2:
-        raise ValueError("Phase 5 repairs必须是0..2条")
-    if status in {"passed", "blocked"} and not reviews:
-        raise ValueError(f"Phase 5 {status} review-gate必须至少有一轮review")
+    if not isinstance(reviews, list) or len(reviews) > MAX_BOUNDED_REVIEWS:
+        raise ValueError(
+            f"Phase 5 reviews必须是0..{MAX_BOUNDED_REVIEWS}条"
+        )
+    if not isinstance(repairs, list) or len(repairs) > MAX_BOUNDED_REPAIRS:
+        raise ValueError(
+            f"Phase 5 repairs必须是0..{MAX_BOUNDED_REPAIRS}条"
+        )
 
-    review_by_round: Dict[int, Dict[str, object]] = {}
+    review_results: Dict[int, Dict[str, object]] = {}
+    review_refs: Dict[int, Dict[str, object]] = {}
     reviewer_ids: set[str] = set()
-    forced_block_rounds: set[int] = set()
-    seen_fingerprints: set[str] = set()
+    authority_integrity_violation = False
+    identity_reuse_violation = False
     for index, raw in enumerate(reviews, start=1):
         if not isinstance(raw, dict):
             raise ValueError(f"Phase 5 reviews[{index}]必须是object")
         _require_exact_fields(
             raw,
-            {
-                "round",
-                "reviewer-id",
-                "validator-status",
-                *PHASE5_CANDIDATE_DIGEST_FIELDS,
-                "semantic-checks",
-                "finding-fingerprints",
-            },
+            {"round", "review-result-path", "review-result-sha256"},
             f"Phase 5 reviews[{index}]",
         )
         if raw.get("round") != index:
             raise ValueError("Phase 5 review round必须从1连续递增")
-        reviewer_id = squash(raw.get("reviewer-id"))
+        result_path = bounded_review_result_path(
+            orchestrate_dir,
+            "phase-5",
+            index,
+        )
+        if raw.get("review-result-path") != rel(result_path, repo_root):
+            authority_integrity_violation = True
+        if (
+            not result_path.is_file()
+            or raw.get("review-result-sha256") != sha256_file(result_path)
+        ):
+            authority_integrity_violation = True
+            continue
+        try:
+            result = load_bounded_review_result(
+                result_path,
+                "phase-5",
+                expected_round=index,
+            )
+        except (OSError, ValueError, json.JSONDecodeError):
+            authority_integrity_violation = True
+            continue
+        reviewer_id = squash(result.get("reviewer-id"))
         if (
             not reviewer_id
             or reviewer_id == writer_id
             or reviewer_id in reviewer_ids
         ):
-            raise ValueError("Phase 5 reviewer必须fresh且不同于writer")
+            identity_reuse_violation = True
         reviewer_ids.add(reviewer_id)
-        if raw.get("validator-status") not in {"passed", "failed"}:
-            raise ValueError(f"Phase 5 review {index} validator-status非法")
-        for field in PHASE5_CANDIDATE_DIGEST_FIELDS:
-            if not re.fullmatch(r"[0-9a-f]{64}", str(raw.get(field, ""))):
-                raise ValueError(f"Phase 5 review {index} {field}非法")
-        checks = raw.get("semantic-checks")
-        if not isinstance(checks, list) or len(checks) != len(PHASE5_REVIEW_CHECKS):
-            raise ValueError("Phase 5 semantic-checks必须完整覆盖固定九项")
-        actual_checks: List[str] = []
-        for check_index, check in enumerate(checks):
-            if not isinstance(check, dict):
-                raise ValueError("Phase 5 semantic check必须是object")
-            _require_exact_fields(
-                check,
-                {"check", "result"},
-                f"Phase 5 reviews[{index}].semantic-checks[{check_index}]",
-            )
-            actual_checks.append(normalize_code(check.get("check")))
-            if check.get("result") not in {"passed", "failed"}:
-                raise ValueError("Phase 5 semantic check result非法")
-        if tuple(actual_checks) != PHASE5_REVIEW_CHECKS:
-            raise ValueError("Phase 5 semantic-checks顺序非法")
-        findings = raw.get("finding-fingerprints")
-        if (
-            not isinstance(findings, list)
-            or any(
-                not re.fullmatch(r"[0-9a-f]{64}", str(item))
-                for item in findings
-            )
-            or len(findings) != len(set(findings))
-        ):
-            raise ValueError("Phase 5 finding-fingerprints非法")
-        if seen_fingerprints.intersection(findings):
-            forced_block_rounds.add(index)
-        seen_fingerprints.update(findings)
-        review_by_round[index] = raw
+        review_results[index] = result
+        review_refs[index] = raw
+
+    if authority_integrity_violation:
+        if status == "blocked" and terminal_reason == "authority-integrity":
+            return status
+        raise ValueError("Phase 5 review result authority integrity失败")
 
     repair_writer_ids: set[str] = set()
     repair_by_round: Dict[int, Dict[str, object]] = {}
+    no_op_rounds: set[int] = set()
     for index, raw in enumerate(repairs, start=1):
         if not isinstance(raw, dict):
             raise ValueError(f"Phase 5 repairs[{index}]必须是object")
@@ -2124,19 +2126,16 @@ def validate_phase5_review_gate(
             {
                 "round",
                 "repair-writer-id",
-                "finding-fingerprints",
+                "source-review-result-sha256",
                 "before-terminal-authority-sha256",
                 "after-terminal-authority-sha256",
             },
             f"Phase 5 repairs[{index}]",
         )
-        round_number = raw.get("round")
-        if (
-            not isinstance(round_number, int)
-            or round_number not in review_by_round
-            or round_number in repair_by_round
-        ):
-            raise ValueError("Phase 5 repair round必须唯一对应已存在review")
+        if raw.get("round") != index or index not in review_results:
+            raise ValueError(
+                "Phase 5 repair round必须连续且唯一对应同轮review"
+            )
         repair_writer = squash(raw.get("repair-writer-id"))
         if (
             not repair_writer
@@ -2144,35 +2143,52 @@ def validate_phase5_review_gate(
             or repair_writer in reviewer_ids
             or repair_writer in repair_writer_ids
         ):
-            raise ValueError("Phase 5 repair writer身份不独立")
+            identity_reuse_violation = True
         repair_writer_ids.add(repair_writer)
-        findings = raw.get("finding-fingerprints")
-        review_findings = review_by_round[round_number].get(
-            "finding-fingerprints"
-        )
+        review_result = review_results[index]
+        review_ref = review_refs[index]
+        if review_result.get("decision") != "repair-required":
+            raise ValueError(
+                "Phase 5只有repair-required review可以repair"
+            )
         if (
-            not isinstance(findings, list)
-            or not findings
-            or not isinstance(review_findings, list)
-            or not set(findings).issubset(set(review_findings))
+            raw.get("source-review-result-sha256")
+            != review_ref.get("review-result-sha256")
         ):
-            raise ValueError("Phase 5 repair findings必须来自对应review且非空")
+            if (
+                status == "blocked"
+                and terminal_reason == "authority-integrity"
+            ):
+                return status
+            raise ValueError(
+                "Phase 5 repair必须绑定完整上一轮review result"
+            )
         before = str(raw.get("before-terminal-authority-sha256", ""))
         after = str(raw.get("after-terminal-authority-sha256", ""))
         if not re.fullmatch(r"[0-9a-f]{64}", before) or not re.fullmatch(
             r"[0-9a-f]{64}",
             after,
         ):
+            if (
+                status == "blocked"
+                and terminal_reason == "authority-integrity"
+            ):
+                return status
             raise ValueError("Phase 5 repair candidate digest非法")
         review_digest = phase5_candidate_authority_sha256(
             {
-                field: str(review_by_round[round_number].get(field, ""))
+                field: str(review_result.get(field, ""))
                 for field in PHASE5_CANDIDATE_DIGEST_FIELDS
             }
         )
         if before != review_digest:
+            if (
+                status == "blocked"
+                and terminal_reason == "authority-integrity"
+            ):
+                return status
             raise ValueError("Phase 5 repair before digest与review不一致")
-        next_review = review_by_round.get(round_number + 1)
+        next_review = review_results.get(index + 1)
         if next_review is not None:
             next_digest = phase5_candidate_authority_sha256(
                 {
@@ -2181,126 +2197,177 @@ def validate_phase5_review_gate(
                 }
             )
             if after != next_digest:
-                raise ValueError("Phase 5 repair after digest与下一轮review不一致")
+                if (
+                    status == "blocked"
+                    and terminal_reason == "authority-integrity"
+                ):
+                    return status
+                raise ValueError(
+                    "Phase 5 repair after digest与下一轮review不一致"
+                )
         if before == after:
-            forced_block_rounds.add(round_number)
-        repair_by_round[round_number] = raw
+            no_op_rounds.add(index)
+        repair_by_round[index] = raw
 
     current_authority_sha256 = phase5_candidate_authority_sha256(
         current_digests
     )
-    terminal_noop = (
-        status == "blocked"
-        and reviews
-        and isinstance(repair_by_round.get(len(reviews)), dict)
-        and repair_by_round[len(reviews)].get(
-            "before-terminal-authority-sha256"
+    reviews_after_latest_repair = len(reviews) == len(repairs)
+    reviews_after_latest_review = len(reviews) == len(repairs) + 1
+    if status == "pending":
+        if not (reviews_after_latest_repair or reviews_after_latest_review):
+            raise ValueError("Phase 5 pending reviews/repairs cardinality非法")
+        if len(reviews) >= MAX_BOUNDED_REVIEWS:
+            raise ValueError("Phase 5第五轮review后不得保持pending")
+    elif terminal_reason == "no-op-repair":
+        if not reviews_after_latest_repair or not no_op_rounds:
+            raise ValueError(
+                "Phase 5 no-op-repair blocked要求最后repair为no-op"
+            )
+    elif terminal_reason in {"identity-reuse", "authority-integrity"}:
+        if not (reviews_after_latest_repair or reviews_after_latest_review):
+            raise ValueError(
+                "Phase 5 identity/authority blocked cardinality非法"
+            )
+    elif not reviews_after_latest_review:
+        raise ValueError(
+            "Phase 5 review terminal要求reviews==repairs+1"
         )
-        == repair_by_round[len(reviews)].get(
-            "after-terminal-authority-sha256"
-        )
-    )
-    awaiting_review = (
-        status == "pending"
-        and bool(reviews)
-        and len(reviews) == len(repairs)
-    )
-    current_bound_by_review = len(reviews) == len(repairs) + 1
-    if reviews and not (
-        current_bound_by_review or awaiting_review or terminal_noop
-    ):
-        raise ValueError("Phase 5 reviews/repairs cardinality非法")
-    if current_bound_by_review:
-        last = reviews[-1]
+
+    for round_number in range(1, len(reviews)):
+        if round_number not in repair_by_round:
+            raise ValueError("Phase 5相邻review之间缺少repair")
+    if reviews_after_latest_review and reviews:
+        last = review_results.get(len(reviews))
+        if not isinstance(last, dict):
+            raise ValueError("Phase 5最后review result非法")
         for field in PHASE5_CANDIDATE_DIGEST_FIELDS:
             if last.get(field) != current_digests[field]:
+                if (
+                    status == "blocked"
+                    and terminal_reason == "authority-integrity"
+                ):
+                    return status
                 raise ValueError(
                     "最后Phase 5 review未绑定当前candidate authority"
                 )
-    elif reviews:
+    elif reviews_after_latest_repair and repairs:
         latest_repair = repair_by_round.get(len(reviews))
         if (
             not isinstance(latest_repair, dict)
             or latest_repair.get("after-terminal-authority-sha256")
             != current_authority_sha256
         ):
+            if (
+                status == "blocked"
+                and terminal_reason == "authority-integrity"
+            ):
+                return status
             raise ValueError(
                 "最新Phase 5 repair未绑定当前candidate authority"
             )
-    for round_number in range(1, len(reviews)):
-        if round_number not in repair_by_round:
-            raise ValueError("Phase 5相邻review之间缺少repair")
-    if len(reviews) == 3:
-        terminal_review = reviews[-1]
-        terminal_checks = terminal_review.get("semantic-checks")
-        terminal_checks_passed = isinstance(
-            terminal_checks,
-            list,
-        ) and all(
-            isinstance(check, dict) and check.get("result") == "passed"
-            for check in terminal_checks
-        )
-        if (
-            terminal_review.get("validator-status") != "passed"
-            or terminal_review.get("finding-fingerprints") != []
-            or not terminal_checks_passed
-        ):
-            forced_block_rounds.add(3)
-    if forced_block_rounds and status != "blocked":
+
+    if no_op_rounds:
+        first_no_op = min(no_op_rounds)
+        if status != "blocked" or terminal_reason != "no-op-repair":
+            raise ValueError("Phase 5 no-op repair要求立即blocked")
+        if len(reviews) > first_no_op or len(repairs) > first_no_op:
+            raise ValueError("Phase 5 no-op repair后不得继续review")
+
+    if identity_reuse_violation:
+        if status == "blocked" and terminal_reason == "identity-reuse":
+            return status
+        raise ValueError("Phase 5 worker identity发生复用")
+    if terminal_reason == "identity-reuse":
+        raise ValueError("Phase 5 identity-reuse缺少对应身份违规")
+    if terminal_reason == "authority-integrity":
+        raise ValueError("Phase 5 authority-integrity缺少对应完整性违规")
+
+    last_result = review_results.get(len(reviews))
+    if (
+        status == "pending"
+        and reviews_after_latest_review
+        and isinstance(last_result, dict)
+        and last_result.get("decision") == "blocked"
+    ):
         raise ValueError(
-            "Phase 5重复finding、no-op repair或第三轮未通过时必须blocked"
+            "Phase 5 blocked review decision要求立即terminal blocked"
         )
-    if forced_block_rounds and len(reviews) > min(forced_block_rounds):
-        raise ValueError("Phase 5确认无进展后不得继续review")
     if status == "passed":
-        last = reviews[-1]
         if (
-            last.get("validator-status") != "passed"
-            or last.get("finding-fingerprints") != []
-            or any(
-                isinstance(check, dict) and check.get("result") != "passed"
-                for check in last.get("semantic-checks", [])
-            )
-        ):
-            raise ValueError("Phase 5 passed要求最终validator和九项check通过且无finding")
-    if status == "pending" and forced_block_rounds:
-        raise ValueError("Phase 5 pending不得保留已确认的blocking no-progress")
-    if status == "blocked" and reviews and not forced_block_rounds:
-        last = reviews[-1]
-        checks = last.get("semantic-checks")
-        checks_passed = isinstance(checks, list) and all(
-            isinstance(check, dict) and check.get("result") == "passed"
-            for check in checks
-        )
-        if (
-            last.get("validator-status") == "passed"
-            and last.get("finding-fingerprints") == []
-            and checks_passed
+            not isinstance(last_result, dict)
+            or last_result.get("decision") != "passed"
         ):
             raise ValueError(
-                "Phase 5 blocked必须由当前validator/check/finding failure、"
-                "重复finding或no-op repair支持"
+                "Phase 5 passed要求最终review decision=passed"
+            )
+    if status == "blocked":
+        if (
+            len(reviews) == MAX_BOUNDED_REVIEWS
+            and isinstance(last_result, dict)
+            and last_result.get("decision") == "blocked"
+            and terminal_reason == "review-blocked"
+        ):
+            raise ValueError(
+                "Phase 5第五轮finding/check/validator failure"
+                "必须使用budget-exhausted"
+            )
+        if terminal_reason == "review-blocked" and (
+            not isinstance(last_result, dict)
+            or last_result.get("decision") != "blocked"
+        ):
+            raise ValueError(
+                "Phase 5 review-blocked要求最终review decision=blocked"
+            )
+        if terminal_reason == "budget-exhausted" and (
+            len(reviews) != MAX_BOUNDED_REVIEWS
+            or not isinstance(last_result, dict)
+            or last_result.get("decision") != "blocked"
+        ):
+            raise ValueError(
+                "Phase 5 budget-exhausted要求第五轮review decision=blocked"
             )
     return status
-
-
 def phase5_bounded_review_issues(
     gate: Dict[str, object],
+    *,
+    orchestrate_dir: Path,
 ) -> List[str]:
     """从canonical blocked review gate确定性派生非空问题摘要。"""
+    terminal_reason = normalize_code(gate.get("terminal-reason"))
+    if terminal_reason == "authority-integrity":
+        return ["Phase 5 authority或review result完整性失败。"]
+    repo_root = repo_root_for(orchestrate_dir)
     reviews = gate.get("reviews")
     if not isinstance(reviews, list) or not reviews:
         raise ValueError("bounded-review blocked要求至少一轮review")
     last = reviews[-1]
     if not isinstance(last, dict):
         raise ValueError("bounded-review blocked最后review非法")
-    issues: List[str] = []
     round_number = last.get("round")
-    if last.get("validator-status") != "passed":
+    if not isinstance(round_number, int):
+        raise ValueError("bounded-review blocked最后review.round非法")
+    result_path = bounded_review_result_path(
+        orchestrate_dir,
+        "phase-5",
+        round_number,
+    )
+    expected_rel = rel(result_path, repo_root)
+    if last.get("review-result-path") != expected_rel:
+        raise ValueError("bounded-review blocked最后review result路径非法")
+    result = load_bounded_review_result(
+        result_path,
+        phase="phase-5",
+        expected_round=round_number,
+    )
+    if last.get("review-result-sha256") != sha256_file(result_path):
+        raise ValueError("bounded-review blocked最后review result digest漂移")
+    issues: List[str] = []
+    if result.get("validator-status") != "passed":
         issues.append(
             f"Phase 5 bounded review第{round_number}轮validator未通过。"
         )
-    checks = last.get("semantic-checks")
+    checks = result.get("semantic-checks")
     failed_checks = [
         normalize_code(check.get("check"))
         for check in checks
@@ -2312,17 +2379,31 @@ def phase5_bounded_review_issues(
             + "、".join(failed_checks)
             + "。"
         )
-    findings = last.get("finding-fingerprints")
+    findings = result.get("findings")
     if isinstance(findings, list) and findings:
         issues.append(
             "Phase 5 bounded review仍有blocking finding："
-            + "、".join(str(item) for item in findings)
+            + "；".join(
+                str(item.get("finding"))
+                for item in findings
+                if isinstance(item, dict)
+            )
             + "。"
         )
     if not issues:
-        raise ValueError(
-            "bounded-review blocked必须由当前validator/check/finding failure支持"
-        )
+        terminal_messages = {
+            "no-op-repair": "Phase 5 repair未改变authority。",
+            "identity-reuse": "Phase 5 worker身份发生复用。",
+            "authority-integrity": "Phase 5 authority或review result完整性失败。",
+            "budget-exhausted": "Phase 5 review预算已耗尽。",
+            "review-blocked": "Phase 5 reviewer判定阻断。",
+        }
+        message = terminal_messages.get(terminal_reason)
+        if message is None:
+            raise ValueError(
+                "bounded-review blocked必须由review result或terminal-reason支持"
+            )
+        issues.append(message)
     return issues
 
 
@@ -2407,7 +2488,10 @@ def _bounded_review_blocked_trace_payload(
             "candidate-handoff-sha256"
         ],
         "review-gate": gate,
-        "issues": phase5_bounded_review_issues(gate),
+        "issues": phase5_bounded_review_issues(
+            gate,
+            orchestrate_dir=orchestrate_dir,
+        ),
     }
 
 
@@ -2535,7 +2619,7 @@ def prepare_review(orchestrate_dir: Path, writer_id: str) -> None:
     ]
     if existing:
         raise ValueError(
-            "v7 prepare-review只允许clean generation；已存在published surface："
+            "v8 prepare-review只允许clean generation；已存在published surface："
             + ", ".join(str(path) for path in existing)
         )
     refit_path = work / "framework-refit-trace.json"
@@ -2598,6 +2682,7 @@ def prepare_review(orchestrate_dir: Path, writer_id: str) -> None:
         ],
         "review-gate": {
             "status": "pending",
+            "terminal-reason": "none",
             "writer-id": writer,
             "reviews": [],
             "repairs": [],
@@ -2725,6 +2810,8 @@ def _load_phase5_review_gate(
     gate = trace.get("review-gate")
     gate_status = validate_phase5_review_gate(
         gate,
+        orchestrate_dir=orchestrate_dir,
+        repo_root=repo_root,
         current_digests=digests,
     )
     if gate_status not in allowed_statuses:
@@ -2846,6 +2933,25 @@ def refresh_review_candidate(orchestrate_dir: Path) -> None:
     last_review = reviews[-1]
     if not isinstance(last_review, dict):
         raise ValueError("最新Phase 5 review非法")
+    review_round = len(reviews)
+    last_review_path = bounded_review_result_path(
+        orchestrate_dir,
+        "phase-5",
+        review_round,
+    )
+    if (
+        last_review.get("round") != review_round
+        or last_review.get("review-result-path")
+        != rel(last_review_path, repo_root)
+        or last_review.get("review-result-sha256")
+        != sha256_file(last_review_path)
+    ):
+        raise ValueError("最新Phase 5 review result path或digest漂移")
+    last_review_result = load_bounded_review_result(
+        last_review_path,
+        "phase-5",
+        expected_round=review_round,
+    )
     plan_path = work / "change-plan.md"
     old_refs = (
         (
@@ -2874,7 +2980,7 @@ def refresh_review_candidate(orchestrate_dir: Path) -> None:
             raise ValueError(
                 f"Phase 5 candidate {prefix} path drift"
             )
-        if trace.get(f"{prefix}-sha256") != last_review.get(
+        if trace.get(f"{prefix}-sha256") != last_review_result.get(
             review_field
         ):
             raise ValueError(
@@ -2891,7 +2997,7 @@ def refresh_review_candidate(orchestrate_dir: Path) -> None:
         "phase-3-freeze-trace-sha256",
         "candidate-handoff-sha256",
     ):
-        if trace.get(field) != last_review.get(field):
+        if trace.get(field) != last_review_result.get(field):
             raise ValueError(
                 f"Phase 5 candidate {field}历史digest未绑定最新review"
             )
@@ -2969,6 +3075,8 @@ def refresh_review_candidate(orchestrate_dir: Path) -> None:
     if (
         validate_phase5_review_gate(
             gate,
+            orchestrate_dir=orchestrate_dir,
+            repo_root=repo_root,
             current_digests=digests,
         )
         != "pending"
@@ -3301,6 +3409,8 @@ def validate_outputs(orchestrate_dir: Path) -> None:
         if (
             validate_phase5_review_gate(
                 gate,
+                orchestrate_dir=orchestrate_dir,
+                repo_root=repo_root,
                 current_digests=digests,
             )
             != "blocked"
@@ -3408,6 +3518,8 @@ def validate_outputs(orchestrate_dir: Path) -> None:
     if (
         validate_phase5_review_gate(
             trace.get("review-gate"),
+            orchestrate_dir=orchestrate_dir,
+            repo_root=repo_root,
             current_digests=current_candidate_digests,
         )
         != "passed"

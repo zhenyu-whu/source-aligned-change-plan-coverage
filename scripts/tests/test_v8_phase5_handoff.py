@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
-"""v7 Phase 5 public handoff、bounded review 与 workflow completion 测试。
+"""v8 Phase 5 public handoff、bounded review 与 workflow completion 测试。
 
 本文件只在 tempfile 中构造 generation；绝不读取或修改工作区现存的
 ``openspec/orchestrate``。
@@ -48,8 +48,6 @@ from source_aligned_trace_lib import (  # noqa: E402
     INITIAL_FRAMEWORK_SCHEMA,
     PHASE3_COVERAGE_REVIEW_SCHEMA,
     PHASE_TRACE_SCHEMAS,
-    PHASE1_REVIEW_CHECKS,
-    PHASE5_REVIEW_CHECKS,
     SOURCE_ATOMS_SCHEMA,
     TRACE_CONTRACT_VERSION,
     WORKFLOW_COMPLETION_SCHEMA,
@@ -58,11 +56,11 @@ from source_aligned_trace_lib import (  # noqa: E402
     sha256_file,
     write_json,
 )
-from source_aligned_v7_contract import (  # noqa: E402
+from source_aligned_v8_contract import (  # noqa: E402
     terminal_authority_payload,
     terminal_authority_sha256,
 )
-from test_source_aligned_v7_contract import (  # noqa: E402
+from test_source_aligned_v8_contract import (  # noqa: E402
     _base_roadmap,
     _foundation_roadmap,
 )
@@ -70,6 +68,7 @@ from validate_source_aligned_orchestrate import (  # noqa: E402
     validate_phase_5,
     validate_workflow_terminal,
 )
+from review_fixture_v8 import write_review_result  # noqa: E402
 
 
 REPEATED_SOURCE = "重复的冻结要求原文"
@@ -101,7 +100,7 @@ def _source_ref(index: int) -> Dict[str, object]:
     }
 
 
-class V7HandoffFixture:
+class V8HandoffFixture:
     """最小但完整的 Phase 5 helper fixture。"""
 
     def __init__(
@@ -595,6 +594,16 @@ class V7HandoffFixture:
             / "phase-works/phase-1/initial-framework.json"
         )
         plan_path = framework_path.with_name("initial-change-plan.md")
+        phase1_review = write_review_result(
+            self.orchestrate,
+            self.root,
+            phase="phase-1",
+            round_number=1,
+            authority={
+                "initial-framework-sha256": sha256_file(framework_path),
+                "initial-change-plan-sha256": sha256_file(plan_path),
+            },
+        )
         write_json(
             self.orchestrate / "trace/phase-1.trace.json",
             {
@@ -625,28 +634,9 @@ class V7HandoffFixture:
                 },
                 "review-gate": {
                     "status": "passed",
+                    "terminal-reason": "none",
                     "writer-id": "phase1-writer",
-                    "reviews": [
-                        {
-                            "round": 1,
-                            "reviewer-id": "phase1-reviewer",
-                            "validator-status": "passed",
-                            "initial-framework-sha256": sha256_file(
-                                framework_path
-                            ),
-                            "initial-change-plan-sha256": sha256_file(
-                                plan_path
-                            ),
-                            "semantic-checks": [
-                                {
-                                    "check": check,
-                                    "result": "passed",
-                                }
-                                for check in PHASE1_REVIEW_CHECKS
-                            ],
-                            "finding-fingerprints": [],
-                        }
-                    ],
+                    "reviews": [phase1_review],
                     "repairs": [],
                 },
             },
@@ -746,6 +736,15 @@ class V7HandoffFixture:
             self.orchestrate,
             self.root,
         )
+        phase3_review = write_review_result(
+            self.orchestrate,
+            self.root,
+            phase="phase-3",
+            round_number=1,
+            authority={
+                "evidence-authority-sha256": evidence_digest,
+            },
+        )
         write_json(
             self.orchestrate / "trace/phase-3.trace.json",
             {
@@ -764,6 +763,7 @@ class V7HandoffFixture:
                 "coverage-review-sha256": sha256_file(coverage_path),
                 "review-gate": {
                     "status": "passed",
+                    "terminal-reason": "none",
                     "phase-2-canonical-owner-ids": [
                         "phase2-source-writer"
                     ],
@@ -771,18 +771,7 @@ class V7HandoffFixture:
                         "phase2-aggregate-writer"
                     ),
                     "phase-3-writer-id": "phase3-writer",
-                    "reviews": [
-                        {
-                            "round": 1,
-                            "stage": "phase-3-closure",
-                            "reviewer-id": "phase3-reviewer",
-                            "phase-2-validator-status": "passed",
-                            "phase-3-validator-status": "passed",
-                            "delivery-directive-status": "passed",
-                            "evidence-authority-sha256": evidence_digest,
-                            "finding-fingerprints": [],
-                        }
-                    ],
+                    "reviews": [phase3_review],
                     "repairs": [],
                 },
                 "issues": [],
@@ -919,22 +908,19 @@ class V7HandoffFixture:
         )
         trace_path = self.orchestrate / "trace/phase-5.trace.json"
         trace = json.loads(trace_path.read_text(encoding="utf-8"))
+        review = write_review_result(
+            self.orchestrate,
+            self.root,
+            phase="phase-5",
+            round_number=1,
+            reviewer_id="phase5-reviewer",
+            authority=digests,
+        )
         trace["review-gate"] = {
             "status": "passed",
+            "terminal-reason": "none",
             "writer-id": "phase5-writer",
-            "reviews": [
-                {
-                    "round": 1,
-                    "reviewer-id": "phase5-reviewer",
-                    "validator-status": "passed",
-                    **digests,
-                    "semantic-checks": [
-                        {"check": check, "result": "passed"}
-                        for check in PHASE5_REVIEW_CHECKS
-                    ],
-                    "finding-fingerprints": [],
-                }
-            ],
+            "reviews": [review],
             "repairs": [],
         }
         write_json(trace_path, trace)
@@ -968,9 +954,9 @@ class Phase5PublicHandoffTests(unittest.TestCase):
         self,
     ) -> None:
         with tempfile.TemporaryDirectory() as raw:
-            fixture = V7HandoffFixture(
+            fixture = V8HandoffFixture(
                 Path(raw),
-                generation_name="orchestrate-v7",
+                generation_name="orchestrate-alt",
             )
             self.assertEqual(
                 phase5.repo_root_for(fixture.orchestrate),
@@ -981,7 +967,7 @@ class Phase5PublicHandoffTests(unittest.TestCase):
             self.assertTrue(
                 all(
                     str(row["change-source-path"]).startswith(
-                        "openspec/orchestrate-v7/"
+                        "openspec/orchestrate-alt/"
                     )
                     for row in packet["packets"]
                 )
@@ -992,7 +978,7 @@ class Phase5PublicHandoffTests(unittest.TestCase):
         self,
     ) -> None:
         with tempfile.TemporaryDirectory() as raw:
-            fixture = V7HandoffFixture(Path(raw))
+            fixture = V8HandoffFixture(Path(raw))
             roadmap_path = fixture.work / "final-roadmap.json"
             roadmap = json.loads(roadmap_path.read_text(encoding="utf-8"))
             roadmap["changes"] = list(reversed(roadmap["changes"]))
@@ -1039,7 +1025,7 @@ class Phase5PublicHandoffTests(unittest.TestCase):
 
     def test_owner_scoped_sources_direct_slices_and_packet_v3(self) -> None:
         with tempfile.TemporaryDirectory() as raw:
-            fixture = V7HandoffFixture(Path(raw))
+            fixture = V8HandoffFixture(Path(raw))
             fixture.publish()
 
             ship_source_path = fixture.anchor(
@@ -1103,8 +1089,8 @@ class Phase5PublicHandoffTests(unittest.TestCase):
 
     def test_owner_change_moves_only_the_non_direct_occurrence(self) -> None:
         with tempfile.TemporaryDirectory() as left_raw, tempfile.TemporaryDirectory() as right_raw:
-            before = V7HandoffFixture(Path(left_raw))
-            after = V7HandoffFixture(
+            before = V8HandoffFixture(Path(left_raw))
+            after = V8HandoffFixture(
                 Path(right_raw),
                 dependency_owner="ship-report",
             )
@@ -1142,11 +1128,11 @@ class Phase5PublicHandoffTests(unittest.TestCase):
 
     def test_target_capability_moves_only_the_direct_slice_occurrence(self) -> None:
         with tempfile.TemporaryDirectory() as left_raw, tempfile.TemporaryDirectory() as right_raw:
-            before = V7HandoffFixture(
+            before = V8HandoffFixture(
                 Path(left_raw),
                 include_audit_capability=True,
             )
-            after = V7HandoffFixture(
+            after = V8HandoffFixture(
                 Path(right_raw),
                 include_audit_capability=True,
                 second_target="audit-delivery",
@@ -1196,7 +1182,7 @@ class Phase5PublicHandoffTests(unittest.TestCase):
         self,
     ) -> None:
         with tempfile.TemporaryDirectory() as raw:
-            ordinary = V7HandoffFixture(Path(raw))
+            ordinary = V8HandoffFixture(Path(raw))
             roadmap_path = ordinary.work / "final-roadmap.json"
             roadmap = json.loads(roadmap_path.read_text(encoding="utf-8"))
             roadmap["overlay"] = [
@@ -1217,7 +1203,7 @@ class Phase5PublicHandoffTests(unittest.TestCase):
             self.assertFalse((ordinary.orchestrate / "change-plan.md").exists())
 
         with tempfile.TemporaryDirectory() as raw:
-            foundation = V7HandoffFixture(Path(raw), foundation=True)
+            foundation = V8HandoffFixture(Path(raw), foundation=True)
             foundation.publish()
             packet = foundation.packet()
             first = packet["packets"][0]
@@ -1238,7 +1224,7 @@ class Phase5ReviewAndTamperTests(unittest.TestCase):
         self,
     ) -> None:
         with tempfile.TemporaryDirectory() as raw:
-            fixture = V7HandoffFixture(Path(raw))
+            fixture = V8HandoffFixture(Path(raw))
             orphan = (
                 fixture.orchestrate
                 / "change-capability-anchors/stale-change/owned.md"
@@ -1262,7 +1248,7 @@ class Phase5ReviewAndTamperTests(unittest.TestCase):
         self,
     ) -> None:
         with tempfile.TemporaryDirectory() as raw:
-            fixture = V7HandoffFixture(Path(raw))
+            fixture = V8HandoffFixture(Path(raw))
             fixture.prepare()
             fixture.pass_review()
             orphan = (
@@ -1311,7 +1297,7 @@ class Phase5ReviewAndTamperTests(unittest.TestCase):
         )
         for label, mutate, message in mutations:
             with self.subTest(label=label), tempfile.TemporaryDirectory() as raw:
-                fixture = V7HandoffFixture(Path(raw))
+                fixture = V8HandoffFixture(Path(raw))
                 fixture.prepare()
                 fixture.pass_review()
                 mutate(fixture)
@@ -1325,7 +1311,7 @@ class Phase5ReviewAndTamperTests(unittest.TestCase):
                 )
 
     @staticmethod
-    def _mutate_atom_source_fact(fixture: V7HandoffFixture) -> None:
+    def _mutate_atom_source_fact(fixture: V8HandoffFixture) -> None:
         atom_path = (
             fixture.orchestrate
             / "phase-works/phase-2/source-obligation-atoms/"
@@ -1336,7 +1322,7 @@ class Phase5ReviewAndTamperTests(unittest.TestCase):
         write_json(atom_path, atom)
 
     @staticmethod
-    def _mutate_phase3_trace(fixture: V7HandoffFixture) -> None:
+    def _mutate_phase3_trace(fixture: V8HandoffFixture) -> None:
         trace_path = fixture.orchestrate / "trace/phase-3.trace.json"
         trace = json.loads(trace_path.read_text(encoding="utf-8"))
         trace["unexpected"] = "drift"
@@ -1344,7 +1330,7 @@ class Phase5ReviewAndTamperTests(unittest.TestCase):
 
     def test_prepare_requires_terminal_phase3_freeze(self) -> None:
         with tempfile.TemporaryDirectory() as raw:
-            fixture = V7HandoffFixture(Path(raw))
+            fixture = V8HandoffFixture(Path(raw))
             (
                 fixture.orchestrate / "trace/phase-3.trace.json"
             ).unlink()
@@ -1359,7 +1345,7 @@ class Phase5ReviewAndTamperTests(unittest.TestCase):
         self,
     ) -> None:
         with tempfile.TemporaryDirectory() as raw:
-            fixture = V7HandoffFixture(Path(raw))
+            fixture = V8HandoffFixture(Path(raw))
             fixture.prepare()
             root_plan = fixture.orchestrate / "change-plan.md"
             packet = fixture.work / "final-packet-index.json"
@@ -1404,7 +1390,7 @@ class Phase5ReviewAndTamperTests(unittest.TestCase):
 
     def _assert_tamper_rejected(self, kind: str) -> None:
         with tempfile.TemporaryDirectory() as raw:
-            fixture = V7HandoffFixture(Path(raw))
+            fixture = V8HandoffFixture(Path(raw))
             fixture.publish()
             packet_path = fixture.work / "final-packet-index.json"
             trace_path = fixture.orchestrate / "trace/phase-5.trace.json"
@@ -1481,7 +1467,7 @@ class Phase5ReviewAndTamperTests(unittest.TestCase):
             "final-packet-index",
         )
         with tempfile.TemporaryDirectory() as raw:
-            fixture = V7HandoffFixture(Path(raw))
+            fixture = V8HandoffFixture(Path(raw))
             fixture.publish()
             trace_path = fixture.orchestrate / "trace/phase-5.trace.json"
             original = json.loads(trace_path.read_text(encoding="utf-8"))
@@ -1504,7 +1490,7 @@ class Phase5ReviewAndTamperTests(unittest.TestCase):
 
 class Phase5RefitIntegrityTests(unittest.TestCase):
     @staticmethod
-    def _load_refit(fixture: V7HandoffFixture) -> Dict[str, object]:
+    def _load_refit(fixture: V8HandoffFixture) -> Dict[str, object]:
         return json.loads(
             (
                 fixture.work / "framework-refit-trace.json"
@@ -1513,7 +1499,7 @@ class Phase5RefitIntegrityTests(unittest.TestCase):
 
     @staticmethod
     def _validate_refit(
-        fixture: V7HandoffFixture,
+        fixture: V8HandoffFixture,
         refit: Dict[str, object],
     ) -> None:
         write_json(fixture.work / "framework-refit-trace.json", refit)
@@ -1521,7 +1507,7 @@ class Phase5RefitIntegrityTests(unittest.TestCase):
 
     def test_final_change_lineage_must_be_closed(self) -> None:
         with tempfile.TemporaryDirectory() as raw:
-            fixture = V7HandoffFixture(Path(raw))
+            fixture = V8HandoffFixture(Path(raw))
             refit = self._load_refit(fixture)
             refit["status"] = "adjusted"
             notify = next(
@@ -1543,7 +1529,7 @@ class Phase5RefitIntegrityTests(unittest.TestCase):
                 self._validate_refit(fixture, refit)
 
         with tempfile.TemporaryDirectory() as raw:
-            fixture = V7HandoffFixture(
+            fixture = V8HandoffFixture(
                 Path(raw),
                 include_audit_capability=True,
             )
@@ -1569,7 +1555,7 @@ class Phase5RefitIntegrityTests(unittest.TestCase):
 
     def test_merge_requires_two_initial_claimants(self) -> None:
         with tempfile.TemporaryDirectory() as raw:
-            fixture = V7HandoffFixture(Path(raw))
+            fixture = V8HandoffFixture(Path(raw))
             refit = self._load_refit(fixture)
             refit["status"] = "adjusted"
             ship = next(
@@ -1585,7 +1571,7 @@ class Phase5RefitIntegrityTests(unittest.TestCase):
                 self._validate_refit(fixture, refit)
 
         with tempfile.TemporaryDirectory() as raw:
-            fixture = V7HandoffFixture(Path(raw))
+            fixture = V8HandoffFixture(Path(raw))
             refit = self._load_refit(fixture)
             refit["status"] = "adjusted"
             capability = refit["capability-reviews"][0]
@@ -1598,7 +1584,7 @@ class Phase5RefitIntegrityTests(unittest.TestCase):
 
     def test_incompatible_duplicate_final_claim_is_rejected(self) -> None:
         with tempfile.TemporaryDirectory() as raw:
-            fixture = V7HandoffFixture(Path(raw))
+            fixture = V8HandoffFixture(Path(raw))
             refit = self._load_refit(fixture)
             refit["status"] = "adjusted"
             ship = next(
@@ -1619,7 +1605,7 @@ class Phase5RefitIntegrityTests(unittest.TestCase):
 
     def test_scope_adjusted_requires_real_boundary_change(self) -> None:
         with tempfile.TemporaryDirectory() as raw:
-            fixture = V7HandoffFixture(Path(raw))
+            fixture = V8HandoffFixture(Path(raw))
             refit = self._load_refit(fixture)
             refit["status"] = "adjusted"
             ship = next(
@@ -1636,7 +1622,7 @@ class Phase5RefitIntegrityTests(unittest.TestCase):
 
     def test_keep_cannot_be_stamped_with_unrelated_ga(self) -> None:
         with tempfile.TemporaryDirectory() as raw:
-            fixture = V7HandoffFixture(Path(raw))
+            fixture = V8HandoffFixture(Path(raw))
             refit = self._load_refit(fixture)
             capability = refit["capability-reviews"][0]
             capability["initial-gate-results"] = _gate_rows(
@@ -1659,7 +1645,7 @@ class Phase5RefitIntegrityTests(unittest.TestCase):
         )
         for field, unrelated_ga in mutations:
             with self.subTest(field=field), tempfile.TemporaryDirectory() as raw:
-                fixture = V7HandoffFixture(Path(raw))
+                fixture = V8HandoffFixture(Path(raw))
                 refit = self._load_refit(fixture)
                 self.assertTrue(refit[field])
                 refit[field][0]["evidence-ga-ids"] = [unrelated_ga]
@@ -1670,7 +1656,7 @@ class Phase5RefitIntegrityTests(unittest.TestCase):
                     self._validate_refit(fixture, refit)
 
         with tempfile.TemporaryDirectory() as raw:
-            fixture = V7HandoffFixture(Path(raw), include_guard=True)
+            fixture = V8HandoffFixture(Path(raw), include_guard=True)
             refit = self._load_refit(fixture)
             refit["guard-link-reviews"][0]["evidence-ga-ids"] = [
                 "GA-0001"
@@ -1682,7 +1668,7 @@ class Phase5RefitIntegrityTests(unittest.TestCase):
                 self._validate_refit(fixture, refit)
 
         with tempfile.TemporaryDirectory() as raw:
-            fixture = V7HandoffFixture(Path(raw))
+            fixture = V8HandoffFixture(Path(raw))
             refit = self._load_refit(fixture)
             capability = refit["capability-reviews"][0]
             capability["supporting-global-atom-ids"] = ["GA-0005"]
@@ -1693,7 +1679,7 @@ class Phase5RefitIntegrityTests(unittest.TestCase):
                 self._validate_refit(fixture, refit)
 
         with tempfile.TemporaryDirectory() as raw:
-            fixture = V7HandoffFixture(Path(raw))
+            fixture = V8HandoffFixture(Path(raw))
             refit = self._load_refit(fixture)
             ship = next(
                 row
@@ -1715,30 +1701,23 @@ class Phase5RefitIntegrityTests(unittest.TestCase):
 class Phase5ReviewRefreshTests(unittest.TestCase):
     @staticmethod
     def _failed_review(
+        fixture: V8HandoffFixture,
         digests: Dict[str, str],
         *,
         round_number: int = 1,
     ) -> Dict[str, object]:
-        return {
-            "round": round_number,
-            "reviewer-id": f"phase5-reviewer-{round_number}",
-            "validator-status": "failed",
-            **digests,
-            "semantic-checks": [
-                {
-                    "check": check,
-                    "result": (
-                        "failed" if index == 0 else "passed"
-                    ),
-                }
-                for index, check in enumerate(PHASE5_REVIEW_CHECKS)
-            ],
-            "finding-fingerprints": ["a" * 64],
-        }
+        return write_review_result(
+            fixture.orchestrate,
+            fixture.root,
+            phase="phase-5",
+            round_number=round_number,
+            decision="repair-required",
+            authority=digests,
+        )
 
     @staticmethod
     def _stage_semantic_repair(
-        fixture: V7HandoffFixture,
+        fixture: V8HandoffFixture,
     ) -> Dict[str, str]:
         plan_path = fixture.work / "change-plan.md"
         old_plan = plan_path.read_text(encoding="utf-8")
@@ -1749,7 +1728,10 @@ class Phase5ReviewRefreshTests(unittest.TestCase):
         trace_path = fixture.orchestrate / "trace/phase-5.trace.json"
         trace = json.loads(trace_path.read_text(encoding="utf-8"))
         trace["review-gate"]["reviews"] = [
-            Phase5ReviewRefreshTests._failed_review(old_digests)
+            Phase5ReviewRefreshTests._failed_review(
+                fixture,
+                old_digests,
+            )
         ]
 
         roadmap_path = fixture.work / "final-roadmap.json"
@@ -1790,7 +1772,11 @@ class Phase5ReviewRefreshTests(unittest.TestCase):
             {
                 "round": 1,
                 "repair-writer-id": "phase5-repair-writer",
-                "finding-fingerprints": ["a" * 64],
+                "source-review-result-sha256": (
+                    trace["review-gate"]["reviews"][0][
+                        "review-result-sha256"
+                    ]
+                ),
                 "before-terminal-authority-sha256": (
                     phase5.phase5_candidate_authority_sha256(
                         old_digests
@@ -1810,7 +1796,7 @@ class Phase5ReviewRefreshTests(unittest.TestCase):
         self,
     ) -> None:
         with tempfile.TemporaryDirectory() as raw:
-            fixture = V7HandoffFixture(Path(raw))
+            fixture = V8HandoffFixture(Path(raw))
             fixture.prepare()
             repaired_digests = self._stage_semantic_repair(fixture)
 
@@ -1846,17 +1832,13 @@ class Phase5ReviewRefreshTests(unittest.TestCase):
             )
             trace["review-gate"]["status"] = "passed"
             trace["review-gate"]["reviews"].append(
-                {
-                    "round": 2,
-                    "reviewer-id": "phase5-reviewer-2",
-                    "validator-status": "passed",
-                    **current_digests,
-                    "semantic-checks": [
-                        {"check": check, "result": "passed"}
-                        for check in PHASE5_REVIEW_CHECKS
-                    ],
-                    "finding-fingerprints": [],
-                }
+                write_review_result(
+                    fixture.orchestrate,
+                    fixture.root,
+                    phase="phase-5",
+                    round_number=2,
+                    authority=current_digests,
+                )
             )
             write_json(trace_path, trace)
             phase5.write_outputs(fixture.orchestrate)
@@ -1866,7 +1848,7 @@ class Phase5ReviewRefreshTests(unittest.TestCase):
         self,
     ) -> None:
         with tempfile.TemporaryDirectory() as raw:
-            fixture = V7HandoffFixture(Path(raw))
+            fixture = V8HandoffFixture(Path(raw))
             fixture.prepare()
             plan = (fixture.work / "change-plan.md").read_text(
                 encoding="utf-8"
@@ -1878,14 +1860,14 @@ class Phase5ReviewRefreshTests(unittest.TestCase):
             trace_path = fixture.orchestrate / "trace/phase-5.trace.json"
             trace = json.loads(trace_path.read_text(encoding="utf-8"))
             trace["review-gate"]["reviews"] = [
-                self._failed_review(digests)
+                self._failed_review(fixture, digests)
             ]
             write_json(trace_path, trace)
             with self.assertRaisesRegex(ValueError, "完成repair后"):
                 phase5.refresh_review_candidate(fixture.orchestrate)
 
         with tempfile.TemporaryDirectory() as raw:
-            fixture = V7HandoffFixture(Path(raw))
+            fixture = V8HandoffFixture(Path(raw))
             fixture.prepare()
             self._stage_semantic_repair(fixture)
             plan_path = fixture.work / "change-plan.md"
@@ -1910,8 +1892,8 @@ class Phase5ReviewRefreshTests(unittest.TestCase):
 
 class Phase5BlockedPublicationTests(unittest.TestCase):
     @staticmethod
-    def _three_round_gate(
-        fixture: V7HandoffFixture,
+    def _five_round_gate(
+        fixture: V8HandoffFixture,
         *,
         status: str,
     ) -> Dict[str, object]:
@@ -1927,39 +1909,31 @@ class Phase5BlockedPublicationTests(unittest.TestCase):
                 field: digit * 64
                 for field in phase5.PHASE5_CANDIDATE_DIGEST_FIELDS
             }
-            for digit in ("1", "2")
+            for digit in ("1", "2", "3", "4")
         ]
         digests = [*historical, current]
-        fingerprints = ["a" * 64, "b" * 64, "c" * 64]
-        reviews = [
-            {
-                "round": index,
-                "reviewer-id": f"phase5-reviewer-{index}",
-                "validator-status": "failed",
-                **digest,
-                "semantic-checks": [
-                    {
-                        "check": check,
-                        "result": (
-                            "failed" if check_index == 0 else "passed"
-                        ),
-                    }
-                    for check_index, check in enumerate(
-                        PHASE5_REVIEW_CHECKS
-                    )
-                ],
-                "finding-fingerprints": [
-                    fingerprints[index - 1]
-                ],
-            }
-            for index, digest in enumerate(digests, start=1)
-        ]
+        reviews = []
+        for index, digest in enumerate(digests, start=1):
+            reviews.append(
+                write_review_result(
+                    fixture.orchestrate,
+                    fixture.root,
+                    phase="phase-5",
+                    round_number=index,
+                    decision=(
+                        "blocked"
+                        if index == 5
+                        else "repair-required"
+                    ),
+                    authority=digest,
+                )
+            )
         repairs = [
             {
                 "round": index,
                 "repair-writer-id": f"phase5-repair-writer-{index}",
-                "finding-fingerprints": [
-                    fingerprints[index - 1]
+                "source-review-result-sha256": reviews[index - 1][
+                    "review-result-sha256"
                 ],
                 "before-terminal-authority-sha256": (
                     phase5.phase5_candidate_authority_sha256(
@@ -1972,25 +1946,30 @@ class Phase5BlockedPublicationTests(unittest.TestCase):
                     )
                 ),
             }
-            for index in (1, 2)
+            for index in (1, 2, 3, 4)
         ]
         return {
             "status": status,
+            "terminal-reason": (
+                "budget-exhausted"
+                if status == "blocked"
+                else "none"
+            ),
             "writer-id": "phase5-writer",
             "reviews": reviews,
             "repairs": repairs,
         }
 
     @classmethod
-    def _set_three_round_gate(
+    def _set_five_round_gate(
         cls,
-        fixture: V7HandoffFixture,
+        fixture: V8HandoffFixture,
         *,
         status: str,
     ) -> Dict[str, object]:
         trace_path = fixture.orchestrate / "trace/phase-5.trace.json"
         trace = json.loads(trace_path.read_text(encoding="utf-8"))
-        trace["review-gate"] = cls._three_round_gate(
+        trace["review-gate"] = cls._five_round_gate(
             fixture,
             status=status,
         )
@@ -1998,7 +1977,7 @@ class Phase5BlockedPublicationTests(unittest.TestCase):
         return trace
 
     @staticmethod
-    def _make_blocked_refit(fixture: V7HandoffFixture) -> None:
+    def _make_blocked_refit(fixture: V8HandoffFixture) -> None:
         refit_path = fixture.work / "framework-refit-trace.json"
         refit = json.loads(refit_path.read_text(encoding="utf-8"))
         refit["status"] = "blocked"
@@ -2006,11 +1985,77 @@ class Phase5BlockedPublicationTests(unittest.TestCase):
         refit["issues"] = ["冻结证据不足，Phase 5 无法形成终态框架。"]
         write_json(refit_path, refit)
 
+    def test_authority_integrity_is_a_legal_immediate_block(self) -> None:
+        with tempfile.TemporaryDirectory() as raw:
+            fixture = V8HandoffFixture(Path(raw))
+            fixture.prepare()
+            fixture.pass_review()
+            trace_path = fixture.orchestrate / "trace/phase-5.trace.json"
+            trace = json.loads(trace_path.read_text(encoding="utf-8"))
+            review_gate = trace["review-gate"]
+            review_gate["status"] = "blocked"
+            review_gate["terminal-reason"] = "authority-integrity"
+            review_gate["reviews"][0]["review-result-sha256"] = "0" * 64
+            current_plan = (fixture.work / "change-plan.md").read_text(
+                encoding="utf-8"
+            )
+            current = phase5.phase5_candidate_authority(
+                fixture.orchestrate,
+                current_plan,
+            )
+
+            self.assertEqual(
+                phase5.validate_phase5_review_gate(
+                    review_gate,
+                    orchestrate_dir=fixture.orchestrate,
+                    repo_root=fixture.root,
+                    current_digests=current,
+                ),
+                "blocked",
+            )
+
+    def test_identity_reuse_is_a_legal_immediate_block(self) -> None:
+        with tempfile.TemporaryDirectory() as raw:
+            fixture = V8HandoffFixture(Path(raw))
+            fixture.prepare()
+            fixture.pass_review()
+            trace_path = fixture.orchestrate / "trace/phase-5.trace.json"
+            trace = json.loads(trace_path.read_text(encoding="utf-8"))
+            review_gate = trace["review-gate"]
+            result_path = (
+                fixture.work / "reviews/review-round-01.json"
+            )
+            result = json.loads(result_path.read_text(encoding="utf-8"))
+            result["reviewer-id"] = "phase5-writer"
+            write_json(result_path, result)
+            review_gate["reviews"][0]["review-result-sha256"] = sha256_file(
+                result_path
+            )
+            review_gate["status"] = "blocked"
+            review_gate["terminal-reason"] = "identity-reuse"
+            current_plan = (fixture.work / "change-plan.md").read_text(
+                encoding="utf-8"
+            )
+            current = phase5.phase5_candidate_authority(
+                fixture.orchestrate,
+                current_plan,
+            )
+
+            self.assertEqual(
+                phase5.validate_phase5_review_gate(
+                    review_gate,
+                    orchestrate_dir=fixture.orchestrate,
+                    repo_root=fixture.root,
+                    current_digests=current,
+                ),
+                "blocked",
+            )
+
     def test_blocked_refuses_to_delete_published_terminal_results(
         self,
     ) -> None:
         with tempfile.TemporaryDirectory() as raw:
-            fixture = V7HandoffFixture(Path(raw))
+            fixture = V8HandoffFixture(Path(raw))
             fixture.publish()
             root_plan = fixture.orchestrate / "change-plan.md"
             packet = fixture.work / "final-packet-index.json"
@@ -2038,7 +2083,7 @@ class Phase5BlockedPublicationTests(unittest.TestCase):
 
     def test_blocked_review_and_trace_publish_atomically(self) -> None:
         with tempfile.TemporaryDirectory() as raw:
-            fixture = V7HandoffFixture(Path(raw))
+            fixture = V8HandoffFixture(Path(raw))
             self._make_blocked_refit(fixture)
             (fixture.work / "final-roadmap.json").unlink()
             (fixture.work / "atom-plan-mapping.json").unlink()
@@ -2072,65 +2117,39 @@ class Phase5BlockedPublicationTests(unittest.TestCase):
             )
             self.assertEqual(reporter.result()["issues"], [])
 
-    def test_failed_third_review_cannot_remain_pending(self) -> None:
+    def test_failed_fifth_review_cannot_remain_pending(self) -> None:
         with tempfile.TemporaryDirectory() as raw:
-            fixture = V7HandoffFixture(Path(raw))
+            fixture = V8HandoffFixture(Path(raw))
             fixture.prepare()
-            base_gate = self._three_round_gate(
+            review_gate = self._five_round_gate(
                 fixture,
                 status="pending",
             )
             plan = (fixture.work / "change-plan.md").read_text(
                 encoding="utf-8"
             )
-            variants = {}
-            for failure_kind in ("validator", "check", "finding"):
-                gate = copy.deepcopy(base_gate)
-                last = gate["reviews"][-1]
-                last["validator-status"] = (
-                    "failed"
-                    if failure_kind == "validator"
-                    else "passed"
-                )
-                last["semantic-checks"] = [
-                    {
-                        "check": check,
-                        "result": (
-                            "failed"
-                            if failure_kind == "check" and index == 0
-                            else "passed"
-                        ),
-                    }
-                    for index, check in enumerate(PHASE5_REVIEW_CHECKS)
-                ]
-                last["finding-fingerprints"] = (
-                    ["c" * 64]
-                    if failure_kind == "finding"
-                    else []
-                )
-                variants[failure_kind] = gate
             current_digests = phase5.phase5_candidate_authority(
                 fixture.orchestrate,
                 plan,
             )
-            for failure_kind, gate in variants.items():
-                with self.subTest(failure_kind=failure_kind):
-                    with self.assertRaisesRegex(
-                        ValueError,
-                        "第三轮未通过时必须blocked",
-                    ):
-                        phase5.validate_phase5_review_gate(
-                            gate,
-                            current_digests=current_digests,
-                        )
+            with self.assertRaisesRegex(
+                ValueError,
+                "第五轮review后不得保持pending",
+            ):
+                phase5.validate_phase5_review_gate(
+                    review_gate,
+                    orchestrate_dir=fixture.orchestrate,
+                    repo_root=fixture.root,
+                    current_digests=current_digests,
+                )
 
     def test_bounded_review_block_publishes_only_canonical_trace(
         self,
     ) -> None:
         with tempfile.TemporaryDirectory() as raw:
-            fixture = V7HandoffFixture(Path(raw))
+            fixture = V8HandoffFixture(Path(raw))
             fixture.prepare()
-            self._set_three_round_gate(fixture, status="blocked")
+            self._set_five_round_gate(fixture, status="blocked")
 
             phase5.write_outputs(fixture.orchestrate)
 
@@ -2175,9 +2194,9 @@ class Phase5BlockedPublicationTests(unittest.TestCase):
         ):
             with self.subTest(relative_path=relative_path):
                 with tempfile.TemporaryDirectory() as raw:
-                    fixture = V7HandoffFixture(Path(raw))
+                    fixture = V8HandoffFixture(Path(raw))
                     fixture.prepare()
-                    self._set_three_round_gate(
+                    self._set_five_round_gate(
                         fixture,
                         status="blocked",
                     )
@@ -2207,9 +2226,9 @@ class Phase5BlockedPublicationTests(unittest.TestCase):
                     )
 
         with tempfile.TemporaryDirectory() as raw:
-            fixture = V7HandoffFixture(Path(raw))
+            fixture = V8HandoffFixture(Path(raw))
             fixture.prepare()
-            self._set_three_round_gate(fixture, status="blocked")
+            self._set_five_round_gate(fixture, status="blocked")
             phase5.write_outputs(fixture.orchestrate)
             trace_path = fixture.orchestrate / "trace/phase-5.trace.json"
             before_trace = trace_path.read_bytes()
@@ -2222,9 +2241,9 @@ class Phase5BlockedPublicationTests(unittest.TestCase):
 
     def test_bounded_block_trace_tamper_and_atomic_rollback(self) -> None:
         with tempfile.TemporaryDirectory() as raw:
-            fixture = V7HandoffFixture(Path(raw))
+            fixture = V8HandoffFixture(Path(raw))
             fixture.prepare()
-            self._set_three_round_gate(fixture, status="blocked")
+            self._set_five_round_gate(fixture, status="blocked")
             trace_path = fixture.orchestrate / "trace/phase-5.trace.json"
             pending_trace = trace_path.read_bytes()
             with mock.patch.object(
@@ -2288,7 +2307,7 @@ class WorkflowCompletionTests(unittest.TestCase):
 
     def _publish_workflow(
         self,
-        fixture: V7HandoffFixture,
+        fixture: V8HandoffFixture,
         *,
         status: str,
     ) -> None:
@@ -2349,6 +2368,14 @@ class WorkflowCompletionTests(unittest.TestCase):
                 )
                 for row in fixture.roadmap["dependency-edges"]
             ],
+            "dependency-set-result": {
+                "result": "passed",
+                "note": "逐Change消费者闭包未发现遗漏的hard dependency边。",
+                "evidence-ga-ids": [
+                    f"GA-{index:04d}"
+                    for index in range(1, fixture.ga_count + 1)
+                ],
+            },
             "guard-link-results": [
                 self._unit_result(
                     "guard-link-id",
@@ -2449,7 +2476,7 @@ class WorkflowCompletionTests(unittest.TestCase):
         self,
     ) -> None:
         with tempfile.TemporaryDirectory() as raw:
-            fixture = V7HandoffFixture(Path(raw))
+            fixture = V8HandoffFixture(Path(raw))
             fixture.publish()
             absent = IssueReporter()
             validate_workflow_terminal(
@@ -2476,7 +2503,7 @@ class WorkflowCompletionTests(unittest.TestCase):
 
     def test_blocked_completion_is_valid_state_but_cannot_complete(self) -> None:
         with tempfile.TemporaryDirectory() as raw:
-            fixture = V7HandoffFixture(Path(raw))
+            fixture = V8HandoffFixture(Path(raw))
             fixture.publish()
             self._publish_workflow(fixture, status="blocked")
 
@@ -2528,7 +2555,7 @@ class HardCutPreservationTests(unittest.TestCase):
 
     def test_helper_rejects_legacy_phase5_without_deleting_it(self) -> None:
         with tempfile.TemporaryDirectory() as raw:
-            fixture = V7HandoffFixture(Path(raw))
+            fixture = V8HandoffFixture(Path(raw))
             fixture.prepare()
             fixture.pass_review()
             legacy = fixture.work / "input-change-plan.md"

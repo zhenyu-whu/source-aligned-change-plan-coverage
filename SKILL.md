@@ -1,120 +1,141 @@
 ---
 name: source-aligned-change-plan-coverage
-description: 当用户明确要求从指定 source document 出发，在 openspec-propose 之前建立具备 Capability/sequence 分离、显式 delivery directive、evidence occurrence 覆盖、final roadmap、terminal mapping 与 workflow completion 的 OpenSpec Change/Capability 全局计划时使用；确保每个 extracted evidence occurrence 拥有独立 GA，并进入 v7 handoff。
+description: 当用户要求从指定 source document 出发，在 openspec-propose 前建立具备 Change/Capability 分离、delivery directive、evidence occurrence 覆盖、typed dependency 完整性、final roadmap、terminal mapping 与 workflow completion 的 OpenSpec 全局计划时使用；v8 采用隔离的 writer/reviewer/repair 角色和 5-review/4-repair bounded gates。
 ---
 
-# source-aligned-change-plan-coverage：v7 五阶段编排协议
+# source-aligned-change-plan-coverage v8
 
-从完整 source document 先建立稳定 Capability topology，再独立建立从当前 baseline 到目标状态的 delivery sequence；随后完成自然语义单位提取、显式 delivery directive 冻结、source coverage 闭合、中性 evidence 汇总，以及 Phase 5 final-roadmap 重算与逐 GA terminal mapping。本技能不识别或消除 semantic duplicate。
+本技能从 source 构建可审计的 OpenSpec Change/Capability 全局计划。v8 是硬切换协议：只在新的干净 generation output root 运行，既有 v7 generation 永远只读。
 
-Capability-first 只表示先确定长期 normative boundary，不表示 Capability 是实施单元、依赖节点或建设顺序。任何 Change 顺序都必须由 source 明示的 delivery directive、真实 acceptance precondition、prefix utility 与 consumer closure 独立证明。
+## 运行前
 
-## 输入与授权
+1. 确认用户提供的 source paths 与新的 generation output root。
+2. 若 output root 非空或包含非 v8 generation，停止；不得迁移、覆盖、删除、补写或原地重试。
+3. 记录 `openspec/orchestrate/` 当前状态；所有 forward test 只使用临时目录。
+4. Main agent 读取：
+   - `references/change-capability-framework-principles.md`
+   - `references/cross-phase-contract.md`
+   - `references/trace-sidecar-contract.md`
+   - `references/review-gates.md`
+   - `references/bounded-repair-contract.md`
+   - 当前 Phase authoring contract
 
-- 必需输入是 source document 根目录或精确 path；可选输入是 Phase 1 candidate Change 计划。
-- 所有 workflow artifact 写入用户授权的 generation output root；默认仍为 `openspec/orchestrate/`。
-- 只有用户明确要求对指定 source 执行本技能时才启动工作流；审阅、修改或安装技能本身不构成执行授权。
-- 执行授权包括必需的 Phase worker、Phase 1 bounded reviewer/repair worker、Phase 2/3 evidence-freeze reviewer/repair worker、Phase 5 bounded reviewer/repair worker，以及一次 final integration reviewer。
-- 已存在的非 v7 generation 是只读历史结果。不得因技能升级自动验证、渲染、迁移、删除、覆盖或重跑。
+## 角色加载矩阵
 
-## Reference 路由
+| Role | 必须读取 | 禁止读取 |
+| --- | --- | --- |
+| Phase writer | source、共享 framework 原则、cross-phase 正向语义、对应 Phase authoring contract | review gate、repair contract、trace contract、manifest、预算、历史 review/repair |
+| Fresh reviewer | 当前 authority、source/frozen evidence、共享原则、对应 Phase authoring contract、`review-gates.md` | 任何先前 review result、repair row/report、历史 finding |
+| Repair writer | 当前 authority、紧邻上一轮完整 review result、共享原则、对应 Phase authoring contract、`bounded-repair-contract.md` | reviewer playbook、其他轮 result、trace、manifest、预算 |
+| Main agent | 全部 control contract 与当前 canonical artifacts | 不得代替独立 worker 作语义判断 |
+| Final integration reviewer | terminal authority、frozen evidence、共享原则、`review-gates.md` | bounded gate 历史、repair history |
 
-所有 worker 必须直接读取对应文件；prompt 摘要不能替代原文。
+每次派发 worker 时只提供该行允许的引用。不得通过摘要、prompt 拼接或 report 间接泄漏禁止内容。
 
-- `references/cross-phase-contract.md`：所有 worker 的跨 Phase 不变量。
-- `references/trace-sidecar-contract.md`：v7机器接口、schema、renderer、validator 与 authority。
-- `references/change-capability-framework-principles.md`：Phase 1 与 Phase 5 共用的唯一 framework 与 sequencing 标准。
-- `references/review-gates.md`：Phase 1、Phase 2/3、Phase 5 bounded gate 与 workflow terminal integration gate。
+## 五阶段
 
-| Phase | 唯一任务 contract |
-| --- | --- |
-| Phase 1 | `references/phase-1-initial-change-plan.md` |
-| Phase 2 | `references/phase-2-source-anchor-coverage.md` |
-| Phase 3 | `references/phase-3-coverage-review-iteration.md` |
-| Phase 4 | `references/phase-4-frozen-evidence-collections.md` |
-| Phase 5 | `references/phase-5-framework-refit-and-mapping.md` |
+### Phase 1
 
-加载规则：
+Writer 按 `phase-1-initial-change-plan.md` 只产生 initial framework authority 与 mirrors/reports，不写 trace。
 
-- Phase 1/5 writer、reviewer和repair writer额外加载共享 framework 原则。
-- Phase 2/3 reviewer与repair writer必须加载cross-phase、review gate及Phase 2/3 task contract。
-- Final integration reviewer加载cross-phase、共享原则、review gate及Phase 3–5 task contract。
+Main agent：
 
-`evals/`只用于技能发布前的中性盲测，不是generation runtime输入。发布候选必须按`evals/README.md`对全部case执行三次fresh独立判断并达到逐case 3/3；Phase worker不得读取oracle。
+1. 确定性渲染；
+2. 创建 Phase 1 v5 pending trace 与 manifest v4；
+3. 运行 validator；
+4. 执行独立 bounded gate。
 
-## Agent 拓扑
+通过条件同时包括 dependency edge soundness 与 dependency set completeness。
 
-- main agent 只负责编排、work queue、interface gate、manifest/validator 与状态转换，不代写 Phase 语义。
-- Phase 1、Phase 3、Phase 5 使用 fresh independent semantic writer；Phase 4 使用确定性 assembler。
-- Phase 2 按 source document 或 coherent batch 分配 fresh extraction writer；每份 source 恰好一个 canonical owner。全部完成后再启动 independent index/report writer。
-- Phase 1、联合Phase 2/3 evidence-freeze gate、Phase 5各自最多两轮repair、三轮fresh review；三个gate的预算和身份记录互不复用。
-- Phase 2 extraction在Phase 3 evidence-freeze gate通过前都是provisional。
-- Phase 5 reviewer只读最终候选framework、roadmap、mapping，以及可由这些authority确定性重算的handoff；repair writer只修改Phase 5 authority，不得回写冻结evidence。
-- Final integration reviewer 是一次性 workflow-level 只读 gate，不属于 Phase 5 bounded reviewer。
-- 所有 worker 都是 leaf，不启动 nested agent、`codex exec` 或其他 agentic child process。
+### Phase 2
 
-## Phase 状态机
+按 `phase-2-source-anchor-coverage.md` 对每个 source occurrence 进行 canonical atom extraction，保持显式 delivery directive。Main agent写 Phase 2 trace并运行 validator。
 
-| Phase | 职责 | 成功状态 | 下一步 |
-| --- | --- | --- | --- |
-| 1 | Capability topology、coarse delivery semantics、outcome-sliced Change 与依赖假设 | `initial-plan-written` | Phase 2 |
-| 2 | 自然语义 occurrence、显式 `delivery-directives[]` 与 existing-framework candidate hint | `source-atoms-written` | Phase 3，尚未冻结 |
-| 3 | coverage闭合、GA identity、directive核对与联合 bounded review | `coverage-complete` | evidence freeze 后进入 Phase 4 |
-| 4 | 建立all-evidence、by-source与delivery-directive neutral collections | `assembled` | Phase 5 |
-| 5 | boundary refit、全量 final-roadmap 重算、逐GA mapping、bounded review与handoff | `accepted` / `adjusted` | complete validation |
+### Phase 3
 
-Phase 1/2/3/4/5的source、authority、schema、validator或用户决策blocker，任一bounded gate耗尽repair预算，或无法可信闭合，都使当前generation `blocked`。冻结后发现evidence integrity defect直接`blocked`；不得回写Phase 2/3或启动patch/checkpoint链。
+Writer 按 `phase-3-coverage-review-iteration.md` 产生 global GA index 与 coverage closure authority，不写 trace。
 
-## 工作流
+Main agent执行联合 Phase 2/3 bounded gate。通过后 Phase 1–3 evidence authority 冻结；此后不得回写 evidence、directive、reference 或 GA。
 
-1. 验证 source path 与 generation output root。若目录含非 v7 generation，停止并请求用户选择干净output root或明确授权替换；不得自动清理。
-2. 读取共享 contract，初始化 v7 manifest skeleton，并按恢复规则定位第一个失效 interface。
-3. Phase 1先提炼 Capability，再独立生成 Change；依赖只能在 Change 已形成后证明。Writer发布`initial-framework.json`语义权威并确定性渲染`initial-change-plan.md`后，运行validator与bounded review。
-4. Phase 2 writer提取provisional occurrence；只有source明示时序时才写`delivery-directives[]`，不得从架构、Capability或实现常识推断。
-5. Phase 3机械闭合coverage、补提取gap、核对显式directive并建立provisional GA；联合Phase 2/3 gate通过后最后发布`coverage-complete`，同时冻结evidence、directive与GA。
-6. Phase 4从冻结authority全量确定性生成all-evidence、by-source与delivery-directive neutral collections；不得按initial Change/Capability或candidate mapping分桶。
-7. Phase 5先形成候选boundary与terminal mapping，再全量裁决directive、证明hard dependency、检查每个roadmap prefix并选择最终顺序；“最小refit”不保护Phase 1顺序。
-8. Phase 5 helper先校验完整candidate envelope，并从相同authority在私有staging中生成、逐字节自检完整handoff，随后生成Phase 5 plan/refit-review mirror与pending trace。Review绑定七项digest：四份candidate artifact、frozen evidence authority、Phase 3 freeze trace和完整candidate handoff。Repair后必须用`--refresh-review-candidate`原子刷新mirror与全部七项digest，重跑preflight后才可启动fresh reviewer。
-9. Phase 5 bounded gate通过后才发布根`change-plan.md`与terminal trace；随后先做pre-handoff validation，再由final integration reviewer写canonical review。Finalizer必须先原子锁定首次review提交的path/raw-bytes SHA，再做语义校验并一次性写passed或blocked attempt result；只有合法review终态化后才发布review mirror与workflow completion，最后运行complete validator。Manifest v3的`workflow-status`达到`integration-passed`后才handoff。
+### Phase 4
 
-Phase 5至workflow completion的命令顺序固定如下。`${SOURCE_ALIGNED_SKILL_DIR}`是本技能根目录的绝对路径，`${ORCHESTRATE_DIR}`是当前generation output root的绝对路径；不得交换、跳过或把后一步提前执行。
+按 `phase-4-frozen-evidence-collections.md` 从冻结 authority 确定性重建中性 evidence collections。不得加载候选 Change/Capability routing 作为读者展示结构。
+
+### Phase 5
+
+Writer 按 `phase-5-framework-refit-and-mapping.md` 只写 framework refit、final roadmap、terminal mapping candidate authority。
+
+Main agent使用 helper：
 
 ```bash
-python3 "${SOURCE_ALIGNED_SKILL_DIR}/scripts/phase5_plan_refit.py" --orchestrate-dir "${ORCHESTRATE_DIR}" --prepare-review --writer-id "<writer-id>"
-python3 "${SOURCE_ALIGNED_SKILL_DIR}/scripts/validate_source_aligned_orchestrate.py" --orchestrate-dir "${ORCHESTRATE_DIR}" --phase phase-5 --preflight
-python3 "${SOURCE_ALIGNED_SKILL_DIR}/scripts/phase5_plan_refit.py" --orchestrate-dir "${ORCHESTRATE_DIR}" --write
-python3 "${SOURCE_ALIGNED_SKILL_DIR}/scripts/validate_source_aligned_orchestrate.py" --orchestrate-dir "${ORCHESTRATE_DIR}" --pre-handoff
-python3 "${SOURCE_ALIGNED_SKILL_DIR}/scripts/finalize_source_aligned_orchestrate.py" --orchestrate-dir "${ORCHESTRATE_DIR}" --write
-python3 "${SOURCE_ALIGNED_SKILL_DIR}/scripts/validate_source_aligned_orchestrate.py" --orchestrate-dir "${ORCHESTRATE_DIR}" --complete
+python3 .codex/skills/source-aligned-change-plan-coverage/scripts/phase5_plan_refit.py \
+  --orchestrate-dir <new-output-root> \
+  --prepare-review \
+  --writer-id <writer-id>
 ```
 
-第二步通过后执行Phase 5 bounded review并把结果写回pending trace。若review要求repair，repair writer先修改Phase 5 authority并追加repair row，然后必须运行：
+该步骤生成 candidate mirrors、pending trace，并绑定七项 candidate digest。Phase 5 bounded gate通过后：
 
 ```bash
-python3 "${SOURCE_ALIGNED_SKILL_DIR}/scripts/phase5_plan_refit.py" --orchestrate-dir "${ORCHESTRATE_DIR}" --refresh-review-candidate
-python3 "${SOURCE_ALIGNED_SKILL_DIR}/scripts/validate_source_aligned_orchestrate.py" --orchestrate-dir "${ORCHESTRATE_DIR}" --phase phase-5 --preflight
+python3 .codex/skills/source-aligned-change-plan-coverage/scripts/phase5_plan_refit.py \
+  --orchestrate-dir <new-output-root> \
+  --write
 ```
 
-随后才能启动下一位fresh reviewer。只有gate写成`passed`且绑定当前七项candidate authority digest，第三步`--write`才会从同一authority在私有staging中重新生成并逐字节自检全部Change source、Capability slices、packet、baseline、mirror、根plan与terminal trace，并要求完整handoff digest与review时一致后原子发布；失败不发布handoff。第四步通过后，final integration reviewer必须先写`final-integration-review.json`。第五步finalizer先exclusive atomic create `trace/final-integration-review-attempt.trace.json`，再运行review语义校验并exclusive atomic create terminal attempt result；失败review也会留下blocked result且不能替换或重试，completion只能在合法review result之后发布。
+## Bounded review / repair
 
-## 恢复与 v7 硬切换
+- Phase 1、联合 Phase 2/3、Phase 5 均最多 5 次 fresh review、4 次 fresh repair。
+- Review result 使用每轮独立、不可覆盖 JSON；trace 只保存 path 与 SHA-256。
+- Finding 只有 `rule`、`subject`、中文 `finding`；不生成或比较 fingerprint。
+- Round 1–4 的 `repair-required` 才能 repair。
+- Repair writer消费完整紧邻 result，并按每个 rule class 执行 sibling regression audit。
+- Repair 后 authority digest 必须改变；随后完整重渲染、刷新派生 digest、运行 validator，才能 review。
+- Round 5 只允许 passed 或 blocked。
+- no-op、身份复用、authority/result digest 漂移立即 blocked。
+- 三个 gate 的预算与 identity history 相互独立。
 
-- 从 Phase 1 起核对manifest、canonical trace、authority digest和validator result；Phase 1、Phase 3、Phase 5还必须有有效bounded review evidence。
-- Phase 1发布`phase-works/phase-1/initial-framework.json`语义权威及其确定性`initial-change-plan.md` mirror；根`change-plan.md`只由Phase 5 bounded gate通过后的terminal状态发布。
-- Phase 2/3未冻结时从当前未完成review round恢复，保留既有review/repair历史和预算；冻结后不得修改evidence、directive或GA。
-- Phase 4只允许从冻结Phase 1–3全量重建；Phase 5 repair只重建完整Phase 5 authority和派生surface，不存在targeted、incremental或checkpoint模式。
-- `source-aligned-trace-v6`及更早generation保持原状态，不迁移、不原地升级、不重新渲染、不伪装为v7。
-- 新执行必须使用`source-aligned-trace-v7`并从Phase 1开始。Renderer、validator与helper必须拒绝非v7 generation；不提供migration script。
-- 安装或更新本技能不得触碰现有`openspec/orchestrate/`。在非空legacy output root上不得自动覆盖、归档或删除。
+Phase 5 repair 后刷新：
 
-## 完成与 handoff
+```bash
+python3 .codex/skills/source-aligned-change-plan-coverage/scripts/phase5_plan_refit.py \
+  --orchestrate-dir <new-output-root> \
+  --refresh-review-candidate
+```
 
-- `phase-works/phase-5/change-plan.md`与根`change-plan.md`必须逐字节一致。
-- Complete validator与final integration reviewer必须核对每个显式delivery directive的terminal resolution、每条hard dependency edge、每个final Change的prefix review与order decision。
-- Reviewer必须确认所有final Capability通过8项Capability gate，所有final Change通过8项Change gate；Capability topology没有被用作顺序，guard没有先于其保护对象，foundation-like内容没有借非空overlay逃逸。
-- 每个occurrence必须由frozen GA/evidence resolver直接进入terminal mapping；Phase 4 collection只提供中性审阅surface，不是mapping membership、owner或order输入。全部已记录或late-discovered ambiguity只由同GA mapping row裁决。
-- Passed integration review必须逐Capability、Change、outcome thread、dependency edge、guard link与occurrence chain记录结果，并绑定固定七份terminal artifact计算的`terminal-authority-sha256`；workflow completion必须绑定review path/digest与同一terminal digest。Selector只接受manifest `workflow-status: integration-passed`。
-- 失败时workflow `blocked`，不得回写冻结evidence；Phase 5 gate内只允许预算内的Phase 5 authority repair，final integration gate失败后不自动repair。
-- Handoff继续使用`source-aligned-final-packet-index-v3`。每个packet只公开由final dependency edges派生的Change依赖、完整owner-scoped冻结原文及direct spec/guard Capability切片。
-- `capability-slices`空数组仍是公开foundation marker，但不是语义豁免。Foundation最多一个、位于首位、无依赖、无Capability overlay，并通过foundation-like审查；其余Change必须至少一个slice。
-- Phase 1/5及公开packet均不保存Change类型、业务/技术分类或priority score。内部prefix、consumer closure与foundation-like检查不得泄露到handoff。
+## Final integration
+
+Phase 5 passed 后先运行 pre-handoff validator，再由 fresh final integration reviewer一次性写 `source-aligned-final-integration-review-v2`。
+
+Review 必须分别包含：
+
+- `dependency-edge-results[]`：逐条验证已声明 edge；
+- `dependency-set-result`：证明 consumer closure 未遗漏 edge。
+
+Finalizer先 exclusive-create attempt，再写唯一 attempt result；失败不可覆盖或重试。只有合法 passed result 才能发布 Markdown mirror、workflow completion 与 integration-passed manifest。
+
+```bash
+python3 .codex/skills/source-aligned-change-plan-coverage/scripts/validate_source_aligned_orchestrate.py \
+  --orchestrate-dir <new-output-root> \
+  --pre-handoff
+
+python3 .codex/skills/source-aligned-change-plan-coverage/scripts/finalize_source_aligned_orchestrate.py \
+  --orchestrate-dir <new-output-root>
+
+python3 .codex/skills/source-aligned-change-plan-coverage/scripts/validate_source_aligned_orchestrate.py \
+  --orchestrate-dir <new-output-root> \
+  --complete
+```
+
+## 阻断
+
+任一 source、authority、schema、validator、身份、digest 或用户决策问题无法在预算内闭合时，当前 generation 合法终态为 `blocked`。不得进入后续 Phase、不得发布根 `change-plan.md`、不得声明 apply-ready，也不得在原 output root 原地修补或重试。
+
+## 发布自检
+
+修改本技能时必须：
+
+1. 运行完整 `unittest discover`；
+2. 运行 skill-creator `quick_validate.py`；
+3. 运行 renderer、validator、helper、finalizer 集成测试；
+4. 按 `evals/README.md` 对每个中性 case 进行 3 名 fresh evaluator 的独立判断并逐 case 达到 3/3；
+5. 验证实施前记录的现有 `openspec/orchestrate/` 状态与字节 digest 未变化。

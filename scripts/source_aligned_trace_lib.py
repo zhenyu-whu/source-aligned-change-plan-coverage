@@ -17,15 +17,18 @@ from pathlib import Path
 from typing import Dict, Iterable, List, Optional, Sequence, Tuple
 
 
-TRACE_CONTRACT_VERSION = "source-aligned-trace-v7"
-MANIFEST_SCHEMA = "source-aligned-orchestrate-manifest-v3"
+TRACE_CONTRACT_VERSION = "source-aligned-trace-v8"
+MANIFEST_SCHEMA = "source-aligned-orchestrate-manifest-v4"
 PHASE_TRACE_SCHEMAS = {
-    "phase-1": "source-aligned-phase-1-trace-v4",
+    "phase-1": "source-aligned-phase-1-trace-v5",
     "phase-2": "source-aligned-phase-2-trace-v6",
-    "phase-3": "source-aligned-phase-3-trace-v5",
+    "phase-3": "source-aligned-phase-3-trace-v6",
     "phase-4": "source-aligned-phase-4-trace-v6",
-    "phase-5": "source-aligned-phase-5-trace-v6",
+    "phase-5": "source-aligned-phase-5-trace-v7",
 }
+PHASE1_REVIEW_RESULT_SCHEMA = "source-aligned-phase-1-review-result-v1"
+PHASE3_REVIEW_RESULT_SCHEMA = "source-aligned-phase-3-review-result-v1"
+PHASE5_REVIEW_RESULT_SCHEMA = "source-aligned-phase-5-review-result-v1"
 SOURCE_ATOMS_SCHEMA = "source-aligned-source-atoms-v6"
 GLOBAL_ATOM_INDEX_SCHEMA = "source-aligned-global-atom-index-v4"
 PHASE3_COVERAGE_REVIEW_SCHEMA = "source-aligned-phase-3-coverage-review-v3"
@@ -42,7 +45,7 @@ ATOM_PLAN_MAPPING_TOP_LEVEL_FIELDS = {
 }
 FINAL_PACKET_INDEX_SCHEMA = "source-aligned-final-packet-index-v3"
 CAPABILITY_BASELINE_SCHEMA = "source-aligned-capability-baseline-v2"
-FINAL_INTEGRATION_REVIEW_SCHEMA = "source-aligned-final-integration-review-v1"
+FINAL_INTEGRATION_REVIEW_SCHEMA = "source-aligned-final-integration-review-v2"
 FINAL_INTEGRATION_REVIEW_ATTEMPT_SCHEMA = (
     "source-aligned-final-integration-review-attempt-v1"
 )
@@ -56,6 +59,65 @@ FINAL_INTEGRATION_REVIEW_ATTEMPT_RESULT_RELATIVE_PATH = (
     "trace/final-integration-review-attempt-result.trace.json"
 )
 WORKFLOW_COMPLETION_SCHEMA = "source-aligned-workflow-completion-v1"
+
+SHARED_SEMANTIC_REFERENCES = (
+    "references/change-capability-framework-principles.md",
+    "references/cross-phase-contract.md",
+)
+WRITER_REFERENCE_ALLOWLISTS = {
+    "phase-1": (
+        *SHARED_SEMANTIC_REFERENCES,
+        "references/phase-1-initial-change-plan.md",
+    ),
+    "phase-2": (
+        *SHARED_SEMANTIC_REFERENCES,
+        "references/phase-2-source-anchor-coverage.md",
+    ),
+    "phase-3": (
+        *SHARED_SEMANTIC_REFERENCES,
+        "references/phase-3-coverage-review-iteration.md",
+    ),
+    "phase-4": (
+        "references/cross-phase-contract.md",
+        "references/phase-4-frozen-evidence-collections.md",
+    ),
+    "phase-5": (
+        *SHARED_SEMANTIC_REFERENCES,
+        "references/phase-5-framework-refit-and-mapping.md",
+    ),
+}
+REVIEWER_REFERENCE_ALLOWLISTS = {
+    "phase-1": (
+        *WRITER_REFERENCE_ALLOWLISTS["phase-1"],
+        "references/review-gates.md",
+    ),
+    "phase-3": (
+        *SHARED_SEMANTIC_REFERENCES,
+        "references/phase-2-source-anchor-coverage.md",
+        "references/phase-3-coverage-review-iteration.md",
+        "references/review-gates.md",
+    ),
+    "phase-5": (
+        *WRITER_REFERENCE_ALLOWLISTS["phase-5"],
+        "references/review-gates.md",
+    ),
+}
+REPAIR_REFERENCE_ALLOWLISTS = {
+    "phase-1": (
+        *WRITER_REFERENCE_ALLOWLISTS["phase-1"],
+        "references/bounded-repair-contract.md",
+    ),
+    "phase-3": (
+        *SHARED_SEMANTIC_REFERENCES,
+        "references/phase-2-source-anchor-coverage.md",
+        "references/phase-3-coverage-review-iteration.md",
+        "references/bounded-repair-contract.md",
+    ),
+    "phase-5": (
+        *WRITER_REFERENCE_ALLOWLISTS["phase-5"],
+        "references/bounded-repair-contract.md",
+    ),
+}
 
 DELIVERY_DIRECTIVES = (
     "explicit-deferred",
@@ -84,7 +146,8 @@ CHANGE_GATE_NAMES = (
 )
 ROADMAP_GATE_NAMES = (
     "delivery-directive-resolution",
-    "dependency-strength",
+    "dependency-edge-soundness",
+    "dependency-set-completeness",
     "prefix-viability",
     "guard-co-delivery",
     "foundation-like-content",
@@ -95,7 +158,8 @@ PHASE1_REVIEW_CHECKS = (
     "source-delivery-semantics",
     "prefix-utility",
     "consumer-closure",
-    "hard-dependency-proof",
+    "dependency-edge-soundness",
+    "dependency-set-completeness",
     "guard-co-delivery",
     "foundation-like-content",
     "order-selection",
@@ -105,12 +169,45 @@ PHASE5_REVIEW_CHECKS = (
     "final-capability-gates",
     "final-change-gates",
     "delivery-directive-resolution",
-    "dependency-strength",
+    "dependency-edge-soundness",
+    "dependency-set-completeness",
     "prefix-viability",
     "guard-co-delivery",
     "foundation-like-content",
     "order-selection",
     "mapping-overlay-consistency",
+)
+PHASE3_REVIEW_CHECKS = (
+    "source-range-coverage",
+    "production-obligation-completeness",
+    "delivery-directive-completeness",
+    "delivery-directive-source-basis",
+    "architecture-directive-separation",
+    "evidence-quote-range-integrity",
+    "terminal-mapping-tuple-losslessness",
+    "semantic-dedup-prohibition",
+    "mapping-ambiguity-discipline",
+    "source-conflict-closure",
+)
+PHASE5_CANDIDATE_DIGEST_FIELDS = (
+    "framework-refit-sha256",
+    "final-roadmap-sha256",
+    "atom-plan-mapping-sha256",
+    "final-change-plan-sha256",
+    "frozen-evidence-authority-sha256",
+    "phase-3-freeze-trace-sha256",
+    "candidate-handoff-sha256",
+)
+MAX_BOUNDED_REVIEWS = 5
+MAX_BOUNDED_REPAIRS = 4
+REVIEW_DECISIONS = ("passed", "repair-required", "blocked")
+REVIEW_GATE_TERMINAL_REASONS = (
+    "none",
+    "review-blocked",
+    "budget-exhausted",
+    "no-op-repair",
+    "identity-reuse",
+    "authority-integrity",
 )
 DEPENDENCY_KINDS = (
     "behavior-availability",
@@ -571,7 +668,7 @@ def evidence_authority_payload(
     *,
     include_phase3: bool = True,
 ) -> Dict[str, object]:
-    """Build the normalized Phase 2/3 evidence authority fingerprint payload.
+    """Build the normalized Phase 2/3 evidence authority digest payload.
 
     Reports, Markdown mirrors, and phase traces are deliberately excluded.  The
     digest binds the source bytes, every canonical Phase 2 atom JSON document,
@@ -708,7 +805,7 @@ def require_phase3_frozen_evidence(
         "review-gate",
     }
     if set(phase1_trace) != expected_phase1_fields:
-        raise ValueError("terminal Phase 1 trace字段不符合v7契约")
+        raise ValueError("terminal Phase 1 trace字段不符合v8契约")
     if (
         phase1_trace.get("trace-schema") != PHASE_TRACE_SCHEMAS["phase-1"]
         or phase1_trace.get("trace-contract-version") != TRACE_CONTRACT_VERSION
@@ -723,8 +820,15 @@ def require_phase3_frozen_evidence(
     if (
         not isinstance(phase1_gate, dict)
         or set(phase1_gate)
-        != {"status", "writer-id", "reviews", "repairs"}
+        != {
+            "status",
+            "terminal-reason",
+            "writer-id",
+            "reviews",
+            "repairs",
+        }
         or normalize_code(phase1_gate.get("status")) != "passed"
+        or normalize_code(phase1_gate.get("terminal-reason")) != "none"
         or not phase1_gate.get("reviews")
     ):
         raise ValueError(
@@ -930,7 +1034,7 @@ def require_phase3_frozen_evidence(
         != "coverage-complete"
     ):
         raise ValueError(
-            "Phase 5只接受coverage-complete的当前v7 Phase 3 freeze"
+            "Phase 5只接受coverage-complete的当前v8 Phase 3 freeze"
         )
     if phase3_trace.get("issues") != []:
         raise ValueError("coverage-complete Phase 3 trace要求issues=[]")
@@ -996,7 +1100,7 @@ def require_phase3_frozen_evidence(
         != "coverage-complete"
     ):
         raise ValueError(
-            "Phase 3 coverage review必须是coverage-complete的当前v7 authority"
+            "Phase 3 coverage review必须是coverage-complete的当前v8 authority"
         )
 
     gate = phase3_trace.get("review-gate")
@@ -1005,6 +1109,7 @@ def require_phase3_frozen_evidence(
         or set(gate)
         != {
             "status",
+            "terminal-reason",
             "phase-2-canonical-owner-ids",
             "phase-2-aggregate-writer-id",
             "phase-3-writer-id",
@@ -1012,6 +1117,7 @@ def require_phase3_frozen_evidence(
             "repairs",
         }
         or normalize_code(gate.get("status")) != "passed"
+        or normalize_code(gate.get("terminal-reason")) != "none"
     ):
         raise ValueError("Phase 5要求canonical Phase 3 passed review-gate")
     owner_ids = gate.get("phase-2-canonical-owner-ids")
@@ -1035,16 +1141,10 @@ def require_phase3_frozen_evidence(
         or not isinstance(reviews[-1], dict)
     ):
         raise ValueError("Phase 3 passed review history不完整")
-    final_review = reviews[-1]
     expected_review_fields = {
         "round",
-        "stage",
-        "reviewer-id",
-        "phase-2-validator-status",
-        "phase-3-validator-status",
-        "delivery-directive-status",
-        "evidence-authority-sha256",
-        "finding-fingerprints",
+        "review-result-path",
+        "review-result-sha256",
     }
     if any(
         not isinstance(review, dict)
@@ -1053,7 +1153,30 @@ def require_phase3_frozen_evidence(
         for index, review in enumerate(reviews, start=1)
     ):
         raise ValueError("Phase 3 review history字段或round非法")
-    reviewer_ids = [squash(review.get("reviewer-id")) for review in reviews]
+    review_results: List[Dict[str, object]] = []
+    for index, review in enumerate(reviews, start=1):
+        review_path = bounded_review_result_path(
+            orchestrate_dir,
+            "phase-3",
+            index,
+        )
+        if (
+            review.get("review-result-path")
+            != lexical_repo_relative_path(review_path, repo_root)
+            or review.get("review-result-sha256") != sha256_file(review_path)
+        ):
+            raise ValueError("Phase 3 review result path或digest漂移")
+        review_results.append(
+            load_bounded_review_result(
+                review_path,
+                "phase-3",
+                expected_round=index,
+            )
+        )
+    reviewer_ids = [
+        squash(review.get("reviewer-id"))
+        for review in review_results
+    ]
     if (
         any(not reviewer for reviewer in reviewer_ids)
         or len(reviewer_ids) != len(set(reviewer_ids))
@@ -1063,14 +1186,9 @@ def require_phase3_frozen_evidence(
     ):
         raise ValueError("Phase 3 reviewer identity不独立")
     if (
-        normalize_code(final_review.get("stage")) != "phase-3-closure"
-        or normalize_code(final_review.get("phase-2-validator-status"))
-        != "passed"
-        or normalize_code(final_review.get("phase-3-validator-status"))
-        != "passed"
-        or normalize_code(final_review.get("delivery-directive-status"))
-        != "passed"
-        or final_review.get("finding-fingerprints") != []
+        review_results[-1].get("decision") != "passed"
+        or review_results[-1].get("evidence-authority-sha256")
+        != evidence_authority_sha256(orchestrate_dir, repo_root)
     ):
         raise ValueError(
             "Phase 3 terminal review必须完成双validator与directive audit，"
@@ -1110,7 +1228,9 @@ def require_phase3_frozen_evidence(
         repo_root,
     )
     if (
-        normalize_code(final_review.get("evidence-authority-sha256"))
+        normalize_code(
+            review_results[-1].get("evidence-authority-sha256")
+        )
         != evidence_digest
     ):
         raise ValueError(
@@ -1120,6 +1240,273 @@ def require_phase3_frozen_evidence(
         "frozen-evidence-authority-sha256": evidence_digest,
         "phase-3-freeze-trace-sha256": sha256_file(phase3_trace_path),
     }
+
+
+def bounded_review_result_path(
+    orchestrate_dir: Path,
+    phase: str,
+    round_number: int,
+) -> Path:
+    if phase not in {"phase-1", "phase-3", "phase-5"}:
+        raise ValueError(f"不支持的bounded review phase：{phase}")
+    if round_number < 1 or round_number > MAX_BOUNDED_REVIEWS:
+        raise ValueError(f"bounded review round非法：{round_number}")
+    return (
+        orchestrate_dir
+        / f"phase-works/{phase}/reviews/review-round-{round_number:02d}.json"
+    )
+
+
+def write_bounded_review_result_exclusive(
+    orchestrate_dir: Path,
+    repo_root: Path,
+    phase: str,
+    round_number: int,
+    payload: Dict[str, object],
+) -> Dict[str, object]:
+    """Exclusive-create one canonical review result and return its trace ref.
+
+    Invalid bytes intentionally remain present and make the generation fail
+    closed; a caller must never delete or overwrite a submitted round.
+    """
+    path = bounded_review_result_path(
+        orchestrate_dir,
+        phase,
+        round_number,
+    )
+    lexical_repo_relative_path(path, repo_root)
+    require_no_symlink_in_repo_path(
+        path.parent,
+        repo_root,
+        f"{phase} review result parent",
+    )
+    path.parent.mkdir(parents=True, exist_ok=True)
+    raw = (
+        json.dumps(payload, ensure_ascii=False, indent=2, sort_keys=True)
+        + "\n"
+    ).encode("utf-8")
+    descriptor = os.open(
+        path,
+        os.O_WRONLY | os.O_CREAT | os.O_EXCL,
+        0o644,
+    )
+    with os.fdopen(descriptor, "wb") as handle:
+        handle.write(raw)
+        handle.flush()
+        os.fsync(handle.fileno())
+    load_bounded_review_result(
+        path,
+        phase,
+        expected_round=round_number,
+    )
+    return {
+        "round": round_number,
+        "review-result-path": repo_relative_path(path, repo_root),
+        "review-result-sha256": sha256_file(path),
+    }
+
+
+def load_bounded_review_result(
+    path: Path,
+    phase: str,
+    *,
+    expected_round: Optional[int] = None,
+) -> Dict[str, object]:
+    schemas = {
+        "phase-1": PHASE1_REVIEW_RESULT_SCHEMA,
+        "phase-3": PHASE3_REVIEW_RESULT_SCHEMA,
+        "phase-5": PHASE5_REVIEW_RESULT_SCHEMA,
+    }
+    checks_by_phase = {
+        "phase-1": PHASE1_REVIEW_CHECKS,
+        "phase-3": PHASE3_REVIEW_CHECKS,
+        "phase-5": PHASE5_REVIEW_CHECKS,
+    }
+    common_fields = {
+        "trace-schema",
+        "trace-contract-version",
+        "phase",
+        "round",
+        "reviewer-id",
+        "semantic-checks",
+        "findings",
+        "warnings",
+        "finding-count",
+        "decision",
+        "language-self-check",
+    }
+    phase_fields = {
+        "phase-1": {
+            "validator-status",
+            "initial-framework-sha256",
+            "initial-change-plan-sha256",
+        },
+        "phase-3": {
+            "stage",
+            "phase-2-validator-status",
+            "phase-3-validator-status",
+            "delivery-directive-status",
+            "evidence-authority-sha256",
+        },
+        "phase-5": {
+            "validator-status",
+            *PHASE5_CANDIDATE_DIGEST_FIELDS,
+        },
+    }
+    if phase not in schemas:
+        raise ValueError(f"不支持的bounded review phase：{phase}")
+    if path.is_symlink() or not path.is_file():
+        raise ValueError(f"bounded review result必须是普通文件：{path}")
+    data = read_json(path)
+    expected_fields = common_fields | phase_fields[phase]
+    if set(data) != expected_fields:
+        raise ValueError(
+            f"{phase} review result字段非法；"
+            f"缺少={sorted(expected_fields-set(data))}，"
+            f"多余={sorted(set(data)-expected_fields)}"
+        )
+    if data.get("trace-schema") != schemas[phase]:
+        raise ValueError(f"{phase} review result schema非法")
+    if data.get("trace-contract-version") != TRACE_CONTRACT_VERSION:
+        raise ValueError(f"{phase} review result trace contract非法")
+    if data.get("phase") != phase:
+        raise ValueError(f"{phase} review result phase非法")
+    round_number = data.get("round")
+    if (
+        not isinstance(round_number, int)
+        or round_number < 1
+        or round_number > MAX_BOUNDED_REVIEWS
+        or (
+            expected_round is not None
+            and round_number != expected_round
+        )
+    ):
+        raise ValueError(f"{phase} review result round非法")
+    if path != bounded_review_result_path(
+        path.parents[3],
+        phase,
+        round_number,
+    ):
+        raise ValueError(f"{phase} review result path非法：{path}")
+    if not squash(data.get("reviewer-id")):
+        raise ValueError(f"{phase} reviewer-id不得为空")
+
+    semantic_checks = data.get("semantic-checks")
+    expected_checks = checks_by_phase[phase]
+    if not isinstance(semantic_checks, list) or len(semantic_checks) != len(
+        expected_checks
+    ):
+        raise ValueError(f"{phase} semantic-checks数量非法")
+    actual_checks: List[str] = []
+    for index, row in enumerate(semantic_checks):
+        if not isinstance(row, dict) or set(row) != {"check", "result"}:
+            raise ValueError(f"{phase} semantic-checks[{index}]字段非法")
+        actual_checks.append(normalize_code(row.get("check")))
+        if row.get("result") not in {"passed", "failed"}:
+            raise ValueError(f"{phase} semantic-checks[{index}].result非法")
+    if tuple(actual_checks) != expected_checks:
+        raise ValueError(f"{phase} semantic-checks顺序非法")
+
+    findings = data.get("findings")
+    if not isinstance(findings, list):
+        raise ValueError(f"{phase} findings必须是array")
+    for index, row in enumerate(findings):
+        if not isinstance(row, dict) or set(row) != {
+            "rule",
+            "subject",
+            "finding",
+        }:
+            raise ValueError(f"{phase} findings[{index}]字段非法")
+        if (
+            not squash(row.get("rule"))
+            or not squash(row.get("subject"))
+            or not re.search(r"[\u4e00-\u9fff]", squash(row.get("finding")))
+        ):
+            raise ValueError(f"{phase} findings[{index}]必须完整且使用中文说明")
+    if data.get("finding-count") != len(findings):
+        raise ValueError(f"{phase} finding-count与findings数量不一致")
+    warnings = data.get("warnings")
+    if (
+        not isinstance(warnings, list)
+        or any(
+            not isinstance(item, str)
+            or not item.strip()
+            or not re.search(r"[\u4e00-\u9fff]", item)
+            for item in warnings
+        )
+    ):
+        raise ValueError(f"{phase} warnings必须是中文string array")
+    if not re.search(
+        r"[\u4e00-\u9fff]",
+        squash(data.get("language-self-check")),
+    ):
+        raise ValueError(f"{phase} language-self-check必须使用中文")
+
+    def sha(field: str) -> None:
+        if not re.fullmatch(r"[0-9a-f]{64}", str(data.get(field, ""))):
+            raise ValueError(f"{phase} {field}非法")
+
+    if phase == "phase-1":
+        if data.get("validator-status") not in {"passed", "failed"}:
+            raise ValueError("Phase 1 validator-status非法")
+        sha("initial-framework-sha256")
+        sha("initial-change-plan-sha256")
+        validators_passed = data.get("validator-status") == "passed"
+    elif phase == "phase-3":
+        if data.get("stage") not in {"phase-2-preflight", "phase-3-closure"}:
+            raise ValueError("Phase 3 review stage非法")
+        if data.get("phase-2-validator-status") not in {"passed", "failed"}:
+            raise ValueError("Phase 2 validator status非法")
+        if data.get("phase-3-validator-status") not in {
+            "passed",
+            "failed",
+            "not-run",
+        }:
+            raise ValueError("Phase 3 validator status非法")
+        if data.get("delivery-directive-status") not in {"passed", "failed"}:
+            raise ValueError("delivery-directive-status非法")
+        if (
+            data.get("stage") == "phase-2-preflight"
+            and data.get("phase-3-validator-status") != "not-run"
+        ):
+            raise ValueError("Phase 2 preflight要求Phase 3 validator not-run")
+        if (
+            data.get("stage") == "phase-3-closure"
+            and data.get("phase-3-validator-status") == "not-run"
+        ):
+            raise ValueError("Phase 3 closure不得使用validator not-run")
+        sha("evidence-authority-sha256")
+        validators_passed = (
+            data.get("stage") == "phase-3-closure"
+            and data.get("phase-2-validator-status") == "passed"
+            and data.get("phase-3-validator-status") == "passed"
+            and data.get("delivery-directive-status") == "passed"
+        )
+    else:
+        if data.get("validator-status") not in {"passed", "failed"}:
+            raise ValueError("Phase 5 validator-status非法")
+        for field in PHASE5_CANDIDATE_DIGEST_FIELDS:
+            sha(field)
+        validators_passed = data.get("validator-status") == "passed"
+
+    decision = data.get("decision")
+    if decision not in REVIEW_DECISIONS:
+        raise ValueError(f"{phase} review decision非法")
+    checks_passed = all(
+        isinstance(row, dict) and row.get("result") == "passed"
+        for row in semantic_checks
+    )
+    if decision == "passed":
+        if findings or not checks_passed or not validators_passed:
+            raise ValueError(
+                f"{phase} passed要求validator/check全部通过且findings为空"
+            )
+    else:
+        if not findings:
+            raise ValueError(f"{phase} 非passed review必须包含finding")
+        if decision == "repair-required" and round_number >= MAX_BOUNDED_REVIEWS:
+            raise ValueError(f"{phase} 最后一轮不得要求repair")
+    return data
 
 
 def read_json(path: Path) -> Dict[str, object]:

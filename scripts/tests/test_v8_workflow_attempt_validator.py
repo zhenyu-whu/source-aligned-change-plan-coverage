@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
-"""One-shot workflow attempt loader and validator integration tests."""
+"""v8 one-shot workflow attempt loader and validator integration tests."""
 
 from __future__ import annotations
 
@@ -28,7 +28,7 @@ from source_aligned_trace_lib import (  # noqa: E402
     sha256_file,
     write_json,
 )
-from source_aligned_v7_contract import (  # noqa: E402
+from source_aligned_v8_contract import (  # noqa: E402
     load_final_integration_review_attempt,
     load_final_integration_review_attempt_result,
 )

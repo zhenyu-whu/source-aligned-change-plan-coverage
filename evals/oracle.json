@@ -104,6 +104,32 @@
         "保留独立领域骨架或仓储Change。",
         "把未来共享、归档或搜索提前纳入。"
       ]
+    },
+    {
+      "id": "case-09",
+      "category": "stable-outcome-consumption-requires-complete-edge-set",
+      "required-invariants": [
+        "高级runtime node对稳定编排、数据契约和Draft执行结果的消费必须逐项进入typed hard-dependency edge set。",
+        "每条edge分别证明独立predecessor outcome、实际consumer consumption、反事实必要性与不能same-change co-delivery。",
+        "dependency set completeness不得被已声明edge的soundness检查替代。"
+      ],
+      "forbidden-outcomes": [
+        "以共同属于runtime或共享数据结构为由省略edge。",
+        "只验证候选计划中已经声明的edge而不反查遗漏消费。"
+      ]
+    },
+    {
+      "id": "case-10",
+      "category": "shared-infrastructure-is-not-outcome-consumption",
+      "required-invariants": [
+        "报告生成与通知偏好保持两个独立Change。",
+        "共享schema registry、runtime和日志不产生typed hard dependency。",
+        "顺序只能由各自outcome、source directive或其他真实依赖决定。"
+      ],
+      "forbidden-outcomes": [
+        "因共享schema或runtime建立虚假dependency。",
+        "把技术基础设施复用解释为稳定业务outcome consumption。"
+      ]
     }
   ]
 }

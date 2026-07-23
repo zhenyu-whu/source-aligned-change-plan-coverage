@@ -1,89 +1,60 @@
-# v7 跨 Phase 语义契约
+# v8 跨 Phase 共享语义契约
 
-本文件只定义Phase 1–5、三个bounded review gate和final integration gate共同遵守的不变量。Phase-specific语义由对应task contract定义，机器字段由`references/trace-sidecar-contract.md`定义，Change/Capability boundary与delivery sequence只以共享framework原则为准。
+本文件只定义产品与 framework 的正向语义，不包含 review 检查枚举、预算、状态机或 repair 指令。它可由所有角色读取。
 
-## 权威边界
+## Authority 与派生面
 
-- Source document是production obligation与显式delivery directive的原始语义来源。
-- Phase 2/3读取source并建立provisional evidence；只有Phase 3 `coverage-complete` commit marker与`review-gate.status: passed`同时成立时，`source-fact`、`delivery-directives[]`、evidence ref和GA才作为一个authority set冻结。
-- Phase 4 assembler、Phase 5 refit/mapping及helper只通过evidence resolver消费冻结evidence，不重新读取source。
-- Phase 1以`initial-framework.json`为唯一语义权威，`initial-change-plan.md`是确定性mirror；Phase 2/3以JSON为语义权威；Phase 4 collection Markdown是确定性内容权威；Phase 5 refit JSON只负责initial→final review，独立final-roadmap JSON负责最终semantic landscape、Capability、outcome thread、Change、dependency edge、guard link、directive resolution、order、prefix、overlay与foundation，mapping JSON负责逐GA terminal mapping。Final plan是确定性projection。
-- Mirror、派生index和report不得成为第二份语义权威。Work queue、agent/reviewer/repair report均不进入manifest。
-- Final integration review JSON是workflow-level canonical review authority；其Markdown是确定性mirror。Workflow completion trace是整个generation唯一完成commit marker。
-- Phase 2/3 freeze后发现evidence integrity defect、contract冲突或validator失败时停止，不弱化规则。
+- JSON authority 是唯一语义权威；Markdown、index、packet、report 都是确定性派生面。
+- 每个 source occurrence 在冻结前获得唯一稳定身份；冻结后不得修改原文证据、directive、reference 或 GA 编号。
+- Change、Capability、outcome thread、dependency edge、guard link 与 terminal mapping 必须从同一组冻结证据形成闭合链。
+- 派生面不得反向覆盖 authority，也不得成为后续 worker 的隐藏语义输入。
 
-## Capability topology 与 delivery sequence
+## 五阶段接口
 
-- Capability topology规定长期normative ownership；delivery sequence规定从当前baseline到目标状态的Change transition path。两者必须独立推导。
-- Capability名称、基础性、复用范围、首次advancement或Capability之间的概念关系不得形成Change dependency或order。
-- 一个Capability可以由多个Change增量推进；首次consumer只需建立当前outcome安全成立所需的最小slice。
-- Change必须在隐藏未来roadmap时仍通过Prefix Utility；除唯一foundation外，新substrate/guard必须在同一Change或当前prefix被消费。
-- 显式delivery directive优先于architecture、reuse或readiness推断。任何source冲突无法安全裁决时必须`blocked`。
+1. Phase 1 建立初始 Change/Capability framework，不决定最终 evidence mapping。
+2. Phase 2 按 source occurrence 提取义务原子和显式 delivery directive。
+3. Phase 3 形成全局 GA index，闭合原文覆盖并冻结 evidence authority。
+4. Phase 4 只从冻结 authority 确定性组装中性 evidence collections。
+5. Phase 5 重新审视 framework，形成 final roadmap、terminal mapping 与最终 Change plan。
 
-## Evidence occurrence、directive 与 GA identity
+下游只能消费已声明的上游 authority；任何未声明、未冻结或来自 report/mirror 的信息都不是有效输入。
 
-- Phase 2 source atom和Phase 3 gap atom各代表一个独立evidence occurrence，并恰好获得一个`GA-####`。
-- 每个occurrence都显式保存`delivery-directives[]`；只有source明示时使用`milestone-scope|explicit-precedence|explicit-deferred`，否则为空数组。
-- GA不是去重后的requirement。语义相同、原文相同或range重叠的occurrence仍保留独立GA。
-- Global index只保存GA和evidence ref；后续通过resolver取得frozen evidence与directive。
-- 本技能不识别、标记、合并、归组或消除semantic duplicate。
-- Evidence freeze前repair可以split/add occurrence或修正directive，并按稳定排序重新分配provisional GA；freeze后任何evidence、directive、ref或GA都不可修改或重编号。
+## Evidence occurrence
 
-## Coverage 与 potential mapping ambiguity
+- occurrence 是“source document + line range + source fact”的具体出现，不按相似文本合并。
+- 每个 occurrence 必须恰有一个 source atom，冻结后恰有一个 GA，并在 terminal mapping 中恰有一个处置。
+- 同一事实在不同位置重复出现时保留多个 occurrence。
+- coverage closure 必须以全文 line range 的机械补集为基础；未覆盖范围必须有明确处置。
+- `milestone-scope`、`explicit-precedence`、`explicit-deferred` 是 source-facing directive；不得由后续规划猜测补写或删除。
 
-- Phase 3 coverage closure是covered range的机械补集与每个uncovered range的处置，并由联合reviewer全文核对production obligation与显式directive completeness；它不是mapping或roadmap证明。
-- `coverage-complete`允许非空potential mapping ambiguity；source/artifact/range不可信则`blocked`。
-- Phase 3 ambiguity以GA为键，只记录`owner-change`、`relation`、`artifact-projection`、`target-capability`中实际不唯一的维度，不填写final value。
-- Delivery directive不是mapping ambiguity dimension；Phase 3只判断source是否明示，不裁决它影响哪个final Change。
-- Phase 5检查全部GA。每个GA的terminal mapping row是唯一final owner/relation/projection/target authority；每个非空directive GA还必须有唯一terminal directive resolution。
-- Candidate mapping不一致、final mapping选择或framework boundary调整都不是evidence defect。
+## Change、Capability 与依赖
 
-## Phase 职责
+- Capability 是长期稳定的责任边界；Change 是一次可交付、可验收的结果增量。
+- Capability adjacency 不等于 Change sequence，Capability 层级也不暗示 Change hard dependency。
+- typed hard dependency 只有在四项同时成立时才合法：
+  1. predecessor 产生独立、稳定、可命名的 outcome；
+  2. consumer Change 的行为或验收实际消费该 outcome；
+  3. 没有 predecessor 时 consumer 无法正确完成；
+  4. 该关系不是共享 schema/runtime/infrastructure、相邻顺序或同一 Change 内 co-delivery。
+- 完整性不变量：所有真实稳定 outcome consumption 都必须进入 typed edge set；不得只验证已声明 edge 的 soundness。
+- 对每个消费关系，typed edge、existing baseline、same-change co-delivery 三者必须恰有一个成立。
+- 共享 schema、library、runtime node 或 infrastructure 若不消费稳定业务 outcome，不产生 hard dependency。
 
-- **Phase 1**：完整读取source，先建立Capability topology，再建立coarse delivery semantics、outcome-sliced Change、typed dependency edge hypothesis与prefix review；写`initial-framework.json`并确定性渲染plan，不提取atom。
-- **Phase 2**：按自然语义单位提取provisional occurrence，只记录source明示的directive，并给出existing-framework candidate hint；不规划dependency/order。
-- **Phase 3**：闭合coverage、补提取gap、核对directive completeness、建立provisional GA、记录potential mapping ambiguity并冻结evidence；不规划framework。
-- **Phase 4**：确定性生成all-evidence完整中性collection、按source中性视图与delivery-directive collection；不按Phase 1 Change/Capability或candidate mapping分桶，不渲染candidate routing metadata，不作semantic profile、owner、dependency、order、refit或Capability impact判断。
-- **Phase 5**：先形成provisional final boundary与terminal mapping，再全量裁决directive、证明hard dependency、审核每个prefix、选择final order，最后推导overlay/baseline并执行bounded review。
-- Phase 1 boundary默认是hypothesis；Phase 5可以做最小boundary refit，但必须从冻结evidence完整重算order。Phase 1顺序没有保留偏置。
+## Freeze 与 terminal handoff
 
-## Dependency、guard 与 foundation-like 不变量
+- Phase 3 freeze 后，Phase 4/5 不得回写 Phase 2/3 evidence。
+- Phase 5 authority repair 只能重建完整 Phase 5 authority 与派生面。
+- 根 `change-plan.md`、public anchors、final packet 与 workflow completion 只能从同一 terminal authority 原子发布。
+- `status.isComplete`、artifact `done` 或结构 validator 通过，不等于语义 `apply-ready`。
 
-- Hard dependency必须通过共享原则的四项gate；layering、internal reuse、shared infrastructure、readiness、Capability关系和“后续都需要”不得形成edge。
-- 当前行为不可缺少的authorization/privacy/security/compatibility/consistency/data-integrity guard必须与首次暴露该行为的同一个Change交付。
-- 只有保护既有运行表面且独立产生可测风险降低的guard，才能作为更早Change。
-- Foundation公开marker仍为首项空`capability-slices[]`，但语义review必须独立识别foundation-like内容。非空technical/security overlay不能形成豁免。
-- 除唯一foundation外，每个final Change必须拥有direct spec/guard slice，并通过Prefix Utility与Consumer Closure。
+## 语言与路径
 
-## Ownership 与 Capability advancement
+- 所有 explanation、finding、warning、rationale、note 与 report 使用简体中文。
+- 标识符、schema、枚举、路径和 source 原文保持原样。
+- 所有 canonical path 必须是 repository-relative、无 symlink 穿越的普通文件路径。
 
-- Phase 2 candidate owner/projection/target只是extraction-time hint；Phase 4不得把它们变成collection bucket、final owner、dependency、order或advancement。
-- 每个GA恰好一个final owner Change、relation、projection和Capability字段。
-- 只有direct `spec-requirement|spec-guard` mapping推进Capability；design、verification、non-direct和related-only mapping不推进。
-- Advancement由final Change order、direct mapping和repository baseline统一推导；mapping impact、refit overlay、baseline reconciliation和final plan overlay必须等于同一结果。
-- Final packet的`depends-on[]`必须由Phase 5 terminal `dependency-edges[]`确定性派生，不得仅从Markdown自由文本恢复。
+## v8 硬切换
 
-## Frozen evidence 与 repair
-
-- Phase 2/3 finding只能在联合gate剩余repair预算内修复；repair必须消费上一轮finding且不得扩大到无关source。
-- Phase 5 bounded repair只能修改Phase 5 framework/refit、roadmap、mapping和final plan authority；不得回写Phase 2/3。
-- 每次Phase 5 repair后必须完整重算helper派生surface、重跑preflight validator并由fresh reviewer检查；不得运行targeted、incremental或checkpoint repair。
-- Phase 5发现quote、range、missing occurrence或mixed independent occurrence等冻结evidence缺陷时记录issue并`blocked`。
-
-## Workflow completion authority
-
-- `trace/manifest.json`使用manifest v3，并显式记录`workflow-status: pending|integration-passed|blocked`。
-- Phase 5 terminal只表示final candidate authority通过Phase 5 bounded gate，不表示workflow完成。
-- All-phase `--pre-handoff` validator通过后，fresh final integration reviewer只写根`final-integration-review.json`；finalizer必须先以exclusive atomic create锁定该review的path/raw-bytes SHA，再执行语义校验并一次性写passed或blocked attempt result。只有合法review终态化后才确定性生成Markdown mirror、completion trace与manifest commit marker，随后再运行`--complete` validator。
-- Review语义无效也会消耗唯一attempt：finalizer写blocked attempt result但不得发布completion；替换review或第二次review attempt均被拒绝。进程只留下submitted attempt时，只允许对同一raw bytes继续crash recovery。
-- Passed review必须绑定当前`terminal-authority-sha256`；该digest只覆盖trace contract固定顺序的七份terminal artifact及其raw-bytes SHA，不包含manifest、review自身、attempt/result或completion trace。
-- `trace/workflow-completion.trace.json`是唯一workflow完成commit marker。只有`status: integration-passed`、review path/digest有效且terminal digest与passed review逐字一致时，selector与下游handoff才能消费generation。
-- Final review为blocked时manifest `workflow-status: blocked`且completion trace使用blocked状态；pre-handoff或complete validator失败时不得伪装为完成或自动启动新repair。
-
-## Handoff、语言与版本
-
-- Phase 5 handoff从terminal mapping和dependency edges确定性生成完整`change-source.md`、Capability slices与final packet。
-- 公开文件不得输出GA、atom ID、evidence ref、directive、relation、projection、mapping reason、Change类型或internal review metadata。
-- `source-fact`保持source原文，不翻译、不转述、不改写；agent解释、判断、理由与报告使用简体中文。
-- `source-aligned-trace-v6`及更早generation保持原状态，不迁移、不原地升级、不重渲染。新generation必须从Phase 1使用v7。
-- v7 validator/renderer/helper不得消费或修改legacy generation；在非空legacy output root上必须阻断，等待用户明确选择干净root或授权替换。
+- v8 generation 使用 `source-aligned-trace-v8`，必须从新的干净 output root 开始。
+- v7 generation 是只读历史；v8 validator、renderer、helper 必须 fail closed，且不得迁移、覆盖、删除或补写。
+- 不提供 v7 migration 或兼容写入路径。

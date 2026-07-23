@@ -36,14 +36,14 @@ from source_aligned_trace_lib import (
     table_rows,
     write_json,
 )
-from source_aligned_v7_contract import (
+from source_aligned_v8_contract import (
     load_final_integration_review,
     load_initial_framework,
     terminal_authority_sha256,
 )
 
 
-RENDER_CONTRACT_VERSION = "source-aligned-render-v11"
+RENDER_CONTRACT_VERSION = "source-aligned-render-v12"
 SUPPORTED_ARTIFACTS = {
     "phase1-initial-framework",
     "phase2-source-atoms",
@@ -180,7 +180,7 @@ def _markdown_list(values: object) -> List[str]:
 
 
 def render_initial_framework(orchestrate_dir: Path, json_path: Path) -> str:
-    """Render the Phase 1 Markdown mirror from the v7 JSON authority."""
+    """Render the Phase 1 Markdown mirror from the v8 JSON authority."""
     repo_root = repo_root_for(orchestrate_dir)
     data, parsed = load_initial_framework(json_path)
     dependency_by_change: Dict[str, List[Dict[str, object]]] = {}
@@ -789,7 +789,7 @@ def _mapping_ambiguities(orchestrate_dir: Path) -> List[Dict[str, object]]:
 
 
 def render_framework_refit_review(orchestrate_dir: Path, json_path: Path) -> str:
-    """从 v7 framework refit authority 渲染边界复审 mirror。"""
+    """从 v8 framework refit authority 渲染边界复审 mirror。"""
     repo_root = repo_root_for(orchestrate_dir)
     data = read_json(json_path)
     require_trace_contract(data, json_path, FRAMEWORK_REFIT_TRACE_SCHEMA)
@@ -1306,6 +1306,10 @@ def render_final_integration_review(orchestrate_dir: Path, json_path: Path) -> s
         body.append("")
     body.extend(
         [
+            "## Dependency Set Completeness",
+            "",
+            f"- `{json.dumps(data.get('dependency-set-result'), ensure_ascii=False, sort_keys=True, separators=(',', ':'))}`",
+            "",
             "## Occurrence Chain",
             "",
             f"- `{json.dumps(data.get('occurrence-chain-result'), ensure_ascii=False, sort_keys=True, separators=(',', ':'))}`",
@@ -1384,7 +1388,7 @@ def render_jobs(orchestrate_dir: Path, artifact: str, source_document: str = "")
 
 
 def clean_phase4_legacy(orchestrate_dir: Path) -> None:
-    """Reject legacy Phase 4 surfaces; v7 never migrates or deletes them."""
+    """Reject legacy Phase 4 surfaces; v8 never migrates or deletes them."""
     work = orchestrate_dir / "phase-works/phase-4"
     existing = []
     for name in (

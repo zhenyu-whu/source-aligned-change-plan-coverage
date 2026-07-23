@@ -16,6 +16,12 @@ class NeutralSequencingEvaluationCatalogTest(unittest.TestCase):
         oracle = json.loads(
             (SKILL_ROOT / "evals/oracle.json").read_text(encoding="utf-8")
         )
+        result = json.loads(
+            (
+                SKILL_ROOT
+                / "evals/results/v8-release-evaluation.json"
+            ).read_text(encoding="utf-8")
+        )
 
         self.assertEqual(
             cases["schema"],
@@ -28,6 +34,12 @@ class NeutralSequencingEvaluationCatalogTest(unittest.TestCase):
         self.assertEqual(cases["trials-per-case"], 3)
         self.assertEqual(oracle["trials-per-case"], 3)
         self.assertEqual(oracle["required-pass-count"], 3)
+        self.assertEqual(
+            result["trace-contract-version"],
+            "source-aligned-trace-v8",
+        )
+        self.assertEqual(len(result["fresh-evaluators"]), 3)
+        self.assertEqual(result["oracle-disclosure"], "none-before-evaluation")
 
         case_rows = cases["cases"]
         oracle_rows = oracle["cases"]
@@ -35,7 +47,20 @@ class NeutralSequencingEvaluationCatalogTest(unittest.TestCase):
             [row["id"] for row in case_rows],
             [row["id"] for row in oracle_rows],
         )
-        self.assertEqual(len(case_rows), 8)
+        self.assertEqual(len(case_rows), 10)
+        self.assertEqual(
+            [row["id"] for row in result["cases"]],
+            [row["id"] for row in case_rows],
+        )
+        self.assertTrue(result["release-candidate"])
+        self.assertTrue(
+            all(
+                row["decision"] == "passed"
+                and row["pass-count"] == 3
+                and row["required-pass-count"] == 3
+                for row in result["cases"]
+            )
+        )
         for row in case_rows:
             self.assertEqual(
                 set(row),
@@ -72,6 +97,8 @@ class NeutralSequencingEvaluationCatalogTest(unittest.TestCase):
                 "directive-false-positive",
                 "existing-baseline-engineering-outcome",
                 "no-foundation-thin-outcome",
+                "stable-outcome-consumption-requires-complete-edge-set",
+                "shared-infrastructure-is-not-outcome-consumption",
             },
         )
 

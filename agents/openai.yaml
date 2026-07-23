@@ -1,4 +1,4 @@
 interface:
   display_name: "Source-Aligned Change Plan Coverage"
-  short_description: "从 source 建立 v7 Capability、交付顺序与完整 evidence handoff"
-  default_prompt: "使用 $source-aligned-change-plan-coverage 从指定 source document 建立 v7 JSON initial framework、Capability-first 且 sequence-independent 的 OpenSpec Change 全局计划，并完成 evidence coverage、final roadmap、terminal mapping 与 integration-passed handoff。"
+  short_description: "从 source 建立 v8 隔离审查、依赖完整性与终态 handoff"
+  default_prompt: "使用 $source-aligned-change-plan-coverage 从指定 source document 建立 v8 Change/Capability 全局计划，并以隔离的 writer、reviewer、repair 角色完成 evidence coverage、依赖集合完整性与 integration-passed handoff。"

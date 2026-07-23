@@ -73,6 +73,25 @@
         "先建立清单实体、仓储和命令框架。",
         "再实现创建清单和错误响应。"
       ]
+    },
+    {
+      "id": "case-09",
+      "current-baseline": "系统已经交付稳定的流程编排定义、输入数据契约以及可保存并恢复的 Draft 执行结果；这些能力由既有 authoring 与 Draft execution Change 产生。",
+      "source-excerpt": "新增高级 runtime node。该 node 必须读取既有流程编排，按既有数据契约解析输入，并从已保存的 Draft 执行结果继续运行；如果任一结果不存在或不兼容，node 必须拒绝启动。",
+      "candidate-plan": [
+        "建立流程 authoring 与稳定编排结果。",
+        "建立 Draft execution 与可恢复执行结果。",
+        "实现高级 runtime node。"
+      ]
+    },
+    {
+      "id": "case-10",
+      "current-baseline": "两个独立结果都将在同一个运行环境中交付。",
+      "source-excerpt": "报告生成与通知偏好各自形成独立可验收结果。两者复用同一 schema registry、任务 runtime 和日志基础设施，但通知偏好不读取报告结果，报告生成也不读取通知偏好结果。",
+      "candidate-plan": [
+        "交付报告生成。",
+        "交付通知偏好。"
+      ]
     }
   ]
 }

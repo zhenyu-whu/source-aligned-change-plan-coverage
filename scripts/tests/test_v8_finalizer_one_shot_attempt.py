@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
-"""Final integration review one-shot attempt authority tests."""
+"""v8 final integration review one-shot attempt authority tests."""
 
 from __future__ import annotations
 

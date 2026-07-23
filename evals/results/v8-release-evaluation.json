@@ -1,0 +1,74 @@
+{
+  "schema": "source-aligned-neutral-sequencing-evaluation-result-v1",
+  "trace-contract-version": "source-aligned-trace-v8",
+  "trials-per-case": 3,
+  "fresh-evaluators": [
+    "v8-eval-a",
+    "v8-eval-b",
+    "v8-eval-c"
+  ],
+  "oracle-disclosure": "none-before-evaluation",
+  "cases": [
+    {
+      "id": "case-01",
+      "pass-count": 3,
+      "required-pass-count": 3,
+      "decision": "passed"
+    },
+    {
+      "id": "case-02",
+      "pass-count": 3,
+      "required-pass-count": 3,
+      "decision": "passed"
+    },
+    {
+      "id": "case-03",
+      "pass-count": 3,
+      "required-pass-count": 3,
+      "decision": "passed"
+    },
+    {
+      "id": "case-04",
+      "pass-count": 3,
+      "required-pass-count": 3,
+      "decision": "passed"
+    },
+    {
+      "id": "case-05",
+      "pass-count": 3,
+      "required-pass-count": 3,
+      "decision": "passed"
+    },
+    {
+      "id": "case-06",
+      "pass-count": 3,
+      "required-pass-count": 3,
+      "decision": "passed"
+    },
+    {
+      "id": "case-07",
+      "pass-count": 3,
+      "required-pass-count": 3,
+      "decision": "passed"
+    },
+    {
+      "id": "case-08",
+      "pass-count": 3,
+      "required-pass-count": 3,
+      "decision": "passed"
+    },
+    {
+      "id": "case-09",
+      "pass-count": 3,
+      "required-pass-count": 3,
+      "decision": "passed"
+    },
+    {
+      "id": "case-10",
+      "pass-count": 3,
+      "required-pass-count": 3,
+      "decision": "passed"
+    }
+  ],
+  "release-candidate": true
+}

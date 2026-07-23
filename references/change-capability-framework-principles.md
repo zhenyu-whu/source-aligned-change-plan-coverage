@@ -1,6 +1,6 @@
 # Change/Capability Framework 与 Delivery Sequence 共享原则
 
-本文件是 Phase 1 初次生成 framework 与 Phase 5 最终复审/refit、dependency proof和roadmap selection的唯一语义标准。两阶段不得复制、改写或另建第二套 gate。
+本文件是 Phase 1 初次生成 framework 与 Phase 5 framework refit、dependency proof 和 roadmap selection 的共享正向语义标准。它只定义成立条件，不包含 reviewer 检查项、decision、预算或状态转换。
 
 ## 核心模型
 
@@ -12,7 +12,7 @@
 - 一个Capability无需在消费者之前完整建立；首个适用Change只推进当前outcome安全成立所需的最小normative slice，后续Change继续演进。
 - Obligation evidence用于验证和调整framework与roadmap，不得从atom/GA数量、table形状或重复evidence数量推断boundary或order。
 
-## Capability gate
+## Capability 成立条件
 
 每个Capability必须同时通过：
 
@@ -27,7 +27,7 @@
 
 `module`、`table`、`page`、`component`、`provider`、`deployment`是implementation-leakage signal，不是绝对黑名单；source明确规定的稳定component/interface contract可以成为Capability，但这仍不赋予其任何交付顺序。
 
-## Change gate
+## Change 成立条件
 
 每个Change必须同时通过：
 
@@ -77,7 +77,7 @@ Phase 2 source atom与Phase 3 gap atom只在source明示时记录以下`delivery
 
 - 空数组表示source未明示交付时序。
 - steady-state architecture、security invariant、component layering、调用关系、数据流、复用关系或实现常识不得自动成为directive。
-- 同一occurrence可以拥有多个不重复directive；必须由Phase 2/3 reviewer在freeze前核对。
+- 同一occurrence可以拥有多个不重复directive；freeze前必须保持完整且无重复。
 - Phase 5必须为每个非空directive occurrence建立唯一terminal resolution。
 - 显式milestone、precedence与deferred scope优先于AI推断的roadmap heuristic；若source自身冲突且无法裁决，workflow `blocked`。
 
@@ -93,11 +93,11 @@ Phase 2 source atom与Phase 3 gap atom只在source明示时记录以下`delivery
 
 domain schema、entity、command、policy、user-facing API、business worker、identity/authorization、privacy、recovery、delivery、export、history/versioning、observability等domain behavior不得进入foundation；普通technical enabler默认并入首个consumer Change。
 
-任何主要完成条件是“使未来Change可以开始”的候选都必须接受foundation-like语义审查。非空technical/security/governance Capability edge、direct evidence或可独立运行的空骨架，均不能豁免该审查。
+任何主要完成条件是“使未来Change可以开始”的候选都必须满足 foundation-like 语义条件。非空technical/security/governance Capability edge、direct evidence或可独立运行的空骨架，均不能豁免这些条件。
 
-公开handoff仍以`capability-slices: []`机械标记foundation；该marker不是语义充分条件。除了通过语义审查的唯一首项，所有Change必须至少产生一个direct spec/guard advancement edge并通过Prefix Utility与Consumer Closure。Phase 1、Phase 5及公开handoff均不增加Change类型字段。
+公开handoff仍以`capability-slices: []`机械标记foundation；该marker不是语义充分条件。除了满足上述条件的唯一首项，所有Change必须至少产生一个direct spec/guard advancement edge并满足Prefix Utility与Consumer Closure。Phase 1、Phase 5及公开handoff均不增加Change类型字段。
 
-## Hard dependency gate
+## Hard dependency 成立条件
 
 只有候选`A -> B`同时满足以下四项，才能成为roadmap hard dependency：
 
@@ -116,14 +116,26 @@ domain schema、entity、command、policy、user-facing API、business worker、
 
 最后一类默认是co-delivery invariant：把当前行为安全成立所需的最小guard放入同一个Change。
 
+### Dependency set completeness
+
+合法 edge 不代表 edge set 完整。对每个 Change，必须从 normative behavior、acceptance、outcome thread 与 consumer description 反查全部真实稳定 outcome consumption。
+
+每个 consumption 必须由以下三者恰好一个解释：
+
+1. typed hard dependency edge；
+2. existing baseline；
+3. same-change co-delivery。
+
+若高级 runtime node 消费 earlier Change 已交付的稳定编排、数据契约或 Draft 执行结果，必须声明 typed edge；不能以共享 runtime 为由省略。反之，仅共享 schema、library、runtime slot 或 infrastructure、但不消费稳定业务 outcome 时，不得产生虚假 dependency。
+
 ## 排序原则
 
 严格按以下顺序确定roadmap：
 
 1. 先建立source delivery directive视图与目标milestone。
-2. 隐藏Capability名称，按真实outcome生成Change并通过全部8项gate。
+2. 隐藏Capability名称，按真实outcome生成Change并满足全部8项成立条件。
 3. 为每个Change吸收当前outcome所需的最小runtime、data、security、compatibility与verification slice。
-4. 只在Change均已形成后建立typed hard dependency edges，并逐条通过四项dependency gate。
+4. 只在Change均已形成后建立typed hard dependency edges，并逐条满足四项dependency成立条件。
 5. 对hard dependency DAG执行拓扑排序。
 6. 在当前eligible Change中依次优先：
    - source显式milestone/precedence/deferred约束；
@@ -145,7 +157,7 @@ domain schema、entity、command、policy、user-facing API、business worker、
 - 只有Change直接改变Capability normative behavior时才建立advancement edge。
 - dependency、reuse、preserve、related-only、design-only、task-only和verification-only内容不推进Capability。
 - Capability数量、名称、首次出现或矩阵列不得决定Change boundary或order。
-- single-Capability Change和只由一个Change推进的Capability都可以合法存在；合法性只由上述gate决定。
+- single-Capability Change和只由一个Change推进的Capability都可以合法存在；合法性只由上述语义条件决定。
 - 非空overlay不构成Prefix Utility、Consumer Closure或非foundation-like的证明。
 
 ## 禁止的机械切分与排序

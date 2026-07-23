@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
-"""Phase 5 对 Phase 2/3 frozen evidence authority 的绑定测试。"""
+"""v8 Phase 5 对 Phase 2/3 frozen evidence authority 的绑定测试。"""
 
 from __future__ import annotations
 
@@ -22,7 +22,6 @@ from source_aligned_trace_lib import (  # noqa: E402
     INITIAL_FRAMEWORK_SCHEMA,
     PHASE3_COVERAGE_REVIEW_SCHEMA,
     PHASE_TRACE_SCHEMAS,
-    PHASE1_REVIEW_CHECKS,
     SOURCE_ATOMS_SCHEMA,
     TRACE_CONTRACT_VERSION,
     evidence_authority_sha256,
@@ -37,15 +36,16 @@ from render_source_aligned_orchestrate import (  # noqa: E402
     render_phase2_index,
     render_phase2_source_atoms,
 )
-from test_source_aligned_v7_contract import (  # noqa: E402
+from test_source_aligned_v8_contract import (  # noqa: E402
     _base_initial_framework,
 )
+from review_fixture_v8 import write_review_result  # noqa: E402
 
 
 class FrozenEvidenceFixture:
     def __init__(self, root: Path) -> None:
         self.root = root
-        self.orchestrate = root / "openspec/orchestrate-v7"
+        self.orchestrate = root / "openspec/orchestrate-v8"
         self.source = root / "docs/source.md"
         self.source.parent.mkdir(parents=True)
         self.source.write_text("读者必须得到可读取报告。\n", encoding="utf-8")
@@ -55,7 +55,7 @@ class FrozenEvidenceFixture:
         framework = _base_initial_framework()
         framework["trace-schema"] = INITIAL_FRAMEWORK_SCHEMA
         framework["artifact-path"] = (
-            "openspec/orchestrate-v7/phase-works/phase-1/"
+            "openspec/orchestrate-v8/phase-works/phase-1/"
             "initial-change-plan.md"
         )
         write_json(framework_path, framework)
@@ -87,6 +87,16 @@ class FrozenEvidenceFixture:
             "# Phase 1 Agent Report\n\n初始框架及其review已完成。\n",
             encoding="utf-8",
         )
+        phase1_review = write_review_result(
+            self.orchestrate,
+            self.root,
+            phase="phase-1",
+            round_number=1,
+            authority={
+                "initial-framework-sha256": sha256_file(framework_path),
+                "initial-change-plan-sha256": sha256_file(plan_path),
+            },
+        )
         write_json(
             self.orchestrate / "trace/phase-1.trace.json",
             {
@@ -106,42 +116,23 @@ class FrozenEvidenceFixture:
                 ],
                 "initial-framework": {
                     "artifact-path": (
-                        "openspec/orchestrate-v7/phase-works/phase-1/"
+                        "openspec/orchestrate-v8/phase-works/phase-1/"
                         "initial-framework.json"
                     ),
                     "sha256": sha256_file(framework_path),
                 },
                 "initial-change-plan": {
                     "artifact-path": (
-                        "openspec/orchestrate-v7/phase-works/phase-1/"
+                        "openspec/orchestrate-v8/phase-works/phase-1/"
                         "initial-change-plan.md"
                     ),
                     "sha256": sha256_file(plan_path),
                 },
                 "review-gate": {
                     "status": "passed",
+                    "terminal-reason": "none",
                     "writer-id": "phase1-writer",
-                    "reviews": [
-                        {
-                            "round": 1,
-                            "reviewer-id": "phase1-reviewer",
-                            "validator-status": "passed",
-                            "initial-framework-sha256": sha256_file(
-                                framework_path
-                            ),
-                            "initial-change-plan-sha256": sha256_file(
-                                plan_path
-                            ),
-                            "semantic-checks": [
-                                {
-                                    "check": check,
-                                    "result": "passed",
-                                }
-                                for check in PHASE1_REVIEW_CHECKS
-                            ],
-                            "finding-fingerprints": [],
-                        }
-                    ],
+                    "reviews": [phase1_review],
                     "repairs": [],
                 },
             },
@@ -217,19 +208,19 @@ class FrozenEvidenceFixture:
                 "trace-contract-version": TRACE_CONTRACT_VERSION,
                 "status": "source-atoms-written",
                 "work-queue-path": (
-                    "openspec/orchestrate-v7/phase-works/phase-2/"
+                    "openspec/orchestrate-v8/phase-works/phase-2/"
                     "source-obligation-atoms/work-queue.md"
                 ),
                 "sources": [
                     {
                         "source-document": "docs/source.md",
                         "atom-json-path": (
-                            "openspec/orchestrate-v7/phase-works/phase-2/"
+                            "openspec/orchestrate-v8/phase-works/phase-2/"
                             "source-obligation-atoms/docs--source.atoms.json"
                         ),
                         "atom-json-sha256": sha256_file(atom_path),
                         "atom-markdown-path": (
-                            "openspec/orchestrate-v7/phase-works/phase-2/"
+                            "openspec/orchestrate-v8/phase-works/phase-2/"
                             "source-obligation-atoms/docs--source.atoms.md"
                         ),
                         "canonical-owner": "phase2-source-writer",
@@ -240,7 +231,7 @@ class FrozenEvidenceFixture:
                     }
                 ],
                 "phase-report-path": (
-                    "openspec/orchestrate-v7/phase-works/phase-2/"
+                    "openspec/orchestrate-v8/phase-works/phase-2/"
                     "phase-2-agent-report.md"
                 ),
             },
@@ -264,7 +255,7 @@ class FrozenEvidenceFixture:
                 "trace-schema": GLOBAL_ATOM_INDEX_SCHEMA,
                 "trace-contract-version": TRACE_CONTRACT_VERSION,
                 "artifact-path": (
-                    "openspec/orchestrate-v7/change-capability-anchors/"
+                    "openspec/orchestrate-v8/change-capability-anchors/"
                     "obligation-atom-index.md"
                 ),
                 "global-atoms": [
@@ -289,7 +280,7 @@ class FrozenEvidenceFixture:
                 "trace-schema": PHASE3_COVERAGE_REVIEW_SCHEMA,
                 "trace-contract-version": TRACE_CONTRACT_VERSION,
                 "artifact-path": (
-                    "openspec/orchestrate-v7/phase-works/phase-3/"
+                    "openspec/orchestrate-v8/phase-works/phase-3/"
                     "coverage-review.md"
                 ),
                 "documents": [
@@ -298,7 +289,7 @@ class FrozenEvidenceFixture:
                         "source-sha256": sha256_file(self.source),
                         "line-count": 1,
                         "phase-2-atom-path": (
-                            "openspec/orchestrate-v7/phase-works/phase-2/"
+                            "openspec/orchestrate-v8/phase-works/phase-2/"
                             "source-obligation-atoms/docs--source.atoms.json"
                         ),
                         "phase-2-atom-sha256": sha256_file(atom_path),
@@ -344,6 +335,15 @@ class FrozenEvidenceFixture:
             self.orchestrate,
             self.root,
         )
+        phase3_review = write_review_result(
+            self.orchestrate,
+            self.root,
+            phase="phase-3",
+            round_number=1,
+            authority={
+                "evidence-authority-sha256": evidence_digest,
+            },
+        )
         write_json(
             self.orchestrate / "trace/phase-3.trace.json",
             {
@@ -351,17 +351,18 @@ class FrozenEvidenceFixture:
                 "trace-contract-version": TRACE_CONTRACT_VERSION,
                 "decision": "coverage-complete",
                 "global-atom-index-path": (
-                    "openspec/orchestrate-v7/change-capability-anchors/"
+                    "openspec/orchestrate-v8/change-capability-anchors/"
                     "obligation-atom-index.json"
                 ),
                 "global-atom-index-sha256": sha256_file(global_path),
                 "coverage-review-path": (
-                    "openspec/orchestrate-v7/phase-works/phase-3/"
+                    "openspec/orchestrate-v8/phase-works/phase-3/"
                     "coverage-review.json"
                 ),
                 "coverage-review-sha256": sha256_file(coverage_path),
                 "review-gate": {
                     "status": "passed",
+                    "terminal-reason": "none",
                     "phase-2-canonical-owner-ids": [
                         "phase2-source-writer"
                     ],
@@ -369,18 +370,7 @@ class FrozenEvidenceFixture:
                         "phase2-aggregate-writer"
                     ),
                     "phase-3-writer-id": "phase3-writer",
-                    "reviews": [
-                        {
-                            "round": 1,
-                            "stage": "phase-3-closure",
-                            "reviewer-id": "phase3-reviewer",
-                            "phase-2-validator-status": "passed",
-                            "phase-3-validator-status": "passed",
-                            "delivery-directive-status": "passed",
-                            "evidence-authority-sha256": evidence_digest,
-                            "finding-fingerprints": [],
-                        }
-                    ],
+                    "reviews": [phase3_review],
                     "repairs": [],
                 },
                 "issues": [],
@@ -401,9 +391,19 @@ class FrozenEvidenceFixture:
         trace = json.loads(trace_path.read_text(encoding="utf-8"))
         trace["global-atom-index-sha256"] = sha256_file(global_path)
         trace["coverage-review-sha256"] = sha256_file(coverage_path)
+        review_path = (
+            self.orchestrate
+            / "phase-works/phase-3/reviews/review-round-01.json"
+        )
+        review = json.loads(review_path.read_text(encoding="utf-8"))
+        review["evidence-authority-sha256"] = evidence_authority_sha256(
+            self.orchestrate,
+            self.root,
+        )
+        write_json(review_path, review)
         trace["review-gate"]["reviews"][-1][
-            "evidence-authority-sha256"
-        ] = evidence_authority_sha256(self.orchestrate, self.root)
+            "review-result-sha256"
+        ] = sha256_file(review_path)
         write_json(trace_path, trace)
 
 
@@ -480,36 +480,41 @@ class FrozenEvidenceAuthorityTests(unittest.TestCase):
                 )
 
     def test_canonical_gate_and_review_identities_are_required(self) -> None:
-        mutations = (
-            (
-                "gate-owner-identities",
-                lambda trace: trace["review-gate"].pop(
-                    "phase-2-canonical-owner-ids"
-                ),
+        with tempfile.TemporaryDirectory() as raw:
+            fixture = FrozenEvidenceFixture(Path(raw))
+            trace_path = fixture.orchestrate / "trace/phase-3.trace.json"
+            trace = json.loads(trace_path.read_text(encoding="utf-8"))
+            trace["review-gate"].pop("phase-2-canonical-owner-ids")
+            write_json(trace_path, trace)
+            with self.assertRaisesRegex(
+                ValueError,
                 "canonical Phase 3 passed review-gate",
-            ),
-            (
-                "reviewer-identity",
-                lambda trace: trace["review-gate"]["reviews"][-1].pop(
-                    "reviewer-id"
-                ),
-                "review history字段或round非法",
-            ),
-        )
-        for label, mutate, message in mutations:
-            with self.subTest(label=label), tempfile.TemporaryDirectory() as raw:
-                fixture = FrozenEvidenceFixture(Path(raw))
-                trace_path = (
-                    fixture.orchestrate / "trace/phase-3.trace.json"
+            ):
+                require_phase3_frozen_evidence(
+                    fixture.orchestrate,
+                    fixture.root,
                 )
-                trace = json.loads(trace_path.read_text(encoding="utf-8"))
-                mutate(trace)
-                write_json(trace_path, trace)
-                with self.assertRaisesRegex(ValueError, message):
-                    require_phase3_frozen_evidence(
-                        fixture.orchestrate,
-                        fixture.root,
-                    )
+
+        with tempfile.TemporaryDirectory() as raw:
+            fixture = FrozenEvidenceFixture(Path(raw))
+            review_path = (
+                fixture.orchestrate
+                / "phase-works/phase-3/reviews/review-round-01.json"
+            )
+            review = json.loads(review_path.read_text(encoding="utf-8"))
+            review.pop("reviewer-id")
+            write_json(review_path, review)
+            trace_path = fixture.orchestrate / "trace/phase-3.trace.json"
+            trace = json.loads(trace_path.read_text(encoding="utf-8"))
+            trace["review-gate"]["reviews"][-1][
+                "review-result-sha256"
+            ] = sha256_file(review_path)
+            write_json(trace_path, trace)
+            with self.assertRaisesRegex(ValueError, "review result"):
+                require_phase3_frozen_evidence(
+                    fixture.orchestrate,
+                    fixture.root,
+                )
 
     def test_canonical_coverage_and_global_index_fields_are_required(
         self,
