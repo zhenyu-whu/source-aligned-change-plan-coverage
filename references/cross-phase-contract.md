@@ -56,7 +56,7 @@
 
 ## Handoff 与语言
 
-- Phase 5 handoff从terminal mapping确定性生成完整`change-source.md`和direct spec/guard `capability-slices/*.md`。公开文件只保留source path、range与逐字原文，不输出GA、atom ID、evidence ref、relation、projection或mapping reason。
+- Phase 5 handoff从terminal mapping确定性生成完整`change-source.md`和direct spec/guard `capability-slices/*.md`。公开文件按内部source path、range与GA稳定排序，只将逐字`source-fact`作为原始Markdown直接排列，并以一个空行分隔；不得输出`Source Occurrence`标题、序号、source path/range字段、生成器附加围栏、GA、atom ID、evidence ref、relation、projection或mapping reason。重复occurrence仍逐条保留，不合并或去重。
 - `capability-slices: []`是foundation的唯一公共判据；它最多出现一次、只能位于roadmap首位、无硬依赖且无overlay。其他Change至少一个slice。任何Phase都不得新增Change类型字段。
 - GA、coverage、collections与terminal mapping继续作为上游内部审计链；下游不建立Requirement/Scenario到GA的映射，也无需保留多对一GA trace。
 - Agent编写的解释、判断、理由、报告与handoff使用简体中文；固定field、enum、ID、path、代码符号和精确source quote可保留英文。

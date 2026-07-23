@@ -84,5 +84,5 @@ Phase 1、Phase 4、Phase 5的source、authority、schema、validator或用户�
 - Complete validator 与 final integration reviewer在上游内部核对每个 occurrence 的 GA、Phase 4 collection、terminal mapping与baseline，并核对公开change source、Capability slices、bundle index和final plan一致性。
 - Reviewer 必须确认所有 final Change/Capability 通过共享原则，全部已记录或 late-discovered ambiguity 只由同 GA mapping row裁决，且未执行 semantic dedup 或基于 GA 数量推断 framework。
 - 失败时 workflow `blocked`，不自动repair、重新refit或修改冻结evidence。
-- Handoff使用`source-aligned-final-packet-index-v3`。每个packet只公开Change依赖、完整owner-scoped冻结原文及direct spec/guard Capability切片；GA、atom、evidence ref和mapping字段仅供上游内部审计，不要求下游映射或保留。
+- Handoff使用`source-aligned-final-packet-index-v3`。每个packet只公开Change依赖、完整owner-scoped冻结原文及direct spec/guard Capability切片；冻结`source-fact`按内部source path、range与GA稳定排序，以原始Markdown直接排列并用一个空行分隔，不输出`Source Occurrence`标题、序号、source path/range字段或生成器附加围栏。重复occurrence保持独立且不得去重；GA、atom、evidence ref和mapping字段仅供上游内部审计，不要求下游映射或保留。
 - `capability-slices`非空时直接表示上游确定的Capability advancement；显式空数组表示可选的首位foundation。foundation最多一个、无依赖且无Capability overlay；其余Change必须至少包含一个slice。Phase 1/5及公开packet均不保存Change类型字段。

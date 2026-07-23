@@ -958,20 +958,9 @@ def build_baseline(
     return baseline
 
 
-def fence(text: str) -> str:
-    longest = max((len(match.group(0)) for match in re.finditer(r"`+", text)), default=0)
-    marker = "`" * max(3, longest + 1)
-    return f"{marker}text\n{text}\n{marker}"
-
-
-def public_source_section(item: Evidence, ordinal: int) -> str:
-    """Render one frozen occurrence without exposing the internal trace identity."""
-    ranges = line_ranges_label([{"start": start, "end": end} for start, end in item.line_ranges])
-    return "\n".join([
-        f"### Source Occurrence {ordinal}", "",
-        f"- Source Path：{code(item.source_document)}",
-        f"- Source Range：{code(ranges)}", "", fence(item.source_fact), "",
-    ])
+def public_source_markdown(items: Sequence[Evidence]) -> str:
+    """Arrange verbatim frozen source as raw Markdown without occurrence metadata."""
+    return "\n\n".join(item.source_fact for item in items)
 
 
 def _public_source_sort_key(item: Evidence) -> Tuple[object, ...]:
@@ -996,7 +985,7 @@ def render_change_source(change: ChangeDef, evidence: Dict[str, Evidence], mappi
         f"- Independent archive：{md(change.archive_condition)}", "",
         "## Owner-scoped Frozen Source", "",
     ]
-    lines.extend(public_source_section(item, index) for index, item in enumerate(items, 1))
+    lines.append(public_source_markdown(items))
     return "\n".join(lines).rstrip() + "\n"
 
 
@@ -1027,7 +1016,7 @@ def render_capability_slice(
         f"- Excludes：{md(capability.excludes)}", "",
         "## Direct Spec/Guard Frozen Source", "",
     ]
-    lines.extend(public_source_section(item, index) for index, item in enumerate(items, 1))
+    lines.append(public_source_markdown(items))
     return "\n".join(lines).rstrip() + "\n"
 
 

@@ -1956,9 +1956,37 @@ class SourceAlignedPhase45Test(unittest.TestCase):
         )
         source_text = (self.root / row["change-source-path"]).read_text(encoding="utf-8")
         slice_text = (self.root / row["capability-slices"][0]["slice-path"]).read_text(encoding="utf-8")
-        for forbidden in ("GA-000", "Evidence reference", "Relation / projection", "Reason："):
+        for forbidden in (
+            "GA-000",
+            "Evidence reference",
+            "Relation / projection",
+            "Reason：",
+            "### Source Occurrence",
+            "Source Path：",
+            "Source Range：",
+        ):
             self.assertNotIn(forbidden, source_text)
             self.assertNotIn(forbidden, slice_text)
+        self.assertIn(
+            "## Owner-scoped Frozen Source\n\n"
+            "same | requirement\n"
+            "```embedded```\n"
+            "same outcome\n\n"
+            "unassigned fact\n\n"
+            "contextual fact\n\n"
+            "unresolved fact\n\n"
+            "gap must\n",
+            source_text,
+        )
+        self.assertIn(
+            "## Direct Spec/Guard Frozen Source\n\n"
+            "same | requirement\n"
+            "```embedded```\n"
+            "same outcome\n",
+            slice_text,
+        )
+        self.assertNotIn("````text\nsame | requirement", source_text)
+        self.assertNotIn("````text\nsame | requirement", slice_text)
         self.assertIn("unassigned fact", source_text)
         self.assertIn("gap must", source_text)
         self.assertIn("same | requirement", slice_text)

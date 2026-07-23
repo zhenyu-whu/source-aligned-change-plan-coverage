@@ -243,8 +243,9 @@ Blocked trace必须且只能包含`trace-schema`、`trace-contract-version`、`s
 
 `source-aligned-final-packet-index-v3`顶层必须且只能包含`trace-schema`、`trace-contract-version`和roadmap顺序的`packets[]`。每个packet row必须且只能包含`change`、`depends-on[]`、`change-source-path`、`change-source-sha256`和显式`capability-slices[]`。每个slice row必须且只能包含`capability`、`capability-impact: new|modified`、`slice-path`和`slice-sha256`。
 
-- `change-source.md`由该Change全部owner-scoped frozen evidence重算，按source path/range稳定排序；只公开Change boundary、source path/range和逐字原文。
-- `capability-slices/<capability>.md`只由该Change/Capability direct `spec-requirement|spec-guard` mapping重算，并公开Capability Purpose/Owns/Excludes、impact、source path/range和逐字原文。
+- `change-source.md`由该Change全部owner-scoped frozen evidence重算，按source path/range/GA稳定排序；除Change boundary外，只将逐字`source-fact`作为原始Markdown直接排列，并以一个空行分隔。
+- `capability-slices/<capability>.md`只由该Change/Capability direct `spec-requirement|spec-guard` mapping重算；除Capability Purpose/Owns/Excludes与impact外，只按同一稳定顺序直接排列逐字`source-fact`。
+- 两类公开文件都不得输出`Source Occurrence`标题、序号、source path/range字段或生成器附加围栏；重复occurrence保持独立且不得去重。
 - 公开index与Markdown不包含任何Change类型字段，也禁止GA、atom ID、evidence ref、relation、projection、mapping reason等内部trace元数据。
 - 非空slices表示普通Change；空slices表示可选foundation。foundation最多一个、必须是roadmap首项、`depends-on`为空且无overlay；其余Change必须非空。
 - 所有公开path按固定repository-relative lexical path序列化，不跟随symlink。`change-capability-anchors/`、Change目录、`capability-slices/`及其文件的任一路径段为symlink时必须阻断；三个目录层级均执行exact-surface校验，空foundation也必须保留空的`capability-slices/`目录。
